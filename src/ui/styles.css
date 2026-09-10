@@ -1,0 +1,68 @@
+/*
+ * The look: a calm, precise work tool. One accent colour, plus marker yellow
+ * held back for things that genuinely need attention.
+ */
+:root {
+  color-scheme: light dark;
+  --paper: #fbfaf8;
+  --ink: #1c1b19;
+  --ink-soft: #55524d;
+  --rule: #dedad2;
+  --accent: #1f5f8b;
+  --marker: #f2c94c;
+  --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #16181a;
+    --ink: #ecebe8;
+    --ink-soft: #a8a49d;
+    --rule: #2e3235;
+    --accent: #6aa9d0;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  line-height: 1.55;
+}
+
+.shell {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 4rem 1.25rem;
+}
+
+h1 {
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.75rem;
+}
+
+.lead {
+  font-size: 1.05rem;
+  margin: 0 0 1.5rem;
+}
+
+.privacy {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.9rem;
+  color: var(--ink-soft);
+  margin: 0 0 1.5rem;
+}
+
+.status {
+  border-top: 1px solid var(--rule);
+  padding-top: 1rem;
+  color: var(--ink-soft);
+  font-size: 0.925rem;
+  margin: 0;
+}
