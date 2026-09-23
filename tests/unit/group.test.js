@@ -202,6 +202,76 @@ describe('fixes made by hand', () => {
     expect(groups[0].flags, 'no longer needs review').toEqual([]);
   });
 
+  it('moves a page onto the invoice it was dropped on', () => {
+    const pages = [page(1, '100777'), page(2, '100777'), page(3, '100888')];
+
+    // Page 2 is dragged onto page 3, which belongs to invoice 100888.
+    const groups = groupPages(pages, { overrides: { moves: { 2: 3 } } });
+
+    expect(layout(groups)).toEqual([[1], [2, 3]]);
+    expect(numbers(groups)).toEqual(['100777', '100888']);
+    expect(groups[1].movedPages).toEqual([2]);
+    expect(groups[1].manual).toBe(true);
+    expect(groups[0].manual, 'the invoice it came from is changed too').toBe(true);
+  });
+
+  it('keeps a moved page in page order inside its new invoice', () => {
+    const pages = [page(1, '100777'), page(2, '100777'), page(3, '100888'), page(4, '100888')];
+
+    const groups = groupPages(pages, { overrides: { moves: { 4: 1 } } });
+
+    expect(layout(groups)).toEqual([[1, 2, 4], [3]]);
+  });
+
+  it('drops an invoice that has had its last page moved away', () => {
+    const pages = [page(1, '100777'), page(2, '100888')];
+
+    const groups = groupPages(pages, { overrides: { moves: { 2: 1 } } });
+
+    expect(layout(groups)).toEqual([[1, 2]]);
+    expect(groups).toHaveLength(1);
+  });
+
+  it('works out the number again when the page carrying it moves away', () => {
+    const pages = [page(1, '100777'), page(2, null), page(3, '100888')];
+
+    // Page 1 carries 100777 and page 2 was riding along with it. Dropping page 1
+    // onto invoice 100888 leaves page 2 with nothing to go on.
+    const groups = groupPages(pages, { unnumbered: 'attach', overrides: { moves: { 1: 3 } } });
+
+    expect(layout(groups)).toEqual([[1, 3], [2]]);
+    expect(numbers(groups), 'the invoice dropped onto keeps its own number').toEqual([
+      '100888',
+      null,
+    ]);
+    expect(groups[1].flags).toEqual(['no-number']);
+  });
+
+  it('ignores a move onto a page that is already in the same invoice', () => {
+    const pages = [page(1, '100777'), page(2, '100777')];
+
+    const groups = groupPages(pages, { overrides: { moves: { 2: 1, 1: 1 } } });
+
+    expect(layout(groups)).toEqual([[1, 2]]);
+    expect(groups[0].manual, 'nothing actually changed').toBe(false);
+  });
+
+  it('survives a move that names a page which is no longer there', () => {
+    const groups = groupPages([page(1, '100777')], { overrides: { moves: { 9: 1 } } });
+
+    expect(layout(groups)).toEqual([[1]]);
+  });
+
+  it('keeps a manual split and a manual move together', () => {
+    const pages = [page(1, '100777'), page(2, '100777'), page(3, '100777')];
+
+    const groups = groupPages(pages, {
+      overrides: { boundaries: { 3: 'split' }, moves: { 2: 3 } },
+    });
+
+    expect(layout(groups)).toEqual([[1], [2, 3]]);
+  });
+
   it('gives a group the same id whatever the settings are, so a fix survives', () => {
     const pages = [page(1, '100777'), page(2, null), page(3, '100888')];
 

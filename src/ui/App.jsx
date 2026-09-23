@@ -5,15 +5,19 @@ import { groupPages } from '../core/group.js';
 import { assignFileNames, buildFileName, DEFAULT_TEMPLATE } from '../core/naming.js';
 import { buildAllInvoicePdfs, buildCsv, buildInvoicePdf, buildZip } from '../core/export.js';
 import { explain } from '../core/errors.js';
+import { exportWarning, reviewQueue } from '../core/review.js';
 import { closeBatch, loadBatch } from '../lib/loadBatch.js';
 import { clearThumbnails } from '../lib/thumbnails.js';
 import { saveFile } from '../lib/download.js';
 import { useDebounced } from '../lib/useDebounced.js';
+import { useUndoable } from '../lib/useUndoable.js';
 import DropZone from './components/DropZone.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import PageStrip from './components/PageStrip.jsx';
 import InvoiceTable from './components/InvoiceTable.jsx';
 import PreviewModal from './components/PreviewModal.jsx';
+import ReviewQueue from './components/ReviewQueue.jsx';
+import ConfirmDialog from './components/ConfirmDialog.jsx';
 
 /** What the app does before anyone changes anything. */
 const INITIAL_SETTINGS = {
@@ -29,6 +33,14 @@ const INITIAL_SETTINGS = {
   prefix: '',
   template: DEFAULT_TEMPLATE,
 };
+
+/** The same object without one key, so a fix can be taken back cleanly. */
+function without(record, key) {
+  if (!(key in record)) return record;
+  const copy = { ...record };
+  delete copy[key];
+  return copy;
+}
 
 /** An invoice made up purely to show what the name pattern produces. */
 const EXAMPLE_GROUP = {
@@ -48,6 +60,15 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [previewIndex, setPreviewIndex] = useState(null);
   const [exporting, setExporting] = useState(null);
+  const [issueAt, setIssueAt] = useState(-1);
+  const [confirming, setConfirming] = useState(null);
+
+  /**
+   * Every fix made by hand. Kept apart from the detection settings, and apart
+   * from the pages themselves, so that changing a setting re-runs detection
+   * without throwing away a single thing a person decided.
+   */
+  const fixes = useUndoable({ boundaries: {}, numbers: {}, moves: {} });
 
   const cancelRef = useRef(null);
   const sourcesRef = useRef(new Map());
@@ -67,6 +88,8 @@ export default function App() {
       setProblems([]);
       setPreviewIndex(null);
       setQuery('');
+      setIssueAt(-1);
+      fixes.reset({ boundaries: {}, numbers: {}, moves: {} });
 
       const signal = { aborted: false };
       cancelRef.current = signal;
@@ -88,7 +111,7 @@ export default function App() {
         setLoading(null);
       }
     },
-    [files]
+    [files, fixes]
   );
 
   const clearBatch = useCallback(() => {
@@ -100,7 +123,9 @@ export default function App() {
     setProblems([]);
     setPreviewIndex(null);
     setQuery('');
-  }, [files]);
+    setIssueAt(-1);
+    fixes.reset({ boundaries: {}, numbers: {}, moves: {} });
+  }, [files, fixes]);
 
   /* --------------------------------------------------------------- the work */
 
@@ -130,10 +155,11 @@ export default function App() {
           combinePages: settled.combinePages,
           markerText: settled.markerText,
           pagesPerInvoice: Number(settled.pagesPerInvoice) || 1,
+          overrides: fixes.state,
         }),
         { template: settled.template, prefix: settled.prefix }
       ),
-    [analyzed, settled]
+    [analyzed, settled, fixes.state]
   );
 
   const groupOfPage = useMemo(() => {
@@ -143,6 +169,14 @@ export default function App() {
   }, [groups]);
 
   const docsById = useMemo(() => new Map(files.map((file) => [file.id, file.doc])), [files]);
+
+  /** Which colour each invoice has, so the strip, the table and the queue agree. */
+  const colourOf = useMemo(
+    () => new Map(groups.map((group, position) => [group.id, position])),
+    [groups]
+  );
+
+  const issues = useMemo(() => reviewQueue(groups), [groups]);
 
   /** Pages that match the search box, or null when nothing is being searched. */
   const matchedPages = useMemo(() => {
@@ -172,6 +206,52 @@ export default function App() {
   const nameExample = useMemo(
     () => buildFileName(EXAMPLE_GROUP, { template: settled.template, prefix: settled.prefix }),
     [settled.template, settled.prefix]
+  );
+
+  /* ------------------------------------------------------------ fixing by hand */
+
+  /** Start a new invoice at this page. */
+  const splitAt = useCallback(
+    (pageIndex) => {
+      fixes.set((current) => ({
+        ...current,
+        boundaries: { ...current.boundaries, [pageIndex]: 'split' },
+      }));
+    },
+    [fixes]
+  );
+
+  /** Put this page back with the invoice before it. */
+  const joinAt = useCallback(
+    (pageIndex) => {
+      fixes.set((current) => ({
+        ...current,
+        boundaries: { ...current.boundaries, [pageIndex]: 'join' },
+        // A page that was moved somewhere else cannot also join its neighbour.
+        moves: without(current.moves, pageIndex),
+      }));
+    },
+    [fixes]
+  );
+
+  /** Put this page in the same invoice as that one. */
+  const movePage = useCallback(
+    (pageIndex, ontoPageIndex) => {
+      fixes.set((current) => ({
+        ...current,
+        boundaries: without(current.boundaries, pageIndex),
+        moves: { ...current.moves, [pageIndex]: ontoPageIndex },
+      }));
+    },
+    [fixes]
+  );
+
+  /** Correct an invoice number by hand. */
+  const renameInvoice = useCallback(
+    (groupId, value) => {
+      fixes.set((current) => ({ ...current, numbers: { ...current.numbers, [groupId]: value } }));
+    },
+    [fixes]
   );
 
   /* ----------------------------------------------------------------- export */
@@ -232,19 +312,54 @@ export default function App() {
     saveFile(buildCsv(groups), 'page-map.csv', 'text/csv;charset=utf-8');
   }, [groups]);
 
+  /** Exporting with problems left is allowed, but never by accident. */
+  const askThenExport = useCallback(() => {
+    if (issues.length === 0) {
+      downloadZip();
+      return;
+    }
+    setConfirming({
+      question: exportWarning(issues.length),
+      detail:
+        'Every invoice is saved, including the ones that need a look. An invoice with no number is named after its pages.',
+      confirmLabel: 'Export anyway',
+      act: downloadZip,
+    });
+  }, [issues.length, downloadZip]);
+
   /* -------------------------------------------------------------- shortcuts */
+
+  /** Step to the next thing that needs a look, wrapping round at the end. */
+  const goToNextIssue = useCallback(() => {
+    if (issues.length === 0) return;
+    const next = (issueAt + 1) % issues.length;
+    setIssueAt(next);
+    setPreviewIndex(issues[next].group.pages[0].index);
+  }, [issues, issueAt]);
 
   useEffect(() => {
     const onKey = (event) => {
-      if (event.key !== '/' || previewIndex !== null) return;
-      const tag = event.target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      event.preventDefault();
-      searchRef.current?.focus();
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName);
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) fixes.redo();
+        else fixes.undo();
+        return;
+      }
+      if (typing || previewIndex !== null || confirming) return;
+
+      if (event.key === '/') {
+        event.preventDefault();
+        searchRef.current?.focus();
+      } else if (event.key === 'n' || event.key === 'N') {
+        event.preventDefault();
+        goToNextIssue();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [previewIndex]);
+  }, [previewIndex, confirming, fixes, goToNextIssue]);
 
   const stepPreview = useCallback(
     (by) => {
@@ -331,6 +446,28 @@ export default function App() {
                 {needingReview > 0 && `, ${needingReview} worth a look`}.
               </p>
               <div className="results-tools">
+                <span className="undo-pair">
+                  <button
+                    type="button"
+                    className="button quiet"
+                    onClick={fixes.undo}
+                    disabled={!fixes.canUndo}
+                    title="Undo your last fix (Ctrl+Z)"
+                    data-testid="undo"
+                  >
+                    Undo
+                  </button>
+                  <button
+                    type="button"
+                    className="button quiet"
+                    onClick={fixes.redo}
+                    disabled={!fixes.canRedo}
+                    title="Redo (Ctrl+Shift+Z)"
+                    data-testid="redo"
+                  >
+                    Redo
+                  </button>
+                </span>
                 <label className="search">
                   <span className="visually-hidden">Search invoices</span>
                   <input
@@ -345,7 +482,7 @@ export default function App() {
                 <button
                   type="button"
                   className="button"
-                  onClick={downloadZip}
+                  onClick={askThenExport}
                   disabled={Boolean(exporting)}
                   data-testid="download-zip"
                 >
@@ -368,6 +505,18 @@ export default function App() {
               groups={groups}
               docsById={docsById}
               matchedPages={matchedPages}
+              boundaries={fixes.state.boundaries}
+              onOpenPage={setPreviewIndex}
+              onSplit={splitAt}
+              onJoin={joinAt}
+              onMovePage={movePage}
+            />
+
+            <ReviewQueue
+              items={issues}
+              colourOf={colourOf}
+              current={issueAt}
+              onGo={goToNextIssue}
               onOpenPage={setPreviewIndex}
             />
 
@@ -379,8 +528,10 @@ export default function App() {
             ) : (
               <InvoiceTable
                 groups={shownGroups}
+                colourOf={colourOf}
                 onPreview={setPreviewIndex}
                 onDownload={downloadInvoice}
+                onRename={renameInvoice}
                 busy={Boolean(exporting)}
               />
             )}
@@ -396,7 +547,27 @@ export default function App() {
           onClose={() => setPreviewIndex(null)}
           onStep={stepPreview}
           onDownload={downloadInvoice}
+          onMoveToNeighbour={(direction) => {
+            const anchor = previewPage.index + direction;
+            if (anchor >= 1 && anchor <= pages.length) movePage(previewPage.index, anchor);
+          }}
+          canMoveBack={previewPage.index > 1}
+          canMoveOn={previewPage.index < pages.length}
           busy={Boolean(exporting)}
+        />
+      )}
+
+      {confirming && (
+        <ConfirmDialog
+          question={confirming.question}
+          detail={confirming.detail}
+          confirmLabel={confirming.confirmLabel}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => {
+            const act = confirming.act;
+            setConfirming(null);
+            act();
+          }}
         />
       )}
     </div>

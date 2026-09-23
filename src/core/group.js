@@ -61,6 +61,7 @@ function openGroup(page) {
     client: '',
     flags: [],
     manual: false,
+    movedPages: [],
   };
 }
 
@@ -125,6 +126,7 @@ function groupByNumber(pages, settings, boundaryFor) {
 
     if (boundary === 'split') {
       current = openGroup(page);
+      current.manual = true;
       groups.push(current);
       reviewGroup = null;
       addPage(current, page, { continuation: !value });
@@ -133,6 +135,7 @@ function groupByNumber(pages, settings, boundaryFor) {
 
     if (boundary === 'join' && (current || reviewGroup)) {
       const target = current ?? reviewGroup;
+      target.manual = true;
       addPage(target, page, { continuation: !value });
       continue;
     }
@@ -182,6 +185,7 @@ function groupByMarker(pages, settings, boundaryFor) {
       current = openGroup(page);
       groups.push(current);
     }
+    if (boundary) current.manual = true;
     addPage(current, page, { continuation: !page.detection?.value && current.pages.length > 0 });
   }
   return groups;
@@ -205,9 +209,99 @@ function groupEveryN(pages, settings, boundaryFor) {
       groups.push(current);
       countInGroup = 0;
     }
+    if (boundary) current.manual = true;
     addPage(current, page, { continuation: !page.detection?.value && countInGroup > 0 });
     countInGroup += 1;
   }
+  return groups;
+}
+
+/**
+ * Work out an invoice's number, extra field and client from the pages it now
+ * holds. Used after pages have been moved by hand.
+ */
+function recompute(group) {
+  group.invoice = null;
+  group.provenance = null;
+  group.extra = null;
+  group.client = '';
+  group.continuationPages = [];
+
+  group.pages.forEach((page, position) => {
+    if (!group.invoice && page.detection?.value) {
+      group.invoice = page.detection.value;
+      group.provenance = {
+        label: page.detection.label,
+        source: page.detection.source,
+        pageIndex: page.index,
+      };
+    }
+    if (!group.extra && page.extra?.value) group.extra = page.extra;
+    if (!group.client && page.client) group.client = page.client;
+    if (position > 0 && !page.detection?.value) group.continuationPages.push(page.index);
+  });
+}
+
+/**
+ * Move pages a person dragged from one invoice to another.
+ *
+ * A move is stored as "this page belongs with that page" rather than "this page
+ * belongs to invoice 3", because page numbers do not change when a setting does.
+ * That is what lets a move survive a change of split mode.
+ *
+ * @param {Array<object>} groups
+ * @param {Record<number, number>} moves - page number to the page it joins.
+ * @returns {Array<object>} groups, with empty ones dropped.
+ */
+function applyMoves(groups, moves = {}) {
+  const entries = Object.entries(moves);
+  if (entries.length === 0) return groups;
+
+  const groupOfPage = new Map();
+  for (const group of groups) for (const page of group.pages) groupOfPage.set(page.index, group);
+
+  const touched = new Set();
+  for (const [movedText, anchorText] of entries) {
+    const moved = Number(movedText);
+    const anchor = Number(anchorText);
+    if (moved === anchor) continue;
+
+    const from = groupOfPage.get(moved);
+    const to = groupOfPage.get(anchor);
+    if (!from || !to || from === to) continue;
+
+    const page = from.pages.find((entry) => entry.index === moved);
+    from.pages = from.pages.filter((entry) => entry.index !== moved);
+    to.pages = [...to.pages, page].sort((a, b) => a.index - b.index);
+    to.movedPages.push(moved);
+    from.manual = true;
+    to.manual = true;
+    groupOfPage.set(moved, to);
+    touched.add(from);
+
+    // Dropping a page onto an invoice adds a page to that invoice; it does not
+    // rename it. So the invoice keeps the number it already had, and only picks
+    // one up from the arriving page if it had none of its own.
+    const kept = to.invoice ? { invoice: to.invoice, provenance: to.provenance } : null;
+    recompute(to);
+    if (kept) {
+      to.invoice = kept.invoice;
+      to.provenance = kept.provenance;
+    }
+  }
+
+  for (const group of touched) if (group.pages.length > 0) recompute(group);
+  return groups.filter((group) => group.pages.length > 0);
+}
+
+/**
+ * Give every invoice the id of the page it starts on, and put the invoices back
+ * in page order. Ids are worked out after every manual fix, so the same invoice
+ * keeps the same id when a detection setting changes.
+ */
+function settleOrder(groups) {
+  groups.sort((a, b) => (a.pages[0]?.index ?? 0) - (b.pages[0]?.index ?? 0));
+  for (const group of groups) group.id = `g${group.pages[0].index}`;
   return groups;
 }
 
@@ -264,6 +358,7 @@ export function groupPages(pages = [], settings = {}) {
   else if (mode === 'every-n') groups = groupEveryN(pages, settings, boundaryFor);
   else groups = groupByNumber(pages, settings, boundaryFor);
 
+  groups = settleOrder(applyMoves(groups, settings.overrides?.moves));
   applyNumberOverrides(groups, settings.overrides);
   groups.forEach((group) => flagGroup(group));
   return groups;

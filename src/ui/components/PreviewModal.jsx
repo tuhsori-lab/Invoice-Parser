@@ -9,7 +9,18 @@ const PAGE_WIDTH = 660;
  * top of it. The text layer is what makes the page selectable now, and what
  * teaching a label by highlighting will use later.
  */
-export default function PreviewModal({ page, group, doc, onClose, onStep, onDownload, busy }) {
+export default function PreviewModal({
+  page,
+  group,
+  doc,
+  onClose,
+  onStep,
+  onDownload,
+  onMoveToNeighbour,
+  canMoveBack,
+  canMoveOn,
+  busy,
+}) {
   const canvasRef = useRef(null);
   const textRef = useRef(null);
   const dialogRef = useRef(null);
@@ -135,6 +146,30 @@ export default function PreviewModal({ page, group, doc, onClose, onStep, onDown
             </button>
           </div>
         </header>
+
+        {onMoveToNeighbour && (
+          <div className="modal-move">
+            <span>This page belongs to a different invoice?</span>
+            <button
+              type="button"
+              className="link-button"
+              disabled={!canMoveBack}
+              data-testid="move-back"
+              onClick={() => onMoveToNeighbour(-1)}
+            >
+              Move it to the invoice on page {page.index - 1}
+            </button>
+            <button
+              type="button"
+              className="link-button"
+              disabled={!canMoveOn}
+              data-testid="move-on"
+              onClick={() => onMoveToNeighbour(1)}
+            >
+              Move it to the invoice on page {page.index + 1}
+            </button>
+          </div>
+        )}
 
         <div className="modal-body">
           <div className="page-view">

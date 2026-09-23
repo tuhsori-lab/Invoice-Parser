@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from 'react';
 import { tileClass } from '../colors.js';
 import { pageRangeForCsv } from '../../core/naming.js';
+import { FLAG_LABELS } from '../../core/group.js';
 
 /** Plain words for where a number came from. */
 const SOURCE_WORDS = {
@@ -7,13 +9,15 @@ const SOURCE_WORDS = {
   common: 'an everyday label',
   bare: 'the word "Invoice" alone',
   custom: 'your own pattern',
-  manual: 'you',
 };
 
 /**
  * Every invoice the batch was split into, and what it will be saved as.
+ *
+ * The number can be corrected in place: click it, type, press Enter. A number
+ * typed by hand is kept even when a detection setting changes afterwards.
  */
-export default function InvoiceTable({ groups, onPreview, onDownload, busy }) {
+export default function InvoiceTable({ groups, colourOf, onPreview, onDownload, onRename, busy }) {
   if (groups.length === 0) return null;
 
   return (
@@ -41,24 +45,44 @@ export default function InvoiceTable({ groups, onPreview, onDownload, busy }) {
           </tr>
         </thead>
         <tbody>
-          {groups.map((group, index) => (
-            <tr key={group.id} data-testid={`invoice-row-${group.id}`}>
+          {groups.map((group) => (
+            <tr
+              key={group.id}
+              className={group.flags.length > 0 ? 'row-flagged' : ''}
+              data-testid={`invoice-row-${group.id}`}
+            >
               <td className="column-swatch">
-                <span className={`swatch tile ${tileClass(index)}`} aria-hidden="true" />
+                <span
+                  className={`swatch tile ${tileClass(colourOf.get(group.id) ?? 0)}`}
+                  aria-hidden="true"
+                />
               </td>
               <th scope="row" className="column-invoice">
-                {group.invoice ?? <span className="muted">No number found</span>}
+                <InvoiceNumber group={group} onRename={onRename} />
+                {group.flags.length > 0 && (
+                  <span className="flag-list">
+                    {group.flags.map((flag) => (
+                      <span key={flag} className="flag">
+                        {FLAG_LABELS[flag] ?? flag}
+                      </span>
+                    ))}
+                  </span>
+                )}
               </th>
               <td className="column-provenance">
-                {group.provenance ? (
+                {!group.provenance ? (
+                  <span className="muted">&mdash;</span>
+                ) : group.provenance.source === 'manual' ? (
+                  // A number somebody typed was not found after anything, so it
+                  // is said once, in plain words, rather than shown as page text.
+                  <span className="muted">Typed by you</span>
+                ) : (
                   <>
                     <code>{group.provenance.label}</code>
                     <small>
                       {SOURCE_WORDS[group.provenance.source] ?? group.provenance.source}
                     </small>
                   </>
-                ) : (
-                  <span className="muted">&mdash;</span>
                 )}
               </td>
               <td>{group.extra?.value ?? <span className="muted">&mdash;</span>}</td>
@@ -87,5 +111,67 @@ export default function InvoiceTable({ groups, onPreview, onDownload, busy }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** The invoice number, correctable in place. */
+function InvoiceNumber({ group, onRename }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(group.invoice ?? '');
+  const input = useRef(null);
+
+  useEffect(() => {
+    if (editing) input.current?.select();
+  }, [editing]);
+
+  const start = () => {
+    setDraft(group.invoice ?? '');
+    setEditing(true);
+  };
+
+  const commit = () => {
+    setEditing(false);
+    if (draft.trim() !== (group.invoice ?? '')) onRename(group.id, draft);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={input}
+        type="text"
+        className="invoice-input"
+        value={draft}
+        data-testid={`invoice-input-${group.id}`}
+        aria-label={`Invoice number for pages ${pageRangeForCsv(group.pages.map((p) => p.index))}`}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            setEditing(false);
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="invoice-value"
+      data-testid={`invoice-value-${group.id}`}
+      title="Click to correct this number"
+      onClick={start}
+    >
+      {group.invoice ?? <span className="muted">No number found</span>}
+      {group.manual && (
+        <span className="edited" title="Changed by you">
+          edited
+        </span>
+      )}
+    </button>
   );
 }

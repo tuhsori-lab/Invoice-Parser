@@ -534,23 +534,6 @@ input[aria-invalid='true'] {
   transform: translateY(-3px);
 }
 
-/* A visible gap, and a hairline, wherever one invoice ends and the next starts. */
-.tile-slot:has(.tile-starts) {
-  margin-left: 0.85rem;
-}
-
-.tile-slot:first-child {
-  margin-left: 0;
-}
-
-.tile-starts::before {
-  content: '';
-  position: absolute;
-  inset: -0.35rem auto -0.35rem -0.45rem;
-  width: 1px;
-  background: var(--rule-strong);
-}
-
 .tile-number {
   font-size: 0.62rem;
   line-height: 1;
@@ -677,6 +660,147 @@ input[aria-invalid='true'] {
   color: var(--ink-soft);
 }
 
+/* --------------------------------------------- fixing things on the strip */
+
+/*
+ * The gap between two tiles is a button. Where one invoice ends and the next
+ * begins it is already open; clicking it closes the join back up, and clicking
+ * a closed one splits the invoice there.
+ */
+.gap {
+  width: 9px;
+  align-self: stretch;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gap-open {
+  width: 0.85rem;
+}
+
+.gap-mark {
+  width: 1px;
+  height: 100%;
+  background: transparent;
+}
+
+.gap:hover .gap-mark,
+.gap:focus-visible .gap-mark {
+  background: var(--accent);
+  width: 2px;
+}
+
+.gap-open .gap-mark {
+  background: var(--rule-strong);
+}
+
+/* A boundary somebody set by hand keeps a mark of its own. */
+.gap-manual .gap-mark {
+  background: var(--accent);
+  width: 2px;
+}
+
+.tile-moved::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--sheet);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
+}
+
+.tile-dragging {
+  opacity: 0.35;
+}
+
+.tile-drop {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.key-hint {
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------ review queue */
+
+.review {
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--marker);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--sheet);
+  padding: 0.8rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.review-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.review-head kbd {
+  font-family: var(--mono);
+  font-size: 0.75em;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  padding: 0 0.25em;
+  margin-left: 0.3em;
+}
+
+.review-list {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.review-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.875rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 2px;
+}
+
+.review-item.is-current {
+  background: var(--marker-soft);
+}
+
+.review-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.review-text p {
+  margin: 0;
+}
+
+.review-text p + p {
+  color: var(--ink-soft);
+}
+
 /* ---------------------------------------------------------------- table */
 
 .table-wrap {
@@ -765,6 +889,75 @@ input[aria-invalid='true'] {
   color: var(--ink-faint);
 }
 
+.row-flagged .column-invoice {
+  box-shadow: inset 2px 0 0 var(--marker);
+}
+
+.invoice-value {
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: text;
+  text-align: left;
+  border-bottom: 1px dashed transparent;
+}
+
+.invoice-value:hover {
+  border-bottom-color: var(--rule-strong);
+}
+
+.invoice-input {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  max-width: 10rem;
+}
+
+.edited {
+  display: inline-block;
+  margin-left: 0.45rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid currentcolor;
+  border-radius: 2px;
+  padding: 0 0.25em;
+  vertical-align: 1px;
+}
+
+.flag-list {
+  display: block;
+  margin-top: 0.2rem;
+  font-weight: 400;
+}
+
+.flag {
+  display: inline-block;
+  margin-right: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.flag::before {
+  content: '';
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  background: var(--marker);
+  border-radius: 50%;
+  margin-right: 0.3rem;
+  vertical-align: 1px;
+}
+
+.undo-pair {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
 /* ---------------------------------------------------------------- preview */
 
 .modal-backdrop {
@@ -812,6 +1005,43 @@ input[aria-invalid='true'] {
 .modal-tools {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.modal-move {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  padding: 0.55rem 1.1rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.confirm {
+  background: var(--paper);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  width: min(30rem, 100%);
+}
+
+.confirm-question {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.confirm-detail {
+  margin: 0 0 1.1rem;
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}
+
+.confirm-buttons {
+  display: flex;
+  justify-content: flex-end;
   gap: 0.5rem;
   flex-wrap: wrap;
 }

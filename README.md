@@ -6,9 +6,9 @@ Accounts receivable and collections teams get invoice batches from dozens of cli
 own layout, arriving as one 400-page PDF. Splitting that by hand is an afternoon. This does it in a
 few seconds, shows its working, and lets you fix anything it got wrong before you export.
 
-> **Status:** phase 2 of 6. The engine and the core interface work end to end: drop a batch in, see
-> how it was split, check any page, and export single invoices, a ZIP, or the page map. Review
-> tools, client profiles, OCR and the live demo are still to come.
+> **Status:** phase 3 of 6. The engine, the interface and the fixing tools work end to end: drop a
+> batch in, see how it was split and why, put right anything it got wrong, and export. Client
+> profiles, OCR and the live demo are still to come.
 
 ## Your files never leave your browser
 
@@ -65,6 +65,38 @@ tile per page, coloured by invoice, with a visible gap wherever a new invoice st
 carries no number of its own and was kept with the invoice before it is striped. A page nothing
 could be worked out about is marker yellow — the only thing that colour ever means here. Hover a
 tile to see the page itself; click to open it full size with its text beside it.
+
+## Fixing what detection got wrong
+
+Detection is a first guess, so every part of it can be corrected, and nothing is corrected silently.
+
+- **Click the gap between two tiles** on the strip to start a new invoice there, or to join a page
+  back to the one before it. A boundary you set keeps a mark of its own.
+- **Drag a tile onto another invoice** to move that page. The invoice you drop onto keeps its own
+  number — the page joins it, rather than renaming it.
+- **Click an invoice number** in the table to correct it. It is marked `edited` afterwards.
+- **Undo and redo** with Ctrl+Z and Ctrl+Shift+Z, or the buttons above the strip.
+
+Every fix is stored against page numbers rather than against the current grouping, so changing a
+detection setting re-runs detection **without throwing away a single thing you decided**.
+
+The review queue lists anything worth a look before you export, each in a sentence naming the pages:
+"No invoice number was found on pages 5 to 6." `N` jumps to the next one. Exporting while problems
+remain is allowed — it just asks first, and says how many are left.
+
+### Keyboard
+
+| Key            | Does                          |
+| -------------- | ----------------------------- |
+| `/`            | Jump to the search box        |
+| `N`            | Open the next thing to review |
+| `Ctrl+Z`       | Undo the last fix             |
+| `Ctrl+Shift+Z` | Redo                          |
+| `←` `→`        | Step through pages in preview |
+| `Esc`          | Close the preview             |
+
+Moving a page can also be done without a mouse: open the page and use the move links under its
+heading.
 
 ## Client profiles
 
@@ -142,6 +174,7 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   group.js         deciding which pages belong to which invoice
   naming.js        building file names from a template
   export.js        the output PDFs, the ZIP, and the CSV page map
+  review.js        what needs a person's eye, said in plain words
   profiles.js      client profiles: matching, import and export
   errors.js        plain-language messages for everything that can go wrong
 src/lib/           the browser side: pdf.js setup, reading a batch, thumbnails, downloads
@@ -167,7 +200,7 @@ detection rules can be tested on their own — most of the test suite never open
 
 1. **Engine** — the core, the fixture generator, unit tests, CI. ✅
 2. **Core UI** — drop zone, page strip, invoice table, preview, and the three exports. ✅
-3. **Review and fixing** — the review queue, manual split/join/move, inline edits, undo and redo.
+3. **Review and fixing** — the review queue, manual split/join/move, inline edits, undo and redo. ✅
 4. **Profiles** — client profiles and teaching a label by highlighting it.
 5. **Scale and scanned files** — OCR, 1,000-page batches, virtualised table, lazy thumbnails.
 6. **Polish and ship** — dark theme, accessibility pass, README GIF, GitHub Pages.

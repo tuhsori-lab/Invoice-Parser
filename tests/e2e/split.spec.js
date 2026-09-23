@@ -79,7 +79,9 @@ test('exports one invoice with the right pages in it', async ({ page }) => {
 test('exports a ZIP holding every invoice under its own name', async ({ page }) => {
   await loadFixtures(page, ['05-repeat-later.pdf']);
 
-  const saved = await download(page, () => page.getByTestId('download-zip').click());
+  // Two of these invoices share a number, so exporting asks first.
+  await page.getByTestId('download-zip').click();
+  const saved = await download(page, () => page.getByTestId('confirm-export').click());
 
   expect(saved.name).toBe('invoices.zip');
   const zip = await JSZip.loadAsync(await readFile(saved.path));
