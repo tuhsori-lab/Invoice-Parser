@@ -6,8 +6,9 @@ Accounts receivable and collections teams get invoice batches from dozens of cli
 own layout, arriving as one 400-page PDF. Splitting that by hand is an afternoon. This does it in a
 few seconds, shows its working, and lets you fix anything it got wrong before you export.
 
-> **Status:** the splitting engine is complete and tested (phase 1 of 6). The interface is being
-> built next. The live demo and a walkthrough GIF land with it.
+> **Status:** phase 2 of 6. The engine and the core interface work end to end: drop a batch in, see
+> how it was split, check any page, and export single invoices, a ZIP, or the page map. Review
+> tools, client profiles, OCR and the live demo are still to come.
 
 ## Your files never leave your browser
 
@@ -57,6 +58,14 @@ Anything the engine is unsure about is flagged for review rather than quietly gu
 `no-number`, `fallback` (the bare tier answered), `conflict` (two labels, two different numbers),
 `duplicate-name` (two invoices want the same file name), and `ocr` (the text came from a scan).
 
+## The page strip
+
+The strip along the top of the results is the one place this app uses colour to say something. One
+tile per page, coloured by invoice, with a visible gap wherever a new invoice starts. A page that
+carries no number of its own and was kept with the invoice before it is striped. A page nothing
+could be worked out about is marker yellow — the only thing that colour ever means here. Hover a
+tile to see the page itself; click to open it full size with its text beside it.
+
 ## Client profiles
 
 A profile is one client's way of printing invoices:
@@ -102,15 +111,19 @@ encoding.
 ## Local development
 
 ```bash
-npm install     # install dependencies
-npm run dev     # start the dev server
-npm run fixtures # build the sample PDFs in tests/fixtures/pdf
-npm test        # run the unit tests (builds the fixtures first if needed)
-npm run lint    # ESLint
-npm run build   # production build into dist/
+npm install       # install dependencies
+npm run dev       # start the dev server
+npm run fixtures  # build the sample PDFs in tests/fixtures/pdf
+npm test          # unit tests (builds the fixtures first if they are missing)
+npm run test:e2e  # end-to-end tests in a real browser
+npm run lint      # ESLint
+npm run build     # production build into dist/
 ```
 
-Node 20 or newer.
+Node 20 or newer. The end-to-end tests need a browser once: `npx playwright install chromium`.
+
+`npm run dev` and `npm run build` first copy the pdf.js font metrics into `public/pdfjs/`. They are
+served from the app rather than from a CDN, so that opening a PDF makes no network request.
 
 ## No real invoice data, ever
 
@@ -131,9 +144,11 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   export.js        the output PDFs, the ZIP, and the CSV page map
   profiles.js      client profiles: matching, import and export
   errors.js        plain-language messages for everything that can go wrong
-src/ui/            the interface (React) — arrives in phase 2
+src/lib/           the browser side: pdf.js setup, reading a batch, thumbnails, downloads
+src/ui/            the interface (React) and its one stylesheet
 scripts/           the fixture generator and its small helpers
 tests/unit/        unit tests, including every layout in tests/fixtures/expected.js
+tests/e2e/         the whole flow in a real browser, from dropped file to saved file
 ```
 
 The engine imports nothing from the interface. That is enforced by an ESLint rule, and it is why the
@@ -151,7 +166,7 @@ detection rules can be tested on their own — most of the test suite never open
 ## Build phases
 
 1. **Engine** — the core, the fixture generator, unit tests, CI. ✅
-2. **Core UI** — drop zone, page strip, invoice table, preview, and the three exports.
+2. **Core UI** — drop zone, page strip, invoice table, preview, and the three exports. ✅
 3. **Review and fixing** — the review queue, manual split/join/move, inline edits, undo and redo.
 4. **Profiles** — client profiles and teaching a label by highlighting it.
 5. **Scale and scanned files** — OCR, 1,000-page batches, virtualised table, lazy thumbnails.
