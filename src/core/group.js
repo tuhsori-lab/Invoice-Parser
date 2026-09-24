@@ -59,6 +59,7 @@ function openGroup(page) {
     extra: null,
     provenance: null,
     client: '',
+    template: '',
     flags: [],
     manual: false,
     movedPages: [],
@@ -81,6 +82,10 @@ function addPage(group, page, { continuation = false } = {}) {
   }
   if (!group.extra && page.extra?.value) group.extra = page.extra;
   if (!group.client && page.client) group.client = page.client;
+  // A client with its own way of naming files gets it for their invoices.
+  if (!group.template && page.matchedProfiles?.[0]?.filenameTemplate) {
+    group.template = page.matchedProfiles[0].filenameTemplate;
+  }
 }
 
 /** Pages that share a number, kept together even when they are not neighbours. */
@@ -225,6 +230,7 @@ function recompute(group) {
   group.provenance = null;
   group.extra = null;
   group.client = '';
+  group.template = '';
   group.continuationPages = [];
 
   group.pages.forEach((page, position) => {
@@ -238,6 +244,9 @@ function recompute(group) {
     }
     if (!group.extra && page.extra?.value) group.extra = page.extra;
     if (!group.client && page.client) group.client = page.client;
+    if (!group.template && page.matchedProfiles?.[0]?.filenameTemplate) {
+      group.template = page.matchedProfiles[0].filenameTemplate;
+    }
     if (position > 0 && !page.detection?.value) group.continuationPages.push(page.index);
   });
 }

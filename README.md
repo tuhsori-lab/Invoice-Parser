@@ -6,9 +6,9 @@ Accounts receivable and collections teams get invoice batches from dozens of cli
 own layout, arriving as one 400-page PDF. Splitting that by hand is an afternoon. This does it in a
 few seconds, shows its working, and lets you fix anything it got wrong before you export.
 
-> **Status:** phase 3 of 6. The engine, the interface and the fixing tools work end to end: drop a
-> batch in, see how it was split and why, put right anything it got wrong, and export. Client
-> profiles, OCR and the live demo are still to come.
+> **Status:** phase 4 of 6. Everything but scanned files works: drop a batch in, see how it was
+> split and why, teach it a client's own way of printing invoices, put right anything it got wrong,
+> and export. OCR, large-batch performance and the live demo are still to come.
 
 ## Your files never leave your browser
 
@@ -112,11 +112,27 @@ A profile is one client's way of printing invoices:
 }
 ```
 
-`identifyingText` is what makes a mixed batch work: each page is matched to a profile on its own, so
-one file can hold invoices from several clients and each one gets its own labels tried first.
+`identifyingText` is what makes a mixed batch work. Each page is matched to a profile on its own, so
+one file can hold invoices from several clients and each one gets its own labels tried first. A
+profile can also name its own files, which wins over the batch-wide pattern.
 
-Profiles are saved in your browser's local storage, and can be exported to a JSON file and imported
-on another computer. Teaching a label by highlighting it in the page preview arrives in phase 4.
+Profiles are saved in this browser's storage and nowhere else. They hold only what a client's
+invoices _look_ like — never anything from an invoice itself. Export writes them to a JSON file so
+they can be imported on another computer.
+
+### Teaching a label by highlighting it
+
+The quickest way to add a label is to show the app one:
+
+1. Open a page where the number was missed.
+2. Drag across the words the number comes after — including the number is fine.
+3. Choose a client profile, or a new one, and click **Add as label**.
+
+The number is dropped from what you highlighted, because the number is the part that changes from
+invoice to invoice: highlighting `Our Ref 889900` teaches the label `Our Ref`. Detection re-runs
+immediately and the preview says what it found — "Found 889900 after Our Ref" — so you know it
+worked before closing the page. A brand new profile is named after the page's letterhead and
+recognises that client from then on.
 
 ## File names
 
@@ -175,9 +191,10 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   naming.js        building file names from a template
   export.js        the output PDFs, the ZIP, and the CSV page map
   review.js        what needs a person's eye, said in plain words
-  profiles.js      client profiles: matching, import and export
+  profiles.js      client profiles: matching, teaching, import and export
   errors.js        plain-language messages for everything that can go wrong
-src/lib/           the browser side: pdf.js setup, reading a batch, thumbnails, downloads
+src/lib/           the browser side: pdf.js setup, reading a batch, thumbnails, downloads,
+                   and the browser storage profiles are kept in
 src/ui/            the interface (React) and its one stylesheet
 scripts/           the fixture generator and its small helpers
 tests/unit/        unit tests, including every layout in tests/fixtures/expected.js
@@ -201,7 +218,7 @@ detection rules can be tested on their own — most of the test suite never open
 1. **Engine** — the core, the fixture generator, unit tests, CI. ✅
 2. **Core UI** — drop zone, page strip, invoice table, preview, and the three exports. ✅
 3. **Review and fixing** — the review queue, manual split/join/move, inline edits, undo and redo. ✅
-4. **Profiles** — client profiles and teaching a label by highlighting it.
+4. **Profiles** — client profiles and teaching a label by highlighting it. ✅
 5. **Scale and scanned files** — OCR, 1,000-page batches, virtualised table, lazy thumbnails.
 6. **Polish and ship** — dark theme, accessibility pass, README GIF, GitHub Pages.
 

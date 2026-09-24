@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { TextLayer } from '../../lib/pdfjs.js';
+import { labelFromSelection } from '../../core/profiles.js';
 
 /** How wide the rendered page is drawn, in CSS pixels. */
 const PAGE_WIDTH = 660;
@@ -19,12 +20,16 @@ export default function PreviewModal({
   onMoveToNeighbour,
   canMoveBack,
   canMoveOn,
+  profiles,
+  onTeachLabel,
   busy,
 }) {
   const canvasRef = useRef(null);
   const textRef = useRef(null);
   const dialogRef = useRef(null);
   const [drawing, setDrawing] = useState(true);
+  const [taught, setTaught] = useState('');
+  const [teaching, setTeaching] = useState(null);
 
   // Draw the page, and put its text on top of it.
   useEffect(() => {
@@ -77,6 +82,26 @@ export default function PreviewModal({
       task?.cancel();
     };
   }, [doc, page]);
+
+  // A new page means a new selection to make, and the last page's news is
+  // stale. Keyed on the page number rather than the page itself: the page
+  // object is rebuilt every time detection re-runs, and teaching a label is
+  // exactly what makes detection re-run.
+  useEffect(() => {
+    setTeaching(null);
+    setTaught('');
+  }, [page.index]);
+
+  /**
+   * Somebody dragged across the page. What they highlighted is usually the
+   * label and the number together, so the number is dropped and the words in
+   * front of it are offered as a label.
+   */
+  const readSelection = () => {
+    const selected = window.getSelection?.()?.toString() ?? '';
+    const label = labelFromSelection(selected);
+    if (label) setTeaching({ label, profileId: profiles?.[0]?.id ?? 'new' });
+  };
 
   // Arrow keys step through pages; Esc closes.
   useEffect(() => {
@@ -147,33 +172,95 @@ export default function PreviewModal({
           </div>
         </header>
 
-        {onMoveToNeighbour && (
+        {onMoveToNeighbour && (canMoveBack || canMoveOn) && (
           <div className="modal-move">
             <span>This page belongs to a different invoice?</span>
+            {/* A page with no neighbour on one side has nowhere to go that way,
+                so that link is not offered at all rather than named after a
+                page that does not exist. */}
+            {canMoveBack && (
+              <button
+                type="button"
+                className="link-button"
+                data-testid="move-back"
+                onClick={() => onMoveToNeighbour(-1)}
+              >
+                Move it to the invoice on page {page.index - 1}
+              </button>
+            )}
+            {canMoveOn && (
+              <button
+                type="button"
+                className="link-button"
+                data-testid="move-on"
+                onClick={() => onMoveToNeighbour(1)}
+              >
+                Move it to the invoice on page {page.index + 1}
+              </button>
+            )}
+          </div>
+        )}
+
+        {teaching && (
+          <div className="teach" data-testid="teach-bar">
+            <span>
+              Add <strong data-testid="teach-label">{teaching.label}</strong> as a label for
+            </span>
+            <label>
+              <span className="visually-hidden">Client profile</span>
+              <select
+                value={teaching.profileId}
+                data-testid="teach-profile"
+                onChange={(event) =>
+                  setTeaching((current) => ({ ...current, profileId: event.target.value }))
+                }
+              >
+                {(profiles ?? []).map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}
+                  </option>
+                ))}
+                <option value="new">A new profile&hellip;</option>
+              </select>
+            </label>
             <button
               type="button"
-              className="link-button"
-              disabled={!canMoveBack}
-              data-testid="move-back"
-              onClick={() => onMoveToNeighbour(-1)}
+              className="button"
+              data-testid="teach-add"
+              onClick={() => {
+                onTeachLabel(teaching.label, teaching.profileId, page);
+                setTaught(teaching.label);
+                setTeaching(null);
+                window.getSelection?.()?.removeAllRanges();
+              }}
             >
-              Move it to the invoice on page {page.index - 1}
+              Add as label
             </button>
-            <button
-              type="button"
-              className="link-button"
-              disabled={!canMoveOn}
-              data-testid="move-on"
-              onClick={() => onMoveToNeighbour(1)}
-            >
-              Move it to the invoice on page {page.index + 1}
+            <button type="button" className="link-button" onClick={() => setTeaching(null)}>
+              Not now
             </button>
+          </div>
+        )}
+
+        {taught && (
+          <div className="teach teach-done" role="status" data-testid="teach-result">
+            {group?.invoice && group.provenance?.source === 'profile' ? (
+              <span>
+                Found <strong>{group.invoice}</strong> after <code>{group.provenance.label}</code>.
+                Every page with that label is read the same way now.
+              </span>
+            ) : (
+              <span>
+                <code>{taught}</code> was added, but no number was found after it on this page.
+                Check the highlight, or correct the number in the table.
+              </span>
+            )}
           </div>
         )}
 
         <div className="modal-body">
           <div className="page-view">
-            <div className="page-sheet">
+            <div className="page-sheet" onMouseUp={readSelection} onTouchEnd={readSelection}>
               <canvas ref={canvasRef} className="page-canvas" />
               <div ref={textRef} className="textLayer" />
               {drawing && <p className="page-drawing">Drawing the page&hellip;</p>}

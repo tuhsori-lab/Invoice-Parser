@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createProfile,
+  labelFromSelection,
   labelsForPage,
   matchProfiles,
   parseProfilesFile,
@@ -89,6 +90,34 @@ describe('which labels to try for a page', () => {
 
   it('gives back nothing when there are no profiles', () => {
     expect(labelsForPage('Anything', [])).toEqual({ labels: [], matched: [], client: '' });
+  });
+});
+
+describe('teaching a label by highlighting it', () => {
+  it('keeps the words and drops the number, because the number changes', () => {
+    expect(labelFromSelection('Our Ref 889900')).toBe('Our Ref');
+  });
+
+  it('copes with a whole line being highlighted', () => {
+    expect(labelFromSelection('  Invoice   No.   104501  ')).toBe('Invoice No');
+  });
+
+  it('keeps a hash, which is part of the label, but not a trailing colon', () => {
+    expect(labelFromSelection('Invoice #: 104233')).toBe('Invoice #');
+  });
+
+  it('gives back nothing when only the number was highlighted', () => {
+    expect(labelFromSelection('889900')).toBe('');
+    expect(labelFromSelection('   ')).toBe('');
+    expect(labelFromSelection()).toBe('');
+  });
+
+  it('leaves a label alone when no number was caught in the selection', () => {
+    expect(labelFromSelection('Statement Ref')).toBe('Statement Ref');
+  });
+
+  it('keeps a highlight from running away with half the page', () => {
+    expect(labelFromSelection('word '.repeat(40)).length).toBeLessThanOrEqual(60);
   });
 });
 

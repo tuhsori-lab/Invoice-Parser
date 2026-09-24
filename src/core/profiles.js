@@ -17,6 +17,9 @@
 export const PROFILE_FILE_KIND = 'invoice-splitter-profiles';
 export const PROFILE_FILE_VERSION = 1;
 
+/** Longest label worth keeping from a highlight. */
+const MAX_LABEL_LENGTH = 60;
+
 let idCounter = 0;
 
 /** A short, unique id for a profile. */
@@ -112,6 +115,36 @@ export function labelsForPage(text, profiles = []) {
  */
 export function leadProfile(profiles = []) {
   return profiles.find(Boolean) ?? null;
+}
+
+/**
+ * Turn a phrase somebody highlighted on a page into a label.
+ *
+ * People highlight what they see, which is usually the label *and* the number:
+ * "Our Ref 889900". The number is the part that changes from invoice to
+ * invoice, so it is dropped and only the words before it are kept.
+ *
+ * @param {string} selection - the text the user dragged across.
+ * @returns {string} a label, or an empty string if there was nothing usable.
+ */
+export function labelFromSelection(selection) {
+  const text = String(selection ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+
+  const words = text.split(' ');
+  // Anything at the end with a digit in it is the value, not the label.
+  while (words.length > 0 && /\d/.test(words[words.length - 1])) words.pop();
+
+  const label = words
+    .join(' ')
+    .replace(/[\s:.,;]+$/, '')
+    .trim();
+
+  // A label made only of punctuation would match everywhere and mean nothing.
+  if (!/[A-Za-z]/.test(label)) return '';
+  return label.slice(0, MAX_LABEL_LENGTH);
 }
 
 /**

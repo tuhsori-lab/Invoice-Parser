@@ -6,11 +6,13 @@ import { assignFileNames, buildFileName, DEFAULT_TEMPLATE } from '../core/naming
 import { buildAllInvoicePdfs, buildCsv, buildInvoicePdf, buildZip } from '../core/export.js';
 import { explain } from '../core/errors.js';
 import { exportWarning, reviewQueue } from '../core/review.js';
+import { createProfile } from '../core/profiles.js';
 import { closeBatch, loadBatch } from '../lib/loadBatch.js';
 import { clearThumbnails } from '../lib/thumbnails.js';
 import { saveFile } from '../lib/download.js';
 import { useDebounced } from '../lib/useDebounced.js';
 import { useUndoable } from '../lib/useUndoable.js';
+import { loadProfiles, saveProfiles } from '../lib/profileStore.js';
 import DropZone from './components/DropZone.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import PageStrip from './components/PageStrip.jsx';
@@ -18,6 +20,8 @@ import InvoiceTable from './components/InvoiceTable.jsx';
 import PreviewModal from './components/PreviewModal.jsx';
 import ReviewQueue from './components/ReviewQueue.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
+import ProfilesPanel from './components/ProfilesPanel.jsx';
+import ProfileEditor from './components/ProfileEditor.jsx';
 
 /** What the app does before anyone changes anything. */
 const INITIAL_SETTINGS = {
@@ -63,6 +67,12 @@ export default function App() {
   const [issueAt, setIssueAt] = useState(-1);
   const [confirming, setConfirming] = useState(null);
 
+  // Client profiles, read back from this browser's storage on the way in.
+  const [saved] = useState(loadProfiles);
+  const [profiles, setProfiles] = useState(saved.profiles);
+  const [activeProfiles, setActiveProfiles] = useState(saved.active);
+  const [editingProfile, setEditingProfile] = useState(null);
+
   /**
    * Every fix made by hand. Kept apart from the detection settings, and apart
    * from the pages themselves, so that changing a setting re-runs detection
@@ -75,6 +85,16 @@ export default function App() {
   const searchRef = useRef(null);
 
   const settled = useDebounced(settings, 180);
+
+  useEffect(() => {
+    saveProfiles(profiles, activeProfiles);
+  }, [profiles, activeProfiles]);
+
+  /** The profiles switched on, in the order they are listed. */
+  const profilesInUse = useMemo(
+    () => profiles.filter((profile) => activeProfiles.includes(profile.id)),
+    [profiles, activeProfiles]
+  );
 
   /* ---------------------------------------------------------------- loading */
 
@@ -132,6 +152,7 @@ export default function App() {
   const analyzed = useMemo(
     () =>
       analyzePages(pages, {
+        profiles: profilesInUse,
         useCommonLabels: settled.useCommonLabels,
         useBareInvoice: settled.useBareInvoice,
         customPattern: settled.customPattern,
@@ -139,6 +160,7 @@ export default function App() {
       }),
     [
       pages,
+      profilesInUse,
       settled.useCommonLabels,
       settled.useBareInvoice,
       settled.customPattern,
@@ -252,6 +274,69 @@ export default function App() {
       fixes.set((current) => ({ ...current, numbers: { ...current.numbers, [groupId]: value } }));
     },
     [fixes]
+  );
+
+  /* --------------------------------------------------------------- profiles */
+
+  const saveProfile = useCallback((profile) => {
+    setProfiles((current) => {
+      const known = current.some((entry) => entry.id === profile.id);
+      return known
+        ? current.map((entry) => (entry.id === profile.id ? profile : entry))
+        : [...current, profile];
+    });
+    setActiveProfiles((current) =>
+      current.includes(profile.id) ? current : [...current, profile.id]
+    );
+    setEditingProfile(null);
+  }, []);
+
+  const deleteProfile = useCallback((id) => {
+    setProfiles((current) => current.filter((entry) => entry.id !== id));
+    setActiveProfiles((current) => current.filter((entry) => entry !== id));
+    setEditingProfile(null);
+  }, []);
+
+  const toggleProfile = useCallback((id) => {
+    setActiveProfiles((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]
+    );
+  }, []);
+
+  const reportProblem = useCallback((message) => {
+    setProblems((current) => [...current, { fileName: '', message }]);
+  }, []);
+
+  const importProfiles = useCallback((imported) => {
+    setProfiles((current) => [...current, ...imported]);
+    setActiveProfiles((current) => [...current, ...imported.map((profile) => profile.id)]);
+  }, []);
+
+  /**
+   * Teach a label by highlighting it on a page.
+   *
+   * A brand new profile is given the first line of the page to recognise its
+   * client by - on an invoice that is nearly always the letterhead - so the
+   * next batch from them is matched without anyone doing anything.
+   */
+  const teachLabel = useCallback(
+    (label, profileId, page) => {
+      if (profileId === 'new') {
+        const [letterhead = ''] = (page.text ?? '').split('\n');
+        const fresh = createProfile({
+          name: letterhead.trim().slice(0, 60) || 'Untitled client',
+          labels: [label],
+          identifyingText: letterhead.trim() ? [letterhead.trim()] : [],
+        });
+        saveProfile(fresh);
+        return;
+      }
+      const existing = profiles.find((entry) => entry.id === profileId);
+      if (!existing) return;
+      if (existing.labels.includes(label)) return;
+      saveProfile({ ...existing, labels: [...existing.labels, label] });
+    },
+    [profiles, saveProfile]
   );
 
   /* ----------------------------------------------------------------- export */
@@ -420,6 +505,9 @@ export default function App() {
       {problems.length > 0 && (
         <ul className="problems" data-testid="problems">
           {problems.map((problem, position) => {
+            if (problem.message) {
+              return <li key={`said-${position}`}>{problem.message}</li>;
+            }
             const message = explain(problem.kind, { fileName: problem.fileName });
             return (
               <li key={`${problem.fileName}-${position}`}>
@@ -430,13 +518,38 @@ export default function App() {
         </ul>
       )}
 
+      {pageCount === 0 && !loading && (
+        <aside className="settings-column standalone" aria-label="Client profiles">
+          <ProfilesPanel
+            profiles={profiles}
+            active={activeProfiles}
+            onToggle={toggleProfile}
+            onEdit={(id) => setEditingProfile(profiles.find((entry) => entry.id === id))}
+            onAdd={() => setEditingProfile(createProfile())}
+            onImport={importProfiles}
+            onProblem={reportProblem}
+          />
+        </aside>
+      )}
+
       {pageCount > 0 && (
         <main className="workspace">
-          <SettingsPanel
-            settings={settings}
-            nameExample={nameExample}
-            onChange={(key, value) => setSettings((current) => ({ ...current, [key]: value }))}
-          />
+          <div className="settings-column">
+            <ProfilesPanel
+              profiles={profiles}
+              active={activeProfiles}
+              onToggle={toggleProfile}
+              onEdit={(id) => setEditingProfile(profiles.find((entry) => entry.id === id))}
+              onAdd={() => setEditingProfile(createProfile())}
+              onImport={importProfiles}
+              onProblem={reportProblem}
+            />
+            <SettingsPanel
+              settings={settings}
+              nameExample={nameExample}
+              onChange={(key, value) => setSettings((current) => ({ ...current, [key]: value }))}
+            />
+          </div>
 
           <section className="results">
             <div className="results-head">
@@ -547,6 +660,8 @@ export default function App() {
           onClose={() => setPreviewIndex(null)}
           onStep={stepPreview}
           onDownload={downloadInvoice}
+          profiles={profiles}
+          onTeachLabel={teachLabel}
           onMoveToNeighbour={(direction) => {
             const anchor = previewPage.index + direction;
             if (anchor >= 1 && anchor <= pages.length) movePage(previewPage.index, anchor);
@@ -554,6 +669,16 @@ export default function App() {
           canMoveBack={previewPage.index > 1}
           canMoveOn={previewPage.index < pages.length}
           busy={Boolean(exporting)}
+        />
+      )}
+
+      {editingProfile && (
+        <ProfileEditor
+          profile={editingProfile}
+          canDelete={profiles.some((entry) => entry.id === editingProfile.id)}
+          onSave={saveProfile}
+          onDelete={deleteProfile}
+          onClose={() => setEditingProfile(null)}
         />
       )}
 
