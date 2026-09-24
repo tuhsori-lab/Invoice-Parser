@@ -623,6 +623,28 @@ select {
   padding: 1.5rem 0;
 }
 
+/* ----------------------------------------------------------- scanned pages */
+
+.scanned {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  flex-wrap: wrap;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--marker);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--sheet);
+  font-size: 0.875rem;
+}
+
+.scanned p {
+  margin: 0;
+  flex: 1 1 18rem;
+  color: var(--ink-soft);
+}
+
 /* ------------------------------------------------------------- page strip */
 
 .strip-wrap {
@@ -938,6 +960,62 @@ select {
 
 .table-wrap {
   overflow-x: auto;
+}
+
+/* Only when there are too many rows to draw them all at once. */
+.table-virtual {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/*
+ * Every row the same height, because where a row sits is worked out by
+ * counting rows rather than by measuring them. Cells stay on one line: the
+ * flags move up beside the number, and the reasons behind them are in the
+ * review queue above, where there is room to read them.
+ */
+.table-virtual tbody tr:not(.spacer) {
+  height: 40px;
+}
+
+.table-virtual .column-invoice,
+.table-virtual .column-provenance {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 22rem;
+}
+
+.table-virtual .column-provenance small {
+  display: inline;
+  margin-left: 0.4rem;
+}
+
+/*
+ * In a long batch the reasons an invoice is flagged live in the review queue
+ * above, which has room for sentences. Here the marker down the left of the row
+ * says there is something to look at, and the row stays one line tall.
+ */
+.table-virtual .flag-list {
+  display: none;
+}
+
+.table-virtual thead th {
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  z-index: 1;
+}
+
+.spacer td {
+  padding: 0;
+  border: 0;
+}
+
+/* A long batch should not push the table off the bottom of the screen. */
+.strip {
+  max-height: 16rem;
+  overflow-y: auto;
 }
 
 .invoice-table {

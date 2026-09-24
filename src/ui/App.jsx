@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PDFDocument } from 'pdf-lib';
 import { analyzePages } from '../core/analyze.js';
 import { groupPages } from '../core/group.js';
 import { assignFileNames, buildFileName, DEFAULT_TEMPLATE } from '../core/naming.js';
-import { buildAllInvoicePdfs, buildCsv, buildInvoicePdf, buildZip } from '../core/export.js';
 import { explain } from '../core/errors.js';
 import { exportWarning, reviewQueue } from '../core/review.js';
 import { createProfile } from '../core/profiles.js';
@@ -13,6 +11,7 @@ import { saveFile } from '../lib/download.js';
 import { useDebounced } from '../lib/useDebounced.js';
 import { useUndoable } from '../lib/useUndoable.js';
 import { loadProfiles, saveProfiles } from '../lib/profileStore.js';
+import { readScannedPages, stopOcr } from '../lib/ocr.js';
 import DropZone from './components/DropZone.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import PageStrip from './components/PageStrip.jsx';
@@ -80,6 +79,8 @@ export default function App() {
    */
   const fixes = useUndoable({ boundaries: {}, numbers: {}, moves: {} });
 
+  const [reading, setReading] = useState(null);
+  const readCancelRef = useRef(null);
   const cancelRef = useRef(null);
   const sourcesRef = useRef(new Map());
   const searchRef = useRef(null);
@@ -276,6 +277,48 @@ export default function App() {
     [fixes]
   );
 
+  /* ------------------------------------------------------- scanned pages */
+
+  /** Pages that are only a picture, so nothing could be read from them. */
+  const scannedPages = useMemo(() => pages.filter((page) => !page.hasText && !page.ocr), [pages]);
+
+  /**
+   * Read the scanned pages, one at a time, and put what was found back into
+   * the same pipeline as everything else. Those pages are marked as having come
+   * from a scan, which is what flags their invoices for a second look.
+   */
+  const readScanned = useCallback(async () => {
+    const signal = { aborted: false };
+    readCancelRef.current = signal;
+    setReading({ done: 0, total: scannedPages.length, pageIndex: scannedPages[0]?.index ?? 0 });
+
+    try {
+      const found = await readScannedPages(scannedPages, docsById, {
+        signal,
+        onProgress: setReading,
+      });
+      if (found.size > 0) {
+        setPages((current) =>
+          current.map((page) =>
+            found.has(page.index) ? { ...page, text: found.get(page.index), ocr: true } : page
+          )
+        );
+      }
+    } catch (error) {
+      setProblems((current) => [
+        ...current,
+        {
+          fileName: '',
+          message: `Text recognition could not start: ${error.message}. Nothing was changed.`,
+        },
+      ]);
+    } finally {
+      readCancelRef.current = null;
+      setReading(null);
+      await stopOcr();
+    }
+  }, [scannedPages, docsById]);
+
   /* --------------------------------------------------------------- profiles */
 
   const saveProfile = useCallback((profile) => {
@@ -341,15 +384,25 @@ export default function App() {
 
   /* ----------------------------------------------------------------- export */
 
+  /**
+   * The code that builds PDFs and ZIPs is most of this app's weight and is not
+   * needed until somebody exports something, so it is fetched at that point
+   * rather than on the way in. It still comes from this app's own files.
+   */
+  const exportTools = useCallback(() => import('../core/export.js'), []);
+
   /** Load each source file into pdf-lib once, and keep it for every export. */
   const sourcesFor = useCallback(
     async (wanted) => {
       const needed = new Set(wanted.flatMap((group) => group.pages.map((page) => page.fileId)));
-      for (const fileId of needed) {
-        if (sourcesRef.current.has(fileId)) continue;
-        const file = files.find((entry) => entry.id === fileId);
-        if (!file) continue;
-        sourcesRef.current.set(fileId, await PDFDocument.load(file.bytes));
+      const missing = [...needed].filter((fileId) => !sourcesRef.current.has(fileId));
+      if (missing.length > 0) {
+        const { PDFDocument } = await import('pdf-lib');
+        for (const fileId of missing) {
+          const file = files.find((entry) => entry.id === fileId);
+          if (!file) continue;
+          sourcesRef.current.set(fileId, await PDFDocument.load(file.bytes));
+        }
       }
       return sourcesRef.current;
     },
@@ -360,6 +413,7 @@ export default function App() {
     async (group) => {
       setExporting({ what: group.fileName });
       try {
+        const { buildInvoicePdf } = await exportTools();
         const sources = await sourcesFor([group]);
         saveFile(await buildInvoicePdf(group, sources), group.fileName, 'application/pdf');
       } catch (error) {
@@ -371,12 +425,13 @@ export default function App() {
         setExporting(null);
       }
     },
-    [sourcesFor]
+    [sourcesFor, exportTools]
   );
 
   const downloadZip = useCallback(async () => {
     setExporting({ what: 'all invoices', done: 0, total: groups.length });
     try {
+      const { buildAllInvoicePdfs, buildZip } = await exportTools();
       const sources = await sourcesFor(groups);
       const built = await buildAllInvoicePdfs(groups, sources, {
         onProgress: (done, total) => setExporting({ what: 'all invoices', done, total }),
@@ -391,11 +446,12 @@ export default function App() {
     } finally {
       setExporting(null);
     }
-  }, [groups, sourcesFor]);
+  }, [groups, sourcesFor, exportTools]);
 
-  const downloadCsv = useCallback(() => {
+  const downloadCsv = useCallback(async () => {
+    const { buildCsv } = await exportTools();
     saveFile(buildCsv(groups), 'page-map.csv', 'text/csv;charset=utf-8');
-  }, [groups]);
+  }, [groups, exportTools]);
 
   /** Exporting with problems left is allowed, but never by accident. */
   const askThenExport = useCallback(() => {
@@ -613,6 +669,53 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {(scannedPages.length > 0 || reading) && (
+              <div className="scanned" data-testid="scanned-notice">
+                {reading ? (
+                  <>
+                    <p>
+                      Reading page {reading.pageIndex} &mdash; {reading.done} of {reading.total}{' '}
+                      done. This is slow; you can stop at any point and keep what has been read.
+                    </p>
+                    <div className="progress-track">
+                      <div
+                        className="progress-bar"
+                        style={{
+                          width: `${reading.total ? (reading.done / reading.total) * 100 : 0}%`,
+                        }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="button quiet"
+                      data-testid="stop-reading"
+                      onClick={() => {
+                        if (readCancelRef.current) readCancelRef.current.aborted = true;
+                      }}
+                    >
+                      Stop
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      {scannedPages.length === 1
+                        ? 'One page has no readable text on it. It looks like a scan.'
+                        : `${scannedPages.length} pages have no readable text on them. They look like scans.`}
+                    </p>
+                    <button
+                      type="button"
+                      className="button"
+                      data-testid="read-scanned"
+                      onClick={readScanned}
+                    >
+                      Read scanned pages (slower)
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
             <PageStrip
               groups={groups}

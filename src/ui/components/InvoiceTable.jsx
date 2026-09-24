@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { tileClass } from '../colors.js';
 import { pageRangeForCsv } from '../../core/naming.js';
 import { FLAG_LABELS } from '../../core/group.js';
@@ -11,17 +11,75 @@ const SOURCE_WORDS = {
   custom: 'your own pattern',
 };
 
+/** Past this many invoices, only the rows on screen are drawn. */
+export const VIRTUAL_THRESHOLD = 200;
+
+/**
+ * How tall one row is when the table is being drawn a screenful at a time.
+ * Kept in step with the fixed row height styles.css gives a virtual table:
+ * the scroll position is worked out from this, so rows that grew taller than
+ * it would slide out of place as you scrolled.
+ */
+const ROW_HEIGHT = 40;
+
+/** Rows kept ready just outside the view, so scrolling does not flicker. */
+const OVERSCAN = 6;
+
 /**
  * Every invoice the batch was split into, and what it will be saved as.
  *
  * The number can be corrected in place: click it, type, press Enter. A number
  * typed by hand is kept even when a detection setting changes afterwards.
+ *
+ * A batch of four hundred invoices is four hundred rows, each with a handful of
+ * elements in it, which is enough to make scrolling stutter. Past a couple of
+ * hundred the table draws only the rows in view and props the scrollbar up with
+ * an empty row above and below, so the page stays the right height and
+ * scrolling stays smooth.
  */
 export default function InvoiceTable({ groups, colourOf, onPreview, onDownload, onRename, busy }) {
+  const scroller = useRef(null);
+  const [view, setView] = useState({ top: 0, height: 0 });
+
+  const virtual = groups.length > VIRTUAL_THRESHOLD;
+
+  useEffect(() => {
+    if (!virtual) return undefined;
+    const element = scroller.current;
+    if (!element) return undefined;
+    const measure = () => setView({ top: element.scrollTop, height: element.clientHeight });
+    measure();
+    element.addEventListener('scroll', measure, { passive: true });
+    window.addEventListener('resize', measure);
+    return () => {
+      element.removeEventListener('scroll', measure);
+      window.removeEventListener('resize', measure);
+    };
+  }, [virtual]);
+
+  const window_ = useMemo(() => {
+    if (!virtual) return { from: 0, to: groups.length, above: 0, below: 0 };
+    const visible = Math.ceil((view.height || 600) / ROW_HEIGHT);
+    const from = Math.max(0, Math.floor(view.top / ROW_HEIGHT) - OVERSCAN);
+    const to = Math.min(groups.length, from + visible + OVERSCAN * 2);
+    return {
+      from,
+      to,
+      above: from * ROW_HEIGHT,
+      below: (groups.length - to) * ROW_HEIGHT,
+    };
+  }, [virtual, view, groups.length]);
+
   if (groups.length === 0) return null;
 
+  const shown = groups.slice(window_.from, window_.to);
+
   return (
-    <div className="table-wrap">
+    <div
+      className={`table-wrap${virtual ? ' table-virtual' : ''}`}
+      ref={scroller}
+      data-testid="table-scroller"
+    >
       <table className="invoice-table" data-testid="invoice-table">
         <caption className="visually-hidden">
           The invoices this batch will be split into, in page order.
@@ -45,7 +103,12 @@ export default function InvoiceTable({ groups, colourOf, onPreview, onDownload, 
           </tr>
         </thead>
         <tbody>
-          {groups.map((group) => (
+          {window_.above > 0 && (
+            <tr aria-hidden="true" className="spacer">
+              <td colSpan={8} style={{ height: window_.above }} />
+            </tr>
+          )}
+          {shown.map((group) => (
             <tr
               key={group.id}
               className={group.flags.length > 0 ? 'row-flagged' : ''}
@@ -108,6 +171,11 @@ export default function InvoiceTable({ groups, colourOf, onPreview, onDownload, 
               </td>
             </tr>
           ))}
+          {window_.below > 0 && (
+            <tr aria-hidden="true" className="spacer">
+              <td colSpan={8} style={{ height: window_.below }} />
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

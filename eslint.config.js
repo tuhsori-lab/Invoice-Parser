@@ -4,7 +4,17 @@ import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 
 export default [
-  { ignores: ['dist/**', 'coverage/**', 'tests/fixtures/pdf/**'] },
+  // public/ holds library files copied out of node_modules by `npm run assets`.
+  {
+    ignores: [
+      'dist/**',
+      'coverage/**',
+      'public/**',
+      'tests/fixtures/pdf/**',
+      'playwright-report/**',
+      'test-results/**',
+    ],
+  },
   js.configs.recommended,
   {
     files: ['**/*.{js,jsx}'],

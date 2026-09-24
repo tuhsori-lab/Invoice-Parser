@@ -6,9 +6,9 @@ Accounts receivable and collections teams get invoice batches from dozens of cli
 own layout, arriving as one 400-page PDF. Splitting that by hand is an afternoon. This does it in a
 few seconds, shows its working, and lets you fix anything it got wrong before you export.
 
-> **Status:** phase 4 of 6. Everything but scanned files works: drop a batch in, see how it was
-> split and why, teach it a client's own way of printing invoices, put right anything it got wrong,
-> and export. OCR, large-batch performance and the live demo are still to come.
+> **Status:** phase 5 of 6. Everything works, including scanned pages and long batches. What is
+> left is the last polish pass: dark theme refinements, an accessibility pass, empty states, a
+> walkthrough GIF and the live demo.
 
 ## Your files never leave your browser
 
@@ -98,6 +98,40 @@ remain is allowed — it just asks first, and says how many are left.
 Moving a page can also be done without a mouse: open the page and use the move links under its
 heading.
 
+## Scanned pages
+
+A scanned invoice has no text in it at all — it is a photograph of a piece of paper. When a batch
+holds pages like that, the app says so and offers to read them:
+
+> One page has no readable text on it. It looks like a scan. **[Read scanned pages (slower)]**
+
+It is offered rather than done automatically because it is slow, and it can be stopped part way
+without losing what has already been read. Anything read this way carries an `ocr` flag, because
+recognition is never certain — and where it gets the number wrong, you type over it.
+
+The recognition engine, its WebAssembly and the English language data are all served by this app
+(copied out of `node_modules` by `npm run assets`, about 14 MB). They are fetched the first time
+somebody turns recognition on, from this app's own address, so an ordinary batch never downloads a
+byte of them and a scanned one still never talks to anybody else.
+
+## Long batches
+
+A batch of a thousand pages has to stay as quick as a batch of ten:
+
+- **Detection re-runs in about 15 ms over a thousand pages**, so changing a setting is instant. The
+  PDF is read once; everything after that works on text already in memory. There is a unit test
+  holding this to a budget.
+- **Reading the PDF happens a chunk at a time**, with a progress bar and a Cancel button, so the
+  page never freezes and a batch opened by mistake can be stopped.
+- **The page strip draws each tile as its own memoised component**, so hovering one tile in a
+  thousand-page batch redraws one tile.
+- **Past 200 invoices the table draws only the rows in view.** An empty row above and below holds
+  the scrollbar at the right size.
+- **Thumbnails are drawn when a page is first hovered, and kept**, so nothing is rendered that
+  nobody looked at.
+- **Each source file is loaded into pdf-lib once** and reused for every export.
+- **The code that builds PDFs and ZIPs is fetched when you first export**, not on the way in.
+
 ## Client profiles
 
 A profile is one client's way of printing invoices:
@@ -170,8 +204,9 @@ npm run build     # production build into dist/
 
 Node 20 or newer. The end-to-end tests need a browser once: `npx playwright install chromium`.
 
-`npm run dev` and `npm run build` first copy the pdf.js font metrics into `public/pdfjs/`. They are
-served from the app rather than from a CDN, so that opening a PDF makes no network request.
+`npm run dev` and `npm run build` first copy what pdf.js and tesseract.js would otherwise fetch from
+a CDN into `public/`. They are served from the app itself, so that opening a PDF — or reading a
+scan — makes no request to anybody else.
 
 ## No real invoice data, ever
 
@@ -193,8 +228,8 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   review.js        what needs a person's eye, said in plain words
   profiles.js      client profiles: matching, teaching, import and export
   errors.js        plain-language messages for everything that can go wrong
-src/lib/           the browser side: pdf.js setup, reading a batch, thumbnails, downloads,
-                   and the browser storage profiles are kept in
+src/lib/           the browser side: pdf.js setup, reading a batch, text recognition,
+                   thumbnails, downloads, and the storage profiles are kept in
 src/ui/            the interface (React) and its one stylesheet
 scripts/           the fixture generator and its small helpers
 tests/unit/        unit tests, including every layout in tests/fixtures/expected.js
@@ -206,8 +241,11 @@ detection rules can be tested on their own — most of the test suite never open
 
 ## What it cannot do
 
-- **OCR is only as good as the scan.** Text recognition on a scanned page is slower and less
-  accurate than reading a real text layer. Anything read this way is flagged so you check it.
+- **OCR is only as good as the scan.** Text recognition is slower and much less certain than
+  reading a real text layer. On the sample scan in this repository it reads the body text correctly
+  but stumbles on the invoice number itself — that sample is drawn with a dot-matrix font built into
+  the fixture script, which is harder to read than a real scanner's output, but it is a fair warning
+  all the same. Anything read this way is flagged, and the number can be typed over.
 - **Some PDFs have a scrambled text layer.** A few generators write text in an order that has
   nothing to do with reading order. The geometry rules cope with most of this, but not all of it; if
   a page looks right and the text panel looks like nonsense, this is why.
@@ -219,7 +257,7 @@ detection rules can be tested on their own — most of the test suite never open
 2. **Core UI** — drop zone, page strip, invoice table, preview, and the three exports. ✅
 3. **Review and fixing** — the review queue, manual split/join/move, inline edits, undo and redo. ✅
 4. **Profiles** — client profiles and teaching a label by highlighting it. ✅
-5. **Scale and scanned files** — OCR, 1,000-page batches, virtualised table, lazy thumbnails.
+5. **Scale and scanned files** — OCR, 1,000-page batches, virtualised table, lazy thumbnails. ✅
 6. **Polish and ship** — dark theme, accessibility pass, README GIF, GitHub Pages.
 
 ## License

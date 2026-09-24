@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { buildEncryptedPdf } from './lib/encryptedPdf.js';
-import { createCanvas, drawText as drawBitmapText } from './lib/bitmapFont.js';
+import { createCanvas, drawText as drawBitmapText, soften } from './lib/bitmapFont.js';
 import { encodeGrayPng } from './lib/png.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -351,6 +351,29 @@ const FIXTURES = [
       ],
     ]),
 
+  /**
+   * 19. A long batch: 210 invoices over 220 pages, which is past the point
+   * where the invoice table stops drawing every row at once. The first ten
+   * invoices run to two pages, the rest to one, so the page numbers and the
+   * invoice numbers do not line up - as they never do in real life.
+   */
+  () => {
+    const sheets = [];
+    for (let invoice = 0; invoice < 210; invoice += 1) {
+      const number = 200_000 + invoice;
+      const pagesInInvoice = invoice < 10 ? 2 : 1;
+      for (let sheet = 1; sheet <= pagesInInvoice; sheet += 1) {
+        sheets.push([
+          ...letterhead('Humongous Insurance', '1 Ledger Plaza, Hartford, CT 06103'),
+          line(`Invoice #: ${number}`, { size: 12, bold: true, gap: 4 }),
+          line(`Sheet ${sheet} of ${pagesInInvoice}`, { size: 9, faint: true, gap: 16 }),
+          ...lineItems([['Policy administration', '1', '250.00', '250.00']]),
+        ]);
+      }
+    }
+    return writePdf('19-long-batch.pdf', sheets);
+  },
+
   /** 15. A file that cannot be opened without a password. */
   async () => {
     const name = '15-password-protected.pdf';
@@ -370,13 +393,16 @@ const FIXTURES = [
   /** 16. A page that is only a picture, the way a scanner leaves it. */
   async () => {
     const name = '16-image-only.pdf';
-    const scale = 6;
     const canvas = createCanvas(1240, 1754); // A4 at about 150 dpi
-    drawBitmapText(canvas, 'SOUTHRIDGE VIDEO', { x: 90, y: 120, scale, gray: 30 });
-    drawBitmapText(canvas, 'INVOICE #: 552211', { x: 90, y: 260, scale, gray: 25 });
-    drawBitmapText(canvas, 'DATE: 09/04/2026', { x: 90, y: 380, scale: 5, gray: 40 });
-    drawBitmapText(canvas, 'CAMERA HIRE 3 DAYS', { x: 90, y: 520, scale: 5, gray: 40 });
-    drawBitmapText(canvas, 'TOTAL DUE 1450.00', { x: 90, y: 640, scale: 5, gray: 30 });
+    // One modest size throughout: text recognition is trained on ordinary body
+    // text and reads a heading blown up twice as large markedly worse.
+    drawBitmapText(canvas, 'SOUTHRIDGE VIDEO', { x: 80, y: 110, scale: 5, gray: 30 });
+    drawBitmapText(canvas, 'INVOICE NO: 552211', { x: 80, y: 250, scale: 5, gray: 20 });
+    drawBitmapText(canvas, 'DATE: 09/04/2026', { x: 80, y: 430, scale: 5, gray: 40 });
+    drawBitmapText(canvas, 'CAMERA HIRE 3 DAYS', { x: 80, y: 540, scale: 5, gray: 40 });
+    drawBitmapText(canvas, 'TOTAL DUE 1450.00', { x: 80, y: 650, scale: 5, gray: 30 });
+    // A scanner never produces hard square pixels, and neither should this.
+    soften(canvas);
 
     const pdf = await PDFDocument.create();
     pdf.setTitle('Scanned invoice (synthetic)');
