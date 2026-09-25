@@ -11,8 +11,13 @@
  *     than half the font size;
  *   - on a line, a space is inserted only when the horizontal gap between two
  *     runs is wider than 0.15x the font size;
- *   - a new line starts when the vertical position changes or pdf.js marks the
- *     run as ending a line.
+ *   - a new line starts wherever the vertical position changes.
+ *
+ * Position decides, and the order the file happens to store its runs in does
+ * not. pdf.js marks some runs as ending a line, and that mark is deliberately
+ * not used: on a form-style invoice the whole blank form is drawn first, every
+ * label ending a line of its own, and honouring those marks would keep each
+ * label apart from the value printed beside it.
  *
  * This module is plain JavaScript. It takes the raw text items so it can be
  * tested without opening a PDF at all.
@@ -53,44 +58,62 @@ function geometryOf(item) {
 /**
  * Rebuild the text of one page from its pdf.js text items.
  *
+ * Lines are worked out from where the words sit on the page, not from the order
+ * they appear in the file. Those two are not the same thing, and on real
+ * invoices they are often nothing like it: accounting software draws the blank
+ * form first - every label, in one go - and drops the values into their boxes
+ * afterwards. Read in file order, such a page comes out as a list of headings
+ * with all the numbers underneath, and "Invoice No." is followed by "Date"
+ * rather than by the invoice number sitting beside it on the page.
+ *
+ * So every piece of text is placed by its coordinates, gathered into bands by
+ * how far down the page it is, and read left to right within each band - which
+ * is what a person looking at the page does.
+ *
  * @param {Array<object>} items - `textContent.items` from pdf.js.
  * @returns {{ text: string, hasText: boolean, lines: string[] }}
  */
 export function buildPageText(items) {
-  const lines = [];
-  let line = null;
-
+  const pieces = [];
   for (const item of items || []) {
-    if (!item || typeof item.str !== 'string') continue;
-
-    // pdf.js emits empty runs purely to mark the end of a line.
-    if (item.str === '') {
-      if (item.hasEOL) line = null;
-      continue;
-    }
-
+    if (!item || typeof item.str !== 'string' || item.str === '') continue;
     const geometry = geometryOf(item);
-    const sameLine =
-      line !== null &&
-      Math.abs(geometry.y - line.y) < SAME_LINE_RATIO * Math.max(line.fontSize, geometry.fontSize);
+    pieces.push({ str: item.str, ...geometry });
+  }
 
-    if (sameLine) {
-      const gap = geometry.x - line.endX;
-      if (gap > SPACE_GAP_RATIO * geometry.fontSize) line.parts.push(' ');
-      line.parts.push(item.str);
-      line.endX = geometry.x + geometry.width;
-      line.fontSize = Math.max(line.fontSize, geometry.fontSize);
+  // Down the page first, then across it. Sorting up front means every piece of
+  // one band arrives together, whatever order the file put them in.
+  pieces.sort((a, b) => b.y - a.y || a.x - b.x);
+
+  const lines = [];
+  for (const piece of pieces) {
+    const band = lines[lines.length - 1];
+    // Measured against the band's first piece rather than its last, so a run of
+    // slightly drifting positions cannot walk a band down the page.
+    const sameBand =
+      band &&
+      Math.abs(piece.y - band.y) < SAME_LINE_RATIO * Math.max(band.fontSize, piece.fontSize);
+
+    if (sameBand) {
+      band.pieces.push(piece);
+      band.fontSize = Math.max(band.fontSize, piece.fontSize);
     } else {
-      line = {
-        y: geometry.y,
-        endX: geometry.x + geometry.width,
-        fontSize: geometry.fontSize,
-        parts: [item.str],
-      };
-      lines.push(line);
+      lines.push({ y: piece.y, fontSize: piece.fontSize, pieces: [piece] });
     }
+  }
 
-    if (item.hasEOL) line = null;
+  for (const band of lines) {
+    band.pieces.sort((a, b) => a.x - b.x);
+    const parts = [];
+    let endX = null;
+    for (const piece of band.pieces) {
+      // A space only where there is a real gap: a number drawn as two runs has
+      // no gap at all, and "7788" followed by "12" is one invoice number.
+      if (endX !== null && piece.x - endX > SPACE_GAP_RATIO * piece.fontSize) parts.push(' ');
+      parts.push(piece.str);
+      endX = Math.max(endX ?? 0, piece.x + piece.width);
+    }
+    band.parts = parts;
   }
 
   const cleaned = lines

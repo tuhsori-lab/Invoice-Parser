@@ -62,13 +62,29 @@ describe('joining pieces of text', () => {
     expect(text).toBe('Invoice No.\n104501');
   });
 
-  it('starts a new line when pdf.js says the line ended', () => {
+  it('reads a band left to right, whatever order the file drew it in', () => {
+    // What accounting software actually produces: the blank form first, every
+    // label in one pass, and the values dropped in afterwards. The label and
+    // its value sit side by side on the page but are far apart in the file.
     const { text } = buildPageText([
-      item('Document Number', { x: 50, y: 700, hasEOL: true }),
-      item('DN-90210', { x: 50, y: 700 }),
+      item('INVOICE NO.', { x: 380, y: 700 }),
+      item('DATE', { x: 380, y: 680 }),
+      item('1043396', { x: 470, y: 700 }),
+      item('09/18/26', { x: 470, y: 680 }),
     ]);
 
-    expect(text).toBe('Document Number\nDN-90210');
+    expect(text).toBe('INVOICE NO. 1043396\nDATE 09/18/26');
+  });
+
+  it('pays no attention to a run being marked as ending a line', () => {
+    // Position is the only thing that decides. Honouring these marks would
+    // keep every label on a form apart from the value printed beside it.
+    const { text } = buildPageText([
+      item('Document Number', { x: 50, y: 700, hasEOL: true }),
+      item('DN-90210', { x: 160, y: 700 }),
+    ]);
+
+    expect(text).toBe('Document Number DN-90210');
   });
 
   it('collapses runs of spaces and drops blank lines', () => {
@@ -81,11 +97,11 @@ describe('joining pieces of text', () => {
     expect(text).toBe('Total due\n254.00');
   });
 
-  it('ignores the empty runs pdf.js uses to mark the end of a line', () => {
+  it('throws away the empty runs pdf.js uses to mark the end of a line', () => {
     const { text } = buildPageText([
       item('Invoice', { x: 50, y: 700 }),
       { str: '', hasEOL: true },
-      item('445566', { x: 50, y: 700 }),
+      item('445566', { x: 50, y: 686 }),
     ]);
 
     expect(text).toBe('Invoice\n445566');

@@ -65,6 +65,12 @@ A few rules do most of the work of not being confidently wrong:
 - **Text runs are joined by geometry.** A PDF may draw `778812` as `7788` then `12`. Joining runs
   naively gives "7788 12"; the engine inserts a space only when the gap between two runs is wider
   than 0.15× the font size, so the number stays whole.
+- **Lines come from the page, not the file.** Accounting software draws the blank form first —
+  every label in one pass — and drops the values into their boxes afterwards. Read in file order
+  such a page is a list of headings with all the numbers underneath, and `Invoice No.` is followed
+  by `Date` rather than by the number sitting next to it. Every run is placed by its coordinates,
+  gathered into bands by how far down the page it is, and read left to right, which is what a
+  person looking at the page does.
 
 Anything the engine is unsure about is flagged for review rather than quietly guessed:
 `no-number`, `fallback` (the bare tier answered), `conflict` (two labels, two different numbers),
@@ -286,9 +292,10 @@ so the page never flashes the wrong colours on the way in.
   but stumbles on the invoice number itself — that sample is drawn with a dot-matrix font built into
   the fixture script, which is harder to read than a real scanner's output, but it is a fair warning
   all the same. Anything read this way is flagged, and the number can be typed over.
-- **Some PDFs have a scrambled text layer.** A few generators write text in an order that has
-  nothing to do with reading order. The geometry rules cope with most of this, but not all of it; if
-  a page looks right and the text panel looks like nonsense, this is why.
+- **Some PDFs have a scrambled text layer.** Text is laid out by position rather than by the order
+  the file stores it in, which handles the usual culprits — form templates especially. What it
+  cannot fix is a file whose coordinates are themselves wrong, or text drawn as pictures of letters.
+  If a page looks right and the text panel looks like nonsense, this is why.
 - **Password-protected files cannot be opened.** Save a copy without the password first.
 
 ## Build phases
