@@ -288,6 +288,16 @@ export const CASES = [
     groups: [{ invoice: '1043396', pages: [1], label: 'INVOICE NO.', source: 'common', flags: [] }],
   },
   {
+    case: 21,
+    file: '21-column-heading.pdf',
+    what: 'A label that is a column heading, with its number in the row below',
+    pages: 2,
+    groups: [
+      { invoice: 'SR-40881', pages: [1], label: 'Invoice #', source: 'common', flags: [] },
+      { invoice: 'SR-40997', pages: [2], label: 'Invoice #', source: 'common', flags: [] },
+    ],
+  },
+  {
     case: 18,
     file: '18-conflicting-numbers.pdf',
     what: 'Two different numbers after two different labels on one page',

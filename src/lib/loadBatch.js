@@ -80,7 +80,7 @@ export async function loadBatch(inputFiles, options = {}) {
       if (signal?.aborted) break;
       const page = await file.doc.getPage(pageNumber);
       const content = await page.getTextContent();
-      const { text, hasText } = buildPageText(content.items);
+      const { text, hasText, layout } = buildPageText(content.items);
       page.cleanup();
 
       pages.push({
@@ -91,6 +91,7 @@ export async function loadBatch(inputFiles, options = {}) {
         pageNumberInFile: pageNumber,
         text,
         hasText,
+        layout,
         ocr: false,
       });
 

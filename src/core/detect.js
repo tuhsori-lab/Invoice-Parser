@@ -120,6 +120,68 @@ function isUsableValue(token) {
 }
 
 /**
+ * How far a value may sit outside its label's column and still belong to it.
+ * A couple of points of slack covers a heading centred over its column, or a
+ * value nudged by a hair; text in a different column is always further off.
+ */
+const COLUMN_SLACK = 4;
+
+/**
+ * Where a stretch of the page's text sat on the page.
+ *
+ * Positions are interpolated across each run, so that part of a run can be
+ * placed as well as the whole of it - which is what makes the "10012" inside
+ * "NEW YORK, NY 10012" locatable on its own.
+ *
+ * @param {Array<object>} layout - the spans from extractText.js.
+ * @param {number} start - first character of the stretch.
+ * @param {number} end - one past its last character.
+ * @returns {{ band: number, x0: number, x1: number }|null}
+ */
+function rangeOf(layout, start, end) {
+  let band = null;
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  for (const span of layout) {
+    if (span.end <= start || span.start >= end) continue;
+    const length = span.end - span.start || 1;
+    const width = span.endX - span.x;
+    const from = Math.max(start, span.start);
+    const to = Math.min(end, span.end);
+    if (band === null) band = span.band;
+    x0 = Math.min(x0, span.x + (width * (from - span.start)) / length);
+    x1 = Math.max(x1, span.x + (width * (to - span.start)) / length);
+  }
+  return band === null ? null : { band, x0, x1 };
+}
+
+/**
+ * Could the text at [start, end) be this label's value?
+ *
+ * On the label's own line, yes: reading order is the whole story there. On a
+ * later line the label is a column heading, and only what stands in its column
+ * belongs to it. Without that rule a company's own postcode, printed down the
+ * far side of the page, is read as the invoice number - which is exactly what
+ * happens on invoices that head a column "Invoice #" and print the number
+ * underneath it.
+ *
+ * Pages with no layout - text recognised from a scan, or a plain string in a
+ * test - keep the older, purely textual behaviour.
+ *
+ * @param {Array<object>|null} layout
+ * @param {{ band: number, x0: number, x1: number }|null} label
+ * @param {number} start
+ * @param {number} end
+ * @returns {boolean}
+ */
+function belongsToLabel(layout, label, start, end) {
+  if (!layout || !label) return true;
+  const value = rangeOf(layout, start, end);
+  if (!value || value.band === label.band) return true;
+  return value.x0 <= label.x1 + COLUMN_SLACK && value.x1 >= label.x0 - COLUMN_SLACK;
+}
+
+/**
  * Read the value that follows a label.
  *
  * Table layouts print `Invoice No.  Date  Terms` on one line and the values on
@@ -127,16 +189,26 @@ function isUsableValue(token) {
  * and take the first run of characters that contains a digit, is long enough,
  * and is not a date.
  *
+ * A value on a later line has to stand in the label's own column, so that a
+ * heading with its value printed underneath is read correctly and unrelated
+ * text at the same height on the other side of the page is not.
+ *
  * @param {string} text - the full page text.
  * @param {number} from - index just past the label.
+ * @param {object} [options]
+ * @param {Array<object>} [options.layout] - where each run sat on the page.
+ * @param {number} [options.labelStart] - index of the label's first character.
  * @returns {string|null} the tidied value, or null if nothing usable was near.
  */
-export function findValueAfterLabel(text, from) {
+export function findValueAfterLabel(text, from, options = {}) {
+  const { layout = null, labelStart = from } = options;
   const window = maskDates(String(text).slice(from, from + VALUE_SEARCH_WINDOW));
+  const label = layout ? rangeOf(layout, labelStart, from) : null;
   TOKEN_PATTERN.lastIndex = 0;
   let match;
   while ((match = TOKEN_PATTERN.exec(window)) !== null) {
-    if (isUsableValue(match[0])) {
+    const at = from + match.index;
+    if (isUsableValue(match[0]) && belongsToLabel(layout, label, at, at + match[0].length)) {
       TOKEN_PATTERN.lastIndex = 0;
       return normalizeValue(match[0]);
     }
@@ -150,10 +222,13 @@ export function findValueAfterLabel(text, from) {
  * @param {string} text - page text.
  * @param {string} pattern - source of the label regular expression.
  * @param {string} source - which tier this pattern belongs to.
- * @param {boolean} [onlyImmediate] - accept only the run directly after the label.
+ * @param {object} [options]
+ * @param {boolean} [options.onlyImmediate] - accept only the run directly after the label.
+ * @param {Array<object>} [options.layout] - where each run sat on the page.
  * @returns {Array<{ value: string, label: string, source: string }>}
  */
-function hitsForPattern(text, pattern, source, onlyImmediate = false) {
+function hitsForPattern(text, pattern, source, options = {}) {
+  const { onlyImmediate = false, layout = null } = options;
   const hits = [];
   const seenLabels = new Set();
   let regex;
@@ -175,9 +250,14 @@ function hitsForPattern(text, pattern, source, onlyImmediate = false) {
       // that a street address printed under an "INVOICE" title is never read as
       // the invoice number.
       const next = /^[A-Za-z0-9][A-Za-z0-9-]*/.exec(text.slice(after, after + VALUE_SEARCH_WINDOW));
-      if (next && isUsableValue(next[0])) value = normalizeValue(next[0]);
+      if (next && isUsableValue(next[0])) {
+        const label = layout ? rangeOf(layout, match.index, after) : null;
+        if (belongsToLabel(layout, label, after, after + next[0].length)) {
+          value = normalizeValue(next[0]);
+        }
+      }
     } else {
-      value = findValueAfterLabel(text, after);
+      value = findValueAfterLabel(text, after, { layout, labelStart: match.index });
     }
     if (!value) continue;
     // One hit per label is enough - a label repeated in a header and a footer
@@ -256,6 +336,8 @@ function dedupe(hits) {
  * @property {boolean} [useCommonLabels] also try everyday labels. Default true.
  * @property {boolean} [useBareInvoice] also try bare "Invoice 1234". Default true.
  * @property {string} [customPattern] a pattern that replaces all of the above.
+ * @property {Array<object>} [layout] where each run sat on the page, from
+ *   extractText.js. Without it detection falls back to reading order alone.
  */
 
 /**
@@ -274,6 +356,7 @@ export function detectCandidates(text, settings = {}) {
     useCommonLabels = true,
     useBareInvoice = true,
     customPattern,
+    layout = null,
   } = settings;
 
   if (customPattern && String(customPattern).trim()) {
@@ -283,13 +366,15 @@ export function detectCandidates(text, settings = {}) {
   const hits = [];
   for (const label of profileLabels) {
     const pattern = labelPattern(label);
-    if (pattern) hits.push(...hitsForPattern(page, pattern, 'profile'));
+    if (pattern) hits.push(...hitsForPattern(page, pattern, 'profile', { layout }));
   }
   if (useCommonLabels) {
-    hits.push(...hitsForPattern(page, commonLabelPattern(), 'common'));
+    hits.push(...hitsForPattern(page, commonLabelPattern(), 'common', { layout }));
   }
   if (hits.length === 0 && useBareInvoice) {
-    hits.push(...hitsForPattern(page, bareInvoicePattern(), 'bare', true));
+    hits.push(
+      ...hitsForPattern(page, bareInvoicePattern(), 'bare', { onlyImmediate: true, layout })
+    );
   }
   return dedupe(hits);
 }
@@ -327,9 +412,12 @@ export function hasConflict(candidates) {
  *
  * @param {string} text
  * @param {string|string[]} labels
+ * @param {object} [options]
+ * @param {Array<object>} [options.layout] - where each run sat on the page.
  * @returns {{ value: string, label: string }|null}
  */
-export function detectFieldValue(text, labels) {
+export function detectFieldValue(text, labels, options = {}) {
+  const { layout = null } = options;
   const page = String(text ?? '');
   const list = (Array.isArray(labels) ? labels : [labels]).filter(
     (label) => typeof label === 'string' && label.trim()
@@ -337,7 +425,7 @@ export function detectFieldValue(text, labels) {
   for (const label of list) {
     const pattern = labelPattern(label);
     if (!pattern) continue;
-    const [hit] = hitsForPattern(page, pattern, 'profile');
+    const [hit] = hitsForPattern(page, pattern, 'profile', { layout });
     if (hit) return { value: hit.value, label: hit.label };
   }
   return null;
