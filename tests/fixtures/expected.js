@@ -281,6 +281,13 @@ export const CASES = [
     ],
   },
   {
+    case: 20,
+    file: '20-form-layout.pdf',
+    what: 'A filled-in form: the labels drawn in one pass, the values in another',
+    pages: 1,
+    groups: [{ invoice: '1043396', pages: [1], label: 'INVOICE NO.', source: 'common', flags: [] }],
+  },
+  {
     case: 18,
     file: '18-conflicting-numbers.pdf',
     what: 'Two different numbers after two different labels on one page',

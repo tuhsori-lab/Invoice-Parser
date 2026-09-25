@@ -374,6 +374,55 @@ const FIXTURES = [
     return writePdf('19-long-batch.pdf', sheets);
   },
 
+  /**
+   * 20. A form, filled in. The layout accounting software actually produces:
+   * the blank form's wording is drawn first, all of it, and the values are
+   * dropped into their boxes afterwards. On the page "Invoice No." and its
+   * number sit side by side; in the file they are nowhere near each other.
+   */
+  () =>
+    writePdf('20-form-layout.pdf', [
+      [
+        // Pass one: the form. Every label, in one go, exactly as a template
+        // would lay them down.
+        line('COMMERCIAL INVOICE', { size: 15, bold: true, y: 736, x: 200 }),
+        line('Northwind Traders', { size: 13, bold: true, y: 740, x: MARGIN }),
+        line('4100 Harbour Way, Portland, OR 97203', { size: 8, faint: true, y: 726, x: MARGIN }),
+        line('INVOICE NO.', { size: 8, bold: true, y: 700, x: 380 }),
+        line('DATE', { size: 8, bold: true, y: 680, x: 380 }),
+        line('DUE DATE', { size: 8, bold: true, y: 664, x: 380 }),
+        line('PAGE', { size: 8, bold: true, y: 648, x: 380 }),
+        line('BILL TO:', { size: 8, bold: true, y: 610, x: MARGIN }),
+        line('SHIP TO:', { size: 8, bold: true, y: 610, x: 300 }),
+        line('ORDER #', { size: 8, bold: true, y: 540, x: MARGIN }),
+        line('P.O. NUMBER', { size: 8, bold: true, y: 540, x: 150 }),
+        line('TERMS', { size: 8, bold: true, y: 540, x: 280 }),
+        line('SHIP VIA', { size: 8, bold: true, y: 540, x: 400 }),
+        line('DESCRIPTION', { size: 8, bold: true, y: 480, x: MARGIN }),
+        line('QTY', { size: 8, bold: true, y: 480, x: 330 }),
+        line('UNIT PRICE', { size: 8, bold: true, y: 480, x: 400 }),
+        line('TOTAL INVOICE', { size: 8, bold: true, y: 380, x: 380 }),
+
+        // Pass two: what was typed into it.
+        line('1043396', { size: 10, bold: true, y: 700, x: 470 }),
+        line('09/18/26', { size: 9, y: 680, x: 470 }),
+        line('11/02/26', { size: 9, y: 664, x: 470 }),
+        line('1 of 1', { size: 9, y: 648, x: 470 }),
+        line('Holt Renfrew & Co. Ltd', { size: 9, y: 596, x: MARGIN }),
+        line('396 Humberline Drive', { size: 9, y: 584, x: MARGIN }),
+        line('Distribution Centre', { size: 9, y: 596, x: 300 }),
+        line('396 Humberline Drive', { size: 9, y: 584, x: 300 }),
+        line('0880273', { size: 9, y: 526, x: MARGIN }),
+        line('4049696', { size: 9, y: 526, x: 150 }),
+        line('NET 45 DAYS', { size: 9, y: 526, x: 280 }),
+        line('EXWORKS', { size: 9, y: 526, x: 400 }),
+        line('Wally boot espresso', { size: 9, y: 466, x: MARGIN }),
+        line('154', { size: 9, y: 466, x: 330 }),
+        line('165.00', { size: 9, y: 466, x: 400 }),
+        line('59,400.00', { size: 10, bold: true, y: 380, x: 470 }),
+      ],
+    ]),
+
   /** 15. A file that cannot be opened without a password. */
   async () => {
     const name = '15-password-protected.pdf';
