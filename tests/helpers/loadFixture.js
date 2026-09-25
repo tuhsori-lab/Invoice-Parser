@@ -66,6 +66,7 @@ export async function loadFixturePages(name) {
     filePageIndex: position,
     text: page.text,
     hasText: page.hasText,
+    layout: page.layout,
     ocr: false,
   }));
 }

@@ -19,6 +19,14 @@
  * label ending a line of its own, and honouring those marks would keep each
  * label apart from the value printed beside it.
  *
+ * Flattening a page to lines throws away which column a word was in, and that
+ * turns out to matter: a label can be a column heading, with its value printed
+ * underneath rather than beside it, and some unrelated text can sit at that same
+ * height on the far side of the page. So alongside the text this module returns
+ * a `layout`: for every run, the characters it occupies in the text and the
+ * horizontal space it occupied on the page. detect.js uses that to tell a value
+ * standing in a label's column from one that merely follows it in reading order.
+ *
  * This module is plain JavaScript. It takes the raw text items so it can be
  * tested without opening a PDF at all.
  */
@@ -56,6 +64,43 @@ function geometryOf(item) {
 }
 
 /**
+ * Gather the runs of a page into bands, one per line of print.
+ *
+ * @param {Array<object>} items
+ * @returns {Array<{ y: number, fontSize: number, pieces: Array<object> }>}
+ */
+function bandsOf(items) {
+  const pieces = [];
+  for (const item of items || []) {
+    if (!item || typeof item.str !== 'string' || item.str === '') continue;
+    const geometry = geometryOf(item);
+    pieces.push({ str: item.str, ...geometry });
+  }
+
+  // Down the page first, then across it. Sorting up front means every piece of
+  // one band arrives together, whatever order the file put them in.
+  pieces.sort((a, b) => b.y - a.y || a.x - b.x);
+
+  const bands = [];
+  for (const piece of pieces) {
+    const band = bands[bands.length - 1];
+    // Measured against the band's first piece rather than its last, so a run of
+    // slightly drifting positions cannot walk a band down the page.
+    const sameBand =
+      band &&
+      Math.abs(piece.y - band.y) < SAME_LINE_RATIO * Math.max(band.fontSize, piece.fontSize);
+
+    if (sameBand) {
+      band.pieces.push(piece);
+      band.fontSize = Math.max(band.fontSize, piece.fontSize);
+    } else {
+      bands.push({ y: piece.y, fontSize: piece.fontSize, pieces: [piece] });
+    }
+  }
+  return bands;
+}
+
+/**
  * Rebuild the text of one page from its pdf.js text items.
  *
  * Lines are worked out from where the words sit on the page, not from the order
@@ -71,57 +116,62 @@ function geometryOf(item) {
  * is what a person looking at the page does.
  *
  * @param {Array<object>} items - `textContent.items` from pdf.js.
- * @returns {{ text: string, hasText: boolean, lines: string[] }}
+ * @returns {{ text: string, hasText: boolean, lines: string[], layout: Array<object> }}
  */
 export function buildPageText(items) {
-  const pieces = [];
-  for (const item of items || []) {
-    if (!item || typeof item.str !== 'string' || item.str === '') continue;
-    const geometry = geometryOf(item);
-    pieces.push({ str: item.str, ...geometry });
-  }
-
-  // Down the page first, then across it. Sorting up front means every piece of
-  // one band arrives together, whatever order the file put them in.
-  pieces.sort((a, b) => b.y - a.y || a.x - b.x);
-
   const lines = [];
-  for (const piece of pieces) {
-    const band = lines[lines.length - 1];
-    // Measured against the band's first piece rather than its last, so a run of
-    // slightly drifting positions cannot walk a band down the page.
-    const sameBand =
-      band &&
-      Math.abs(piece.y - band.y) < SAME_LINE_RATIO * Math.max(band.fontSize, piece.fontSize);
+  const layout = [];
+  let offset = 0;
 
-    if (sameBand) {
-      band.pieces.push(piece);
-      band.fontSize = Math.max(band.fontSize, piece.fontSize);
-    } else {
-      lines.push({ y: piece.y, fontSize: piece.fontSize, pieces: [piece] });
-    }
-  }
-
-  for (const band of lines) {
+  for (const band of bandsOf(items)) {
     band.pieces.sort((a, b) => a.x - b.x);
-    const parts = [];
+
+    let line = '';
+    const spans = [];
     let endX = null;
+
     for (const piece of band.pieces) {
       // A space only where there is a real gap: a number drawn as two runs has
       // no gap at all, and "7788" followed by "12" is one invoice number.
-      if (endX !== null && piece.x - endX > SPACE_GAP_RATIO * piece.fontSize) parts.push(' ');
-      parts.push(piece.str);
-      endX = Math.max(endX ?? 0, piece.x + piece.width);
+      const gap = endX !== null && piece.x - endX > SPACE_GAP_RATIO * piece.fontSize;
+      endX = Math.max(endX ?? piece.x, piece.x + piece.width);
+
+      let str = piece.str.replace(/\s+/g, ' ');
+      if (line === '') str = str.replace(/^ +/, '');
+      else if (gap && !line.endsWith(' ') && !str.startsWith(' ')) line += ' ';
+      else if (line.endsWith(' ')) str = str.replace(/^ +/, '');
+      if (str === '') continue;
+
+      spans.push({
+        start: line.length,
+        end: line.length + str.length,
+        x: piece.x,
+        endX: piece.x + piece.width,
+      });
+      line += str;
     }
-    band.parts = parts;
+
+    const trimmed = line.trimEnd();
+    if (trimmed === '') continue;
+
+    const bandIndex = lines.length;
+    for (const span of spans) {
+      if (span.start >= trimmed.length) continue;
+      layout.push({
+        start: offset + span.start,
+        end: offset + Math.min(span.end, trimmed.length),
+        x: span.x,
+        endX: span.endX,
+        band: bandIndex,
+      });
+    }
+
+    lines.push(trimmed);
+    offset += trimmed.length + 1;
   }
 
-  const cleaned = lines
-    .map((entry) => entry.parts.join('').replace(/\s+/g, ' ').trim())
-    .filter((entry) => entry.length > 0);
-
-  const text = cleaned.join('\n');
-  return { text, hasText: countReadableCharacters(text) >= MIN_TEXT_CHARS, lines: cleaned };
+  const text = lines.join('\n');
+  return { text, hasText: countReadableCharacters(text) >= MIN_TEXT_CHARS, lines, layout };
 }
 
 /**
@@ -145,7 +195,7 @@ export function countReadableCharacters(text) {
  * @param {object} [options]
  * @param {(done: number, total: number) => void} [options.onProgress]
  * @param {{ aborted: boolean }} [options.signal] - set `aborted` to stop early.
- * @returns {Promise<Array<{ pageNumber: number, text: string, hasText: boolean }>>}
+ * @returns {Promise<Array<{ pageNumber: number, text: string, hasText: boolean, layout: Array<object> }>>}
  */
 export async function extractDocumentText(document, options = {}) {
   const { onProgress, signal } = options;
@@ -154,8 +204,8 @@ export async function extractDocumentText(document, options = {}) {
     if (signal?.aborted) break;
     const page = await document.getPage(pageNumber);
     const content = await page.getTextContent();
-    const { text, hasText } = buildPageText(content.items);
-    pages.push({ pageNumber, text, hasText });
+    const { text, hasText, layout } = buildPageText(content.items);
+    pages.push({ pageNumber, text, hasText, layout });
     page.cleanup?.();
     onProgress?.(pageNumber, document.numPages);
   }

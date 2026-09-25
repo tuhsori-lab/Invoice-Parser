@@ -133,3 +133,37 @@ describe('telling a scanned page from a real one', () => {
     expect(text).toBe('Invoice 445566');
   });
 });
+
+describe('remembering where the text sat', () => {
+  it('reports the characters each run covers and the space it took up', () => {
+    const { text, layout } = buildPageText([
+      item('Date', { x: 463, y: 710, width: 19, size: 9 }),
+      item('Invoice #', { x: 522, y: 710, width: 36, size: 9 }),
+    ]);
+
+    expect(text).toBe('Date Invoice #');
+    expect(layout).toEqual([
+      { start: 0, end: 4, x: 463, endX: 482, band: 0 },
+      { start: 5, end: 14, x: 522, endX: 558, band: 0 },
+    ]);
+  });
+
+  it('numbers the bands so a later line can be told from the same one', () => {
+    const { layout } = buildPageText([
+      item('Invoice #', { x: 522, y: 710, width: 36, size: 9 }),
+      item('SR-40881', { x: 517, y: 688, width: 45, size: 9 }),
+    ]);
+
+    expect(layout.map((span) => span.band)).toEqual([0, 1]);
+  });
+
+  it('counts the offsets from the start of the whole page, not of each line', () => {
+    const { text, layout } = buildPageText([
+      item('Invoice #', { x: 522, y: 710, width: 36, size: 9 }),
+      item('SR-40881', { x: 517, y: 688, width: 45, size: 9 }),
+    ]);
+
+    const second = layout[1];
+    expect(text.slice(second.start, second.end)).toBe('SR-40881');
+  });
+});

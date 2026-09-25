@@ -21,6 +21,7 @@ import { labelsForPage } from './profiles.js';
  * @property {number} filePageIndex 0-based page number inside that source file.
  * @property {string} text the page's text.
  * @property {boolean} hasText false when the page has no usable text layer.
+ * @property {Array<object>} [layout] where each run of the text sat on the page.
  * @property {boolean} [ocr] true when the text came from text recognition.
  */
 
@@ -57,12 +58,16 @@ export function analyzePages(pages = [], settings = {}) {
 
   return pages.map((page) => {
     const text = page.text ?? '';
+    // Where each run sat on the page, so a value can be told from a coincidence
+    // standing at the same height. Pages read by text recognition have none.
+    const layout = page.layout ?? null;
     const { labels, matched, client } = labelsForPage(text, profiles);
     const candidates = detectCandidates(text, {
       profileLabels: labels,
       useCommonLabels,
       useBareInvoice,
       customPattern,
+      layout,
     });
     const extraLabels = [
       ...matched.map((profile) => profile.extraLabel).filter(Boolean),
@@ -74,7 +79,7 @@ export function analyzePages(pages = [], settings = {}) {
       detection: candidates[0] ?? null,
       candidates,
       conflict: hasConflict(candidates),
-      extra: extraLabels.length ? detectFieldValue(text, extraLabels) : null,
+      extra: extraLabels.length ? detectFieldValue(text, extraLabels, { layout }) : null,
       client,
       matchedProfiles: matched,
     };

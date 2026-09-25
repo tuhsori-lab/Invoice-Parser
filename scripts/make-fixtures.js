@@ -98,6 +98,40 @@ function totals(amount) {
   return [line(`Total due  ${amount}`, { size: 11, bold: true, gap: 4 })];
 }
 
+/**
+ * A page whose "Invoice #" is a column heading, with the number printed in the
+ * row underneath rather than beside it.
+ *
+ * The letterhead runs down the far left at those same two heights, so read as
+ * lines the heading row is "3RD FLOOR Date Invoice #" and the row under it
+ * starts with the company's own postcode. Reading order alone cannot tell that
+ * postcode from the invoice number; the column the heading stands over can.
+ */
+function columnHeadingPage(number, date) {
+  return [
+    line('Anchor Textile Group', { size: 12, bold: true, y: 743, x: MARGIN }),
+    line('Invoice', { size: 15, bold: true, y: 734, x: 500 }),
+    line('88 Weaver Street', { size: 12, faint: true, y: 721, x: MARGIN }),
+    line('3RD FLOOR', { size: 12, faint: true, y: 707, x: MARGIN }),
+    line('Date', { size: 8, bold: true, y: 710, x: 463 }),
+    line('Invoice #', { size: 8, bold: true, y: 710, x: 522 }),
+    line('SPRINGFIELD, IL 62704', { size: 12, faint: true, y: 692, x: MARGIN }),
+    line(date, { size: 8, y: 688, x: 454 }),
+    line(number, { size: 8, y: 688, x: 517 }),
+    line('Bill To', { size: 8, bold: true, y: 640, x: MARGIN }),
+    line('Lantern Apparel Co.', { size: 9, y: 626, x: MARGIN }),
+    line('914 Foundry Road, Akron, OH 44311', { size: 9, y: 614, x: MARGIN }),
+    line('Description', { size: 8, bold: true, y: 560, x: MARGIN }),
+    line('Qty', { size: 8, bold: true, y: 560, x: 330 }),
+    line('Amount', { size: 8, bold: true, y: 560, x: 440 }),
+    line('Brushed cotton overshirt', { size: 9, y: 544, x: MARGIN }),
+    line('42', { size: 9, y: 544, x: 330 }),
+    line('3,780.00', { size: 9, y: 544, x: 440 }),
+    line('Total', { size: 10, bold: true, y: 500, x: 380 }),
+    line('3,780.00', { size: 10, bold: true, y: 500, x: 440 }),
+  ];
+}
+
 /** Save one PDF built from a list of page descriptions. */
 async function writePdf(name, pages) {
   const pdf = await PDFDocument.create();
@@ -421,6 +455,20 @@ const FIXTURES = [
         line('165.00', { size: 9, y: 466, x: 400 }),
         line('59,400.00', { size: 10, bold: true, y: 380, x: 470 }),
       ],
+    ]),
+
+  /**
+   * 21. A label that is a column heading, with its value in the row below.
+   *
+   * Two invoices, one page each, laid out the way accounting packages print
+   * them: a narrow "Invoice #" column with the number underneath it. Whatever
+   * else sits at that height belongs to another column and is not the value,
+   * however early it comes in reading order.
+   */
+  () =>
+    writePdf('21-column-heading.pdf', [
+      columnHeadingPage('SR-40881', '09/22/26'),
+      columnHeadingPage('SR-40997', '09/23/26'),
     ]),
 
   /** 15. A file that cannot be opened without a password. */

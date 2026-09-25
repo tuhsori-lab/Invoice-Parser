@@ -16,6 +16,7 @@ import {
   isDateShaped,
   normalizeValue,
 } from '../../src/core/detect.js';
+import { buildPageText } from '../../src/core/extractText.js';
 
 describe('the order the tiers are tried in', () => {
   it('prefers a profile label over an everyday one', () => {
@@ -202,5 +203,70 @@ describe('pages with nothing on them', () => {
   ])('finds no number on a %s page', (text) => {
     expect(detectInvoiceNumber(text)).toBeNull();
     expect(detectCandidates(text)).toEqual([]);
+  });
+});
+
+describe('a label that is a column heading', () => {
+  /** One piece of drawn text, the shape pdf.js hands over. */
+  function item(str, { x, y, width, size = 9 }) {
+    return { str, transform: [size, 0, 0, size, x, y], width, height: size };
+  }
+
+  /**
+   * The top of an invoice that heads a narrow column "Invoice #" and prints the
+   * number in the row below it, with the company's own address running down the
+   * far left at those same two heights. Read as lines this comes out as:
+   *
+   *   3RD FLOOR Date Invoice #
+   *   SPRINGFIELD, IL 62704 09/22/26 SR-40881
+   *
+   * so the first number-shaped thing after the label is the postcode.
+   */
+  const page = () =>
+    buildPageText([
+      item('3RD FLOOR', { x: 56, y: 707, width: 65, size: 12 }),
+      item('Date', { x: 463, y: 710, width: 19 }),
+      item('Invoice #', { x: 522, y: 710, width: 36 }),
+      item('SPRINGFIELD, IL 62704', { x: 56, y: 692, width: 120, size: 12 }),
+      item('09/22/26', { x: 454, y: 688, width: 37 }),
+      item('SR-40881', { x: 517, y: 688, width: 45 }),
+    ]);
+
+  it('reads the value standing in the labeled column, not the one merely next in the line', () => {
+    const { text, layout } = page();
+
+    expect(detectInvoiceNumber(text, { layout })).toEqual({
+      value: 'SR-40881',
+      label: 'Invoice #',
+      source: 'common',
+    });
+  });
+
+  it('would read the postcode if it went by reading order alone', () => {
+    // Guards the test above: without the layout there is nothing to tell the
+    // postcode from the invoice number, and this is the answer that was wrong
+    // on a real batch.
+    const { text } = page();
+
+    expect(detectInvoiceNumber(text)?.value).toBe('62704');
+  });
+
+  it('still takes a value sitting beside its label on the same line', () => {
+    const { text, layout } = buildPageText([
+      item('INVOICE NO.', { x: 380, y: 700, width: 55 }),
+      item('1043396', { x: 470, y: 700, width: 40 }),
+      item('Northwind Traders', { x: 56, y: 700, width: 90 }),
+    ]);
+
+    expect(detectInvoiceNumber(text, { layout })?.value).toBe('1043396');
+  });
+
+  it('allows a value a little wider than its heading', () => {
+    const { text, layout } = buildPageText([
+      item('Invoice No', { x: 500, y: 700, width: 40 }),
+      item('A-99812', { x: 496, y: 684, width: 48 }),
+    ]);
+
+    expect(detectInvoiceNumber(text, { layout })?.value).toBe('A-99812');
   });
 });

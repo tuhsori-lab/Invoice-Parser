@@ -71,6 +71,11 @@ A few rules do most of the work of not being confidently wrong:
   by `Date` rather than by the number sitting next to it. Every run is placed by its coordinates,
   gathered into bands by how far down the page it is, and read left to right, which is what a
   person looking at the page does.
+- **A value has to stand in its label's column.** A label is often a column heading with its number
+  printed underneath rather than beside it, and something unrelated — a company's own postcode, say
+  — can sit at that same height on the far side of the page. On the label's own line reading order
+  decides; on a later line only what stands in the label's column counts, so the postcode is passed
+  over and the number below the heading is taken.
 
 Anything the engine is unsure about is flagged for review rather than quietly guessed:
 `no-number`, `fallback` (the bare tier answered), `conflict` (two labels, two different numbers),

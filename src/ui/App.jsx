@@ -310,7 +310,11 @@ export default function App() {
       if (found.size > 0) {
         setPages((current) =>
           current.map((page) =>
-            found.has(page.index) ? { ...page, text: found.get(page.index), ocr: true } : page
+            found.has(page.index)
+              ? // The old layout described the page's empty text layer, so it
+                // says nothing about where recognised words sit. Drop it.
+                { ...page, text: found.get(page.index), layout: null, ocr: true }
+              : page
           )
         );
       }
