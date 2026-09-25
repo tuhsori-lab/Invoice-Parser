@@ -58,6 +58,10 @@ A few rules do most of the work of not being confidently wrong:
 - **Never mid-word.** A label cannot start inside another word, so `Reinvoice No 12345` is ignored.
 - **The bare tier never crosses a line.** An `INVOICE` title with a street address underneath does
   not turn `1234 Maple Street` into the invoice number.
+- **A suffix belongs to the number.** Hyphens and underscores are part of a value rather than a
+  break in it, so `19205594_2` is kept whole. Accounting software often prints a revision or print
+  count that way, and two invoices can differ by nothing else. A dangling `-` or `_` on the end is
+  trimmed, and a value still has to contain a digit — `DRAFT_COPY` is not an invoice number.
 - **Dates are not invoice numbers.** Anything shaped like `09-01-2026`, `09/04/26` or `Sep 4, 2026`
   is skipped when looking for a value.
 - **Heading words are stepped over.** With `Invoice No.  Date  Terms` on one line and the values on

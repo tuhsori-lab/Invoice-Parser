@@ -467,8 +467,10 @@ const FIXTURES = [
    */
   () =>
     writePdf('21-column-heading.pdf', [
-      columnHeadingPage('SR-40881', '09/22/26'),
-      columnHeadingPage('SR-40997', '09/23/26'),
+      // The numbers carry a suffix, the way accounting software prints a
+      // revision or print count. It is part of the number, not a break in it.
+      columnHeadingPage('SR-40881_2', '09/22/26'),
+      columnHeadingPage('SR-40997_1', '09/23/26'),
     ]),
 
   /** 15. A file that cannot be opened without a password. */

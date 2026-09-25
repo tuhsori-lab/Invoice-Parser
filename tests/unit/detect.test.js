@@ -270,3 +270,35 @@ describe('a label that is a column heading', () => {
     expect(detectInvoiceNumber(text, { layout })?.value).toBe('A-99812');
   });
 });
+
+describe('a number with a suffix', () => {
+  it('keeps an underscore suffix, because it is part of the number', () => {
+    // Accounting software prints a revision or print count this way, and two
+    // invoices can differ by nothing else.
+    expect(detectInvoiceNumber('Invoice # 19205594_2')?.value).toBe('19205594_2');
+  });
+
+  it('tells two invoices apart by their suffix alone', () => {
+    expect(detectInvoiceNumber('Invoice # BROR1054_1')?.value).not.toBe(
+      detectInvoiceNumber('Invoice # BROR1054_4')?.value
+    );
+  });
+
+  it('keeps a suffix on a value the bare tier found', () => {
+    expect(detectInvoiceNumber('Invoice 445566_3', { useCommonLabels: false })).toEqual({
+      value: '445566_3',
+      label: 'Invoice',
+      source: 'bare',
+    });
+  });
+
+  it('leaves no underscore or hyphen dangling on the end', () => {
+    expect(normalizeValue('4455_')).toBe('4455');
+    expect(normalizeValue('4455-')).toBe('4455');
+    expect(normalizeValue('44_55')).toBe('44_55');
+  });
+
+  it('still refuses something with no digit in it at all', () => {
+    expect(detectInvoiceNumber('Invoice No: DRAFT_COPY')).toBeNull();
+  });
+});
