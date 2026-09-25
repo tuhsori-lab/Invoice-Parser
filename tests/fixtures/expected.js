@@ -290,11 +290,11 @@ export const CASES = [
   {
     case: 21,
     file: '21-column-heading.pdf',
-    what: 'A label that is a column heading, with its number in the row below',
+    what: 'A column heading with its number below it, the number carrying a suffix',
     pages: 2,
     groups: [
-      { invoice: 'SR-40881', pages: [1], label: 'Invoice #', source: 'common', flags: [] },
-      { invoice: 'SR-40997', pages: [2], label: 'Invoice #', source: 'common', flags: [] },
+      { invoice: 'SR-40881_2', pages: [1], label: 'Invoice #', source: 'common', flags: [] },
+      { invoice: 'SR-40997_1', pages: [2], label: 'Invoice #', source: 'common', flags: [] },
     ],
   },
   {

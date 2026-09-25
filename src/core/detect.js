@@ -53,8 +53,15 @@ const LABEL_TAIL = `\\.?${LABEL_GAP}:?${LABEL_GAP}`;
 /** A label may not start in the middle of a word ("Reinvoice No" is not a label). */
 const NOT_AFTER_LETTER = '(?<![A-Za-z])';
 
-/** Runs of characters that could be a value. */
-const TOKEN_PATTERN = /[A-Za-z0-9][A-Za-z0-9-]*/g;
+/**
+ * Runs of characters that could be a value.
+ *
+ * Hyphens and underscores are part of a number rather than a break in it:
+ * plenty of accounting software prints a revision or print count as a suffix,
+ * and "19205594_2" is the whole number, not "19205594" with something after it.
+ * A value still has to start with a letter or a digit.
+ */
+const TOKEN_PATTERN = /[A-Za-z0-9][A-Za-z0-9_-]*/g;
 
 const MONTH_NAMES = 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
 
@@ -107,9 +114,11 @@ function maskDates(window) {
     );
 }
 
-/** Tidy a raw value: upper case, no trailing hyphens. */
+/** Tidy a raw value: upper case, no hyphen or underscore left dangling. */
 export function normalizeValue(token) {
-  return String(token).toUpperCase().replace(/-+$/, '');
+  return String(token)
+    .toUpperCase()
+    .replace(/[-_]+$/, '');
 }
 
 /** Could this run of characters be an invoice number? */
@@ -249,7 +258,9 @@ function hitsForPattern(text, pattern, source, options = {}) {
       // The bare "Invoice" tier trusts only the very next run of characters, so
       // that a street address printed under an "INVOICE" title is never read as
       // the invoice number.
-      const next = /^[A-Za-z0-9][A-Za-z0-9-]*/.exec(text.slice(after, after + VALUE_SEARCH_WINDOW));
+      const next = /^[A-Za-z0-9][A-Za-z0-9_-]*/.exec(
+        text.slice(after, after + VALUE_SEARCH_WINDOW)
+      );
       if (next && isUsableValue(next[0])) {
         const label = layout ? rangeOf(layout, match.index, after) : null;
         if (belongsToLabel(layout, label, after, after + next[0].length)) {
