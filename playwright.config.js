@@ -22,8 +22,14 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 
   // The built app, served the way it is served in production.
+  //
+  // The host is given outright rather than left to default to "localhost".
+  // Node stopped putting IPv4 first when resolving that name, so on a machine
+  // where localhost is ::1 the server binds to IPv6 while the line below waits
+  // on IPv4, and nothing ever answers. Naming the same address in both places
+  // leaves nothing to resolve.
   webServer: {
-    command: 'npm run build && npm run preview -- --port 4173 --strictPort',
+    command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 4173 --strictPort',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
