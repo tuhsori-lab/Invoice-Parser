@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useDialog } from '../../lib/useDialog.js';
 import { DEFAULT_TEMPLATE } from '../../core/naming.js';
 
 /** One phrase per line, which is how people think about lists like this. */
@@ -24,19 +25,12 @@ export default function ProfileEditor({ profile, canDelete, onSave, onDelete, on
     filenameTemplate: profile.filenameTemplate ?? '',
     identifyingText: asLines(profile.identifyingText),
   });
-  const dialog = useRef(null);
+  const dialog = useDialog({ onClose });
   const nameField = useRef(null);
 
   useEffect(() => {
     nameField.current?.focus();
-    const onKey = (event) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, []);
 
   const set = (key) => (event) =>
     setDraft((current) => ({ ...current, [key]: event.target.value }));

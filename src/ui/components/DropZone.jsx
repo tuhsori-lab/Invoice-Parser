@@ -66,6 +66,7 @@ export default function DropZone({ files, pageCount, onFiles, onClear, busy }) {
         type="file"
         accept="application/pdf,.pdf"
         multiple
+        aria-label="Choose PDF files to split"
         className="visually-hidden"
         data-testid="file-input"
         onChange={(event) => {

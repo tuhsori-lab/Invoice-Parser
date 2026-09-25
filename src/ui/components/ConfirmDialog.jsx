@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useDialog } from '../../lib/useDialog.js';
 
 /**
  * A question asked before something that cannot be taken back.
@@ -8,18 +8,7 @@ import { useEffect, useRef } from 'react';
  * the way rather than blocking.
  */
 export default function ConfirmDialog({ question, detail, confirmLabel, onConfirm, onCancel }) {
-  const dialog = useRef(null);
-
-  useEffect(() => {
-    dialog.current?.focus();
-    const onKey = (event) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      onCancel();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
+  const dialog = useDialog({ onClose: onCancel });
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>

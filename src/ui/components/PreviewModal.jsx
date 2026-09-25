@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { TextLayer } from '../../lib/pdfjs.js';
 import { labelFromSelection } from '../../core/profiles.js';
+import { useDialog } from '../../lib/useDialog.js';
 
 /** How wide the rendered page is drawn, in CSS pixels. */
 const PAGE_WIDTH = 660;
@@ -26,7 +27,7 @@ export default function PreviewModal({
 }) {
   const canvasRef = useRef(null);
   const textRef = useRef(null);
-  const dialogRef = useRef(null);
+  const dialogRef = useDialog({ onClose });
   const [drawing, setDrawing] = useState(true);
   const [taught, setTaught] = useState('');
   const [teaching, setTeaching] = useState(null);
@@ -103,19 +104,19 @@ export default function PreviewModal({
     if (label) setTeaching({ label, profileId: profiles?.[0]?.id ?? 'new' });
   };
 
-  // Arrow keys step through pages; Esc closes.
+  // Arrow keys step through pages. Escape and the focus trap are handled by
+  // useDialog, which every dialog in this app shares.
   useEffect(() => {
     const onKey = (event) => {
-      if (event.key === 'Escape') onClose();
-      else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') onStep(1);
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName)) return;
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') onStep(1);
       else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') onStep(-1);
       else return;
       event.preventDefault();
     };
     window.addEventListener('keydown', onKey);
-    dialogRef.current?.focus();
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, onStep]);
+  }, [onStep]);
 
   if (!page) return null;
 
@@ -270,7 +271,11 @@ export default function PreviewModal({
           <aside className="text-panel">
             <h3>Text found on this page</h3>
             {page.text ? (
-              <pre data-testid="page-text">{page.text}</pre>
+              // Focusable because it scrolls: a keyboard user needs to be able
+              // to reach it in order to scroll it.
+              <pre data-testid="page-text" tabIndex={0}>
+                {page.text}
+              </pre>
             ) : (
               <p className="muted">
                 No readable text was found. This looks like a scan. Text recognition can read it.

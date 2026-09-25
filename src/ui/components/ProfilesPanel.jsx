@@ -104,6 +104,7 @@ export default function ProfilesPanel({
         ref={input}
         type="file"
         accept="application/json,.json"
+        aria-label="Choose a profiles file to import"
         className="visually-hidden"
         data-testid="profile-import-input"
         onChange={(event) => {

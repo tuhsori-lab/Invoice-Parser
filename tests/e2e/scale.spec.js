@@ -78,8 +78,11 @@ test('offers to read a page that is only a picture, and flags what it read', asy
 
   await loadFixtures(page, ['16-image-only.pdf']);
 
+  // Every page in this file is a scan, so the notice says so in full.
   const notice = page.getByTestId('scanned-notice');
-  await expect(notice).toContainText('One page has no readable text on it');
+  await expect(notice).toContainText(
+    'No readable text was found. These look like scanned pages. Turn on text recognition to read them.'
+  );
 
   await page.getByTestId('read-scanned').click();
   await expect(page.getByTestId('stop-reading')).toBeVisible();

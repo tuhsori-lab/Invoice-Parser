@@ -11,6 +11,7 @@ import { saveFile } from '../lib/download.js';
 import { useDebounced } from '../lib/useDebounced.js';
 import { useUndoable } from '../lib/useUndoable.js';
 import { loadProfiles, saveProfiles } from '../lib/profileStore.js';
+import { applyTheme, loadTheme, watchSystemTheme } from '../lib/theme.js';
 import { readScannedPages, stopOcr } from '../lib/ocr.js';
 import DropZone from './components/DropZone.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
@@ -21,6 +22,7 @@ import ReviewQueue from './components/ReviewQueue.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
 import ProfilesPanel from './components/ProfilesPanel.jsx';
 import ProfileEditor from './components/ProfileEditor.jsx';
+import ThemeChoice from './components/ThemeChoice.jsx';
 
 /** What the app does before anyone changes anything. */
 const INITIAL_SETTINGS = {
@@ -71,6 +73,7 @@ export default function App() {
   const [profiles, setProfiles] = useState(saved.profiles);
   const [activeProfiles, setActiveProfiles] = useState(saved.active);
   const [editingProfile, setEditingProfile] = useState(null);
+  const [theme, setTheme] = useState(loadTheme);
 
   /**
    * Every fix made by hand. Kept apart from the detection settings, and apart
@@ -90,6 +93,13 @@ export default function App() {
   useEffect(() => {
     saveProfiles(profiles, activeProfiles);
   }, [profiles, activeProfiles]);
+
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+  useEffect(() => {
+    applyTheme(theme);
+    return watchSystemTheme(() => themeRef.current);
+  }, [theme]);
 
   /** The profiles switched on, in the order they are listed. */
   const profilesInUse = useMemo(
@@ -520,11 +530,16 @@ export default function App() {
 
   return (
     <div className="app">
+      <a className="skip-link" href="#results">
+        Skip to the invoices
+      </a>
+
       <header className="masthead">
         <h1>Invoice Splitter</h1>
         <p className="masthead-note">
           Your files never leave this browser. There is no server to send them to.
         </p>
+        <ThemeChoice theme={theme} onChange={setTheme} />
       </header>
 
       <DropZone
@@ -559,19 +574,30 @@ export default function App() {
       )}
 
       {problems.length > 0 && (
-        <ul className="problems" data-testid="problems">
-          {problems.map((problem, position) => {
-            if (problem.message) {
-              return <li key={`said-${position}`}>{problem.message}</li>;
-            }
-            const message = explain(problem.kind, { fileName: problem.fileName });
-            return (
-              <li key={`${problem.fileName}-${position}`}>
-                <strong>{message.what}</strong> {message.next}
-              </li>
-            );
-          })}
-        </ul>
+        <div className="problems" role="alert" data-testid="problems">
+          <ul>
+            {problems.map((problem, position) => {
+              if (problem.message) {
+                return <li key={`said-${position}`}>{problem.message}</li>;
+              }
+              const message = explain(problem.kind, { fileName: problem.fileName });
+              return (
+                <li key={`${problem.fileName}-${position}`}>
+                  <strong>{message.what}</strong> {message.next}
+                </li>
+              );
+            })}
+          </ul>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Dismiss these messages"
+            data-testid="dismiss-problems"
+            onClick={() => setProblems([])}
+          >
+            &times;
+          </button>
+        </div>
       )}
 
       {pageCount === 0 && !loading && (
@@ -607,9 +633,9 @@ export default function App() {
             />
           </div>
 
-          <section className="results">
+          <section className="results" id="results" tabIndex={-1}>
             <div className="results-head">
-              <p className="summary" data-testid="summary">
+              <p className="summary" data-testid="summary" role="status" aria-live="polite">
                 {pageCount} {pageCount === 1 ? 'page' : 'pages'} split into {groups.length}{' '}
                 {groups.length === 1 ? 'invoice' : 'invoices'}
                 {needingReview > 0 && `, ${needingReview} worth a look`}.
@@ -700,9 +726,11 @@ export default function App() {
                 ) : (
                   <>
                     <p>
-                      {scannedPages.length === 1
-                        ? 'One page has no readable text on it. It looks like a scan.'
-                        : `${scannedPages.length} pages have no readable text on them. They look like scans.`}
+                      {scannedPages.length === pageCount
+                        ? explain('no-text').text
+                        : scannedPages.length === 1
+                          ? 'One page has no readable text on it. It looks like a scan.'
+                          : `${scannedPages.length} pages have no readable text on them. They look like scans.`}
                     </p>
                     <button
                       type="button"

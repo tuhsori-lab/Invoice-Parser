@@ -8,6 +8,20 @@
       content="Split bulk PDFs into individual, correctly named invoices. Everything happens in your browser; no file is ever uploaded."
     />
     <title>Invoice Splitter</title>
+    <script>
+      // Settle the theme before anything is painted, so the page never flashes
+      // the wrong colours. The app keeps this attribute up to date afterwards.
+      (function () {
+        try {
+          var saved = localStorage.getItem('invoice-splitter.theme.v1');
+          var dark =
+            saved === 'dark' || (!saved && matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        } catch (error) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

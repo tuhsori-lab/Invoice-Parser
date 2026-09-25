@@ -2,13 +2,19 @@
 
 Split a bulk PDF full of invoices into one correctly named PDF per invoice — entirely in your browser.
 
+**[Try it](https://tuhsori-lab.github.io/Invoice-Parser/)** — it runs entirely in the page; nothing
+you open is uploaded.
+
 Accounts receivable and collections teams get invoice batches from dozens of clients, each with its
 own layout, arriving as one 400-page PDF. Splitting that by hand is an afternoon. This does it in a
 few seconds, shows its working, and lets you fix anything it got wrong before you export.
 
-> **Status:** phase 5 of 6. Everything works, including scanned pages and long batches. What is
-> left is the last polish pass: dark theme refinements, an accessibility pass, empty states, a
-> walkthrough GIF and the live demo.
+![Three PDFs are dropped in and split into invoices. One page belongs to a client whose label
+nothing recognises, so it is swept in with the invoice before it; highlighting the words the number
+comes after teaches the app that client, and the batch re-splits correctly.](docs/demo.gif)
+
+Every invoice in that recording is made up. It was recorded from the real app by `npm run demo`,
+using the sample PDFs this repository generates.
 
 ## Your files never leave your browser
 
@@ -21,10 +27,16 @@ You do not have to take that on trust:
 
 1. Open your browser's developer tools (F12) and go to the **Network** tab.
 2. Load a batch, split it, and export.
-3. The only requests you will see are the app's own files, loaded once when the page opens. Nothing
-   is sent while you work.
+3. Every request you see is for this app's own files, from this app's own address. Some of it
+   arrives late — the code that builds PDFs is fetched the first time you export, and the text
+   recognition engine the first time you turn it on — and all of it is `GET`. Nothing is ever sent.
 
-You can also disconnect from the network entirely after the page loads and everything still works.
+You can also disconnect from the network entirely after the page has loaded, and everything except
+turning text recognition on for the first time still works.
+
+There is a test that holds this to account: it watches every request the browser makes while a
+batch is loaded, searched, previewed and exported, and fails if any of them leaves this origin or is
+anything other than a `GET`.
 
 ## How the invoice number is found
 
@@ -197,7 +209,8 @@ npm install       # install dependencies
 npm run dev       # start the dev server
 npm run fixtures  # build the sample PDFs in tests/fixtures/pdf
 npm test          # unit tests (builds the fixtures first if they are missing)
-npm run test:e2e  # end-to-end tests in a real browser
+npm run test:e2e  # end-to-end tests in a real browser, including an accessibility audit
+npm run demo      # re-record the GIF above (needs the app built and served)
 npm run lint      # ESLint
 npm run build     # production build into dist/
 ```
@@ -234,10 +247,37 @@ src/ui/            the interface (React) and its one stylesheet
 scripts/           the fixture generator and its small helpers
 tests/unit/        unit tests, including every layout in tests/fixtures/expected.js
 tests/e2e/         the whole flow in a real browser, from dropped file to saved file
+docs/              the walkthrough GIF, recorded from the app by scripts/make-demo.js
 ```
 
 The engine imports nothing from the interface. That is enforced by an ESLint rule, and it is why the
 detection rules can be tested on their own — most of the test suite never opens a PDF at all.
+
+## Getting on with it without a mouse
+
+Every part of this can be worked from the keyboard, and the whole thing is checked against the
+WCAG 2.1 AA rules by an automated audit on every push — the empty page, a split batch in both
+themes, the page preview and the profile editor.
+
+| Key            | Does                                    |
+| -------------- | --------------------------------------- |
+| `/`            | Jump to the search box                  |
+| `N`            | Open the next thing to review           |
+| `Ctrl+Z`       | Undo the last fix                       |
+| `Ctrl+Shift+Z` | Redo                                    |
+| `←` `→`        | Step through pages in the preview       |
+| `Esc`          | Close whatever is open                  |
+| `Tab`          | Stays inside a dialog while one is open |
+
+Dialogs give focus back to whatever opened them, there is a skip link past the settings, the
+summary sentence is announced when it changes, and the whole thing works down to a 380-pixel-wide
+screen. Colours are checked against the paper they sit on: nothing is below 4.5:1.
+
+## Light and dark
+
+There is a light theme, a dark theme, and "System", which follows whatever this computer is set to
+and changes with it. The choice is remembered in this browser and settled before the first paint,
+so the page never flashes the wrong colours on the way in.
 
 ## What it cannot do
 
@@ -258,7 +298,14 @@ detection rules can be tested on their own — most of the test suite never open
 3. **Review and fixing** — the review queue, manual split/join/move, inline edits, undo and redo. ✅
 4. **Profiles** — client profiles and teaching a label by highlighting it. ✅
 5. **Scale and scanned files** — OCR, 1,000-page batches, virtualised table, lazy thumbnails. ✅
-6. **Polish and ship** — dark theme, accessibility pass, README GIF, GitHub Pages.
+6. **Polish and ship** — dark theme, accessibility pass, empty and error states, README GIF,
+   GitHub Pages. ✅
+
+## Deploying it
+
+Every push runs lint, formatting, the unit tests, a build, and the browser tests. A push to `main`
+also deploys to GitHub Pages. That last part needs the repository set up for it once: **Settings →
+Pages → Source: GitHub Actions**. Until then the workflow runs and the link above will not answer.
 
 ## License
 
