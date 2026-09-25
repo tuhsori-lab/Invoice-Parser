@@ -2,3 +2,6 @@ dist/
 coverage/
 tests/fixtures/pdf/
 package-lock.json
+public/
+playwright-report/
+test-results/

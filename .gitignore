@@ -8,3 +8,7 @@ coverage/
 tests/fixtures/pdf/
 test-results/
 playwright-report/
+
+# Copied from node_modules by `npm run assets`.
+public/pdfjs/
+public/tesseract/

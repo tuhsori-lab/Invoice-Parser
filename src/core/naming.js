@@ -136,7 +136,9 @@ export function fillTemplate(template, values) {
  * @returns {string} a file name ending in .pdf.
  */
 export function buildFileName(group, options = {}) {
-  const { template = DEFAULT_TEMPLATE, prefix = '', index = 1, total = 1 } = options;
+  const { prefix = '', index = 1, total = 1 } = options;
+  // A client profile may name its own files; otherwise the batch-wide pattern.
+  const template = group.template || options.template || DEFAULT_TEMPLATE;
   const pageNumbers = group.pages.map((page) => page.index);
   const pages = pageRangeForName(pageNumbers);
   const width = String(Math.max(total, 1)).length;

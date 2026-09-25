@@ -108,6 +108,15 @@ describe('the file name template', () => {
     expect(nameOf(group('104233', [1]), { prefix: 'Northwind ' })).toBe('Northwind 104233.pdf');
   });
 
+  it("lets a client's own pattern win over the batch-wide one", () => {
+    const client = {
+      ...group('104233', [1], { extra: 'PO-9', client: 'Northwind Traders' }),
+      template: '{client}_{invoice}',
+    };
+
+    expect(nameOf(client, { template: '{invoice}_{extra}' })).toBe('Northwind Traders_104233.pdf');
+  });
+
   it('names an invoice with no number after its pages', () => {
     expect(nameOf(group(null, [5, 6]))).toBe('NO-NUMBER_p5-6.pdf');
   });
