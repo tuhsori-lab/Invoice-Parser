@@ -285,7 +285,7 @@ export const CASES = [
     file: '20-form-layout.pdf',
     what: 'A filled-in form: the labels drawn in one pass, the values in another',
     pages: 1,
-    groups: [{ invoice: '1043396', pages: [1], label: 'INVOICE NO.', source: 'common', flags: [] }],
+    groups: [{ invoice: '2071548', pages: [1], label: 'INVOICE NO.', source: 'common', flags: [] }],
   },
   {
     case: 21,

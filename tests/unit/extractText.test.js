@@ -69,11 +69,11 @@ describe('joining pieces of text', () => {
     const { text } = buildPageText([
       item('INVOICE NO.', { x: 380, y: 700 }),
       item('DATE', { x: 380, y: 680 }),
-      item('1043396', { x: 470, y: 700 }),
-      item('09/18/26', { x: 470, y: 680 }),
+      item('2071548', { x: 470, y: 700 }),
+      item('03/04/26', { x: 470, y: 680 }),
     ]);
 
-    expect(text).toBe('INVOICE NO. 1043396\nDATE 09/18/26');
+    expect(text).toBe('INVOICE NO. 2071548\nDATE 03/04/26');
   });
 
   it('pays no attention to a run being marked as ending a line', () => {

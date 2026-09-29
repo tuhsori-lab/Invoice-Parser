@@ -255,11 +255,11 @@ describe('a label that is a column heading', () => {
   it('still takes a value sitting beside its label on the same line', () => {
     const { text, layout } = buildPageText([
       item('INVOICE NO.', { x: 380, y: 700, width: 55 }),
-      item('1043396', { x: 470, y: 700, width: 40 }),
+      item('2071548', { x: 470, y: 700, width: 40 }),
       item('Northwind Traders', { x: 56, y: 700, width: 90 }),
     ]);
 
-    expect(detectInvoiceNumber(text, { layout })?.value).toBe('1043396');
+    expect(detectInvoiceNumber(text, { layout })?.value).toBe('2071548');
   });
 
   it('allows a value a little wider than its heading', () => {
@@ -276,12 +276,12 @@ describe('a number with a suffix', () => {
   it('keeps an underscore suffix, because it is part of the number', () => {
     // Accounting software prints a revision or print count this way, and two
     // invoices can differ by nothing else.
-    expect(detectInvoiceNumber('Invoice # 19205594_2')?.value).toBe('19205594_2');
+    expect(detectInvoiceNumber('Invoice # 40017822_2')?.value).toBe('40017822_2');
   });
 
   it('tells two invoices apart by their suffix alone', () => {
-    expect(detectInvoiceNumber('Invoice # BROR1054_1')?.value).not.toBe(
-      detectInvoiceNumber('Invoice # BROR1054_4')?.value
+    expect(detectInvoiceNumber('Invoice # KLMN2231_1')?.value).not.toBe(
+      detectInvoiceNumber('Invoice # KLMN2231_4')?.value
     );
   });
 

@@ -127,12 +127,12 @@ describe('teaching a label by highlighting it', () => {
     // The label is what comes before the number, not everything up to the last
     // word that happens to have a digit in it.
     expect(
-      labelFromSelection('N° order + Reference 50621 US FW26 CARRY OVER PART 1 Deliver.env: 5062')
-    ).toBe('N° order + Reference');
+      labelFromSelection('Our order + Ref 71402 SS27 REPEAT LOT 2 Ship.note: 7140')
+    ).toBe('Our order + Ref');
   });
 
   it('is not fooled by a word with a digit sitting after the number', () => {
-    expect(labelFromSelection('Invoice No 104501 Date 09/18/26')).toBe('Invoice No');
+    expect(labelFromSelection('Invoice No 104501 Date 03/04/26')).toBe('Invoice No');
   });
 
   it('keeps a label whose own words are too short to be a number', () => {

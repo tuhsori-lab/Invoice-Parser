@@ -60,7 +60,7 @@ const NOT_AFTER_LETTER = '(?<![A-Za-z])';
  *
  * Hyphens and underscores are part of a number rather than a break in it:
  * plenty of accounting software prints a revision or print count as a suffix,
- * and "19205594_2" is the whole number, not "19205594" with something after it.
+ * and "40017822_2" is the whole number, not "40017822" with something after it.
  * A value still has to start with a letter or a digit.
  */
 const TOKEN_PATTERN = /[A-Za-z0-9][A-Za-z0-9_-]*/g;
@@ -150,8 +150,8 @@ const COLUMN_SLACK = 4;
  * Where a stretch of the page's text sat on the page.
  *
  * Positions are interpolated across each run, so that part of a run can be
- * placed as well as the whole of it - which is what makes the "10012" inside
- * "NEW YORK, NY 10012" locatable on its own.
+ * placed as well as the whole of it - which is what makes the "62704" inside
+ * "SPRINGFIELD, IL 62704" locatable on its own.
  *
  * @param {Array<object>} layout - the spans from extractText.js.
  * @param {number} start - first character of the stretch.

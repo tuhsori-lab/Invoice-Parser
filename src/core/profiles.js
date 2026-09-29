@@ -191,10 +191,10 @@ export function labelFromSelection(selection) {
 
   // Everything from the first number-shaped word onwards is the value, not the
   // label. Trimming digits off the end instead stops at the first word without
-  // one, and on a line that runs several columns together - "N° order +
-  // Reference 50621 US FW26 CARRY OVER PART 1 Deliver.env: 5062" - that leaves
-  // the whole line as the label. Cutting at the number leaves "N° order +
-  // Reference", which is what was pointed at.
+  // one, and on a line that runs several columns together - "Our order +
+  // Ref 71402 SS27 REPEAT LOT 2 Ship.note: 7140" - that leaves
+  // the whole line as the label. Cutting at the number leaves "Our order +
+  // Ref", which is what was pointed at.
   const words = text.split(' ');
   const valueAt = words.findIndex((word) => {
     const [token] = /[A-Za-z0-9][A-Za-z0-9_-]*/.exec(word) ?? [];
