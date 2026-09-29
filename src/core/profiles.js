@@ -13,6 +13,8 @@
  * between computers.
  */
 
+import { looksLikeValue } from './detect.js';
+
 /** Shape of the file written by "Export profiles". */
 export const PROFILE_FILE_KIND = 'invoice-splitter-profiles';
 export const PROFILE_FILE_VERSION = 1;
@@ -133,11 +135,19 @@ export function labelFromSelection(selection) {
     .trim();
   if (!text) return '';
 
+  // Everything from the first number-shaped word onwards is the value, not the
+  // label. Trimming digits off the end instead stops at the first word without
+  // one, and on a line that runs several columns together - "N° order +
+  // Reference 50621 US FW26 CARRY OVER PART 1 Deliver.env: 5062" - that leaves
+  // the whole line as the label. Cutting at the number leaves "N° order +
+  // Reference", which is what was pointed at.
   const words = text.split(' ');
-  // Anything at the end with a digit in it is the value, not the label.
-  while (words.length > 0 && /\d/.test(words[words.length - 1])) words.pop();
+  const valueAt = words.findIndex((word) => {
+    const [token] = /[A-Za-z0-9][A-Za-z0-9_-]*/.exec(word) ?? [];
+    return token ? looksLikeValue(token) : false;
+  });
 
-  const label = words
+  const label = (valueAt === -1 ? words : words.slice(0, valueAt))
     .join(' ')
     .replace(/[\s:.,;]+$/, '')
     .trim();

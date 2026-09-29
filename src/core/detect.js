@@ -121,8 +121,17 @@ export function normalizeValue(token) {
     .replace(/[-_]+$/, '');
 }
 
-/** Could this run of characters be an invoice number? */
-function isUsableValue(token) {
+/**
+ * Could this run of characters be an invoice number?
+ *
+ * Exported because teaching a label needs the same notion: the words a person
+ * highlights in front of a number are the label, and this says where the number
+ * starts.
+ *
+ * @param {string} token
+ * @returns {boolean}
+ */
+export function looksLikeValue(token) {
   if (!/\d/.test(token)) return false;
   if (isDateShaped(token)) return false;
   return normalizeValue(token).length >= MIN_VALUE_LENGTH;
@@ -217,7 +226,7 @@ export function findValueAfterLabel(text, from, options = {}) {
   let match;
   while ((match = TOKEN_PATTERN.exec(window)) !== null) {
     const at = from + match.index;
-    if (isUsableValue(match[0]) && belongsToLabel(layout, label, at, at + match[0].length)) {
+    if (looksLikeValue(match[0]) && belongsToLabel(layout, label, at, at + match[0].length)) {
       TOKEN_PATTERN.lastIndex = 0;
       return normalizeValue(match[0]);
     }
@@ -261,7 +270,7 @@ function hitsForPattern(text, pattern, source, options = {}) {
       const next = /^[A-Za-z0-9][A-Za-z0-9_-]*/.exec(
         text.slice(after, after + VALUE_SEARCH_WINDOW)
       );
-      if (next && isUsableValue(next[0])) {
+      if (next && looksLikeValue(next[0])) {
         const label = layout ? rangeOf(layout, match.index, after) : null;
         if (belongsToLabel(layout, label, after, after + next[0].length)) {
           value = normalizeValue(next[0]);
