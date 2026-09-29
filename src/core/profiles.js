@@ -48,6 +48,22 @@ function cleanZone(value) {
   return zone;
 }
 
+/**
+ * The shape remembered alongside a spot, as valueShape in detect.js writes it:
+ * runs like A4 or D5, and single separator characters, split by spaces.
+ * Anything else is dropped rather than trusted.
+ *
+ * @param {*} value
+ * @returns {string}
+ */
+function cleanShape(value) {
+  if (typeof value !== 'string') return '';
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0 || parts.length > 24) return '';
+  const valid = parts.every((part) => /^[AD]\d{1,3}$/.test(part) || /^[^A-Za-z0-9]$/.test(part));
+  return valid ? parts.join(' ') : '';
+}
+
 /** Longest label worth keeping from a highlight. */
 const MAX_LABEL_LENGTH = 60;
 
@@ -81,9 +97,11 @@ function cleanList(value) {
  *
  * @param {object} [input]
  * @returns {{ id: string, name: string, labels: string[], extraLabel: string,
- *   filenameTemplate: string, identifyingText: string[], zone: object|null }}
+ *   filenameTemplate: string, identifyingText: string[], zone: object|null,
+ *   zoneShape: string }}
  */
 export function createProfile(input = {}) {
+  const zone = cleanZone(input.zone);
   return {
     id: typeof input.id === 'string' && input.id ? input.id : nextId(),
     name: (input.name ?? '').trim() || 'Untitled client',
@@ -91,7 +109,9 @@ export function createProfile(input = {}) {
     extraLabel: (input.extraLabel ?? '').trim(),
     filenameTemplate: (input.filenameTemplate ?? '').trim(),
     identifyingText: cleanList(input.identifyingText),
-    zone: cleanZone(input.zone),
+    zone,
+    // A shape only means something next to the spot it was taken from.
+    zoneShape: zone ? cleanShape(input.zoneShape) : '',
   };
 }
 
@@ -151,7 +171,7 @@ export function labelsForPage(text, profiles = []) {
  *
  * @param {string} text
  * @param {Array<object>} profiles - the active profiles, in the user's order.
- * @returns {Array<{ zone: object, name: string }>}
+ * @returns {Array<{ zone: object, name: string, shape: string }>}
  */
 export function zonesForPage(text, profiles = []) {
   const matched = matchProfiles(text, profiles);
@@ -160,7 +180,7 @@ export function zonesForPage(text, profiles = []) {
     : profiles.filter((profile) => (profile?.identifyingText ?? []).length === 0);
   return source
     .filter((profile) => profile?.zone)
-    .map((profile) => ({ zone: profile.zone, name: profile.name }));
+    .map((profile) => ({ zone: profile.zone, name: profile.name, shape: profile.zoneShape ?? '' }));
 }
 
 /**
@@ -230,6 +250,7 @@ export function serializeProfiles(profiles = []) {
         filenameTemplate: profile.filenameTemplate ?? '',
         identifyingText: profile.identifyingText ?? [],
         zone: profile.zone ?? null,
+        zoneShape: profile.zoneShape ?? '',
       })),
     },
     null,

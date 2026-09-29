@@ -132,6 +132,33 @@ function columnHeadingPage(number, date) {
   ];
 }
 
+/**
+ * A page from a client whose invoice number sits under a heading nothing
+ * recognises, so only a saved spot can find it.
+ *
+ * The first page of each invoice prints the number in that spot. A continuation
+ * page prints a subtotal carried over from the page before in exactly the same
+ * place - the thing a spot has to ignore, or every continuation page would
+ * start an invoice of its own.
+ */
+function boxedNumberPage({ number = '', continuation = false }) {
+  return [
+    line('Harbor & Pine Apparel', { size: 14, bold: true, y: 740, x: MARGIN }),
+    line('7 Quayside Lane, Kingsbridge TQ7 1HT', { size: 9, faint: true, y: 726, x: MARGIN }),
+    line(continuation ? 'FACTURE (SUITE)' : 'FACTURE', { size: 13, bold: true, y: 700, x: MARGIN }),
+    line(continuation ? 'Report' : 'N° pièce', { size: 8, bold: true, y: 700, x: 430 }),
+    line(continuation ? '1,472.00' : number, { size: 9, y: 686, x: 430 }),
+    line('Date', { size: 8, bold: true, y: 700, x: 520 }),
+    line('03/04/26', { size: 9, y: 686, x: 520 }),
+    line('Description', { size: 8, bold: true, y: 600, x: MARGIN }),
+    line('Qty', { size: 8, bold: true, y: 600, x: 330 }),
+    line('Amount', { size: 8, bold: true, y: 600, x: 440 }),
+    line(continuation ? 'Linen overshirt' : 'Merino crew knit', { size: 9, y: 584, x: MARGIN }),
+    line(continuation ? '18' : '24', { size: 9, y: 584, x: 330 }),
+    line(continuation ? '1,512.00' : '2,944.00', { size: 9, y: 584, x: 440 }),
+  ];
+}
+
 /** Save one PDF built from a list of page descriptions. */
 async function writePdf(name, pages) {
   const pdf = await PDFDocument.create();
@@ -471,6 +498,22 @@ const FIXTURES = [
       // revision or print count. It is part of the number, not a break in it.
       columnHeadingPage('SR-40881_2', '09/22/26'),
       columnHeadingPage('SR-40997_1', '09/23/26'),
+    ]),
+
+  /**
+   * 22. Two invoices of two pages each, from a client only a saved spot can read.
+   *
+   * The number is under "N\u00b0 pi\u00e8ce", which no label tier knows, and each
+   * continuation page has a subtotal in that same spot. Read from a spot that
+   * remembers the shape of the number it was shown, the subtotal is passed
+   * over and each continuation page stays with the invoice it continues.
+   */
+  () =>
+    writePdf('22-boxed-number.pdf', [
+      boxedNumberPage({ number: '50621' }),
+      boxedNumberPage({ continuation: true }),
+      boxedNumberPage({ number: '50698' }),
+      boxedNumberPage({ continuation: true }),
     ]),
 
   /** 15. A file that cannot be opened without a password. */

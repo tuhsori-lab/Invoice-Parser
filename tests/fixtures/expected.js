@@ -18,6 +18,19 @@ export const LUCERNE = createProfile({
   identifyingText: ['Lucerne Publishing'],
 });
 
+/**
+ * A client read only from a spot pointed at on their invoice, remembering that
+ * their numbers are five digits. The spot is where fixture 22 prints the
+ * number, as fractions of a US Letter page, measured from the bottom left.
+ */
+export const HARBOR_PINE = createProfile({
+  id: 'harbor-pine',
+  name: 'Harbor & Pine Apparel',
+  identifyingText: ['Harbor & Pine Apparel'],
+  zone: { x0: 430 / 612, x1: 456 / 612, y0: 686 / 792, y1: 695 / 792 },
+  zoneShape: 'D5',
+});
+
 /** Two clients that share one bulk file, each with its own way of printing. */
 export const NORTHWIND = createProfile({
   id: 'northwind',
@@ -334,6 +347,24 @@ export const CASES = [
         source: 'common',
         flags: ['conflict'],
       },
+    ],
+  },
+  {
+    case: 22,
+    file: '22-boxed-number.pdf',
+    what: 'A number under a heading nothing recognises, nothing having been taught',
+    pages: 4,
+    groups: [{ invoice: null, pages: [1, 2, 3, 4], flags: ['no-number'] }],
+  },
+  {
+    case: 22.1,
+    file: '22-boxed-number.pdf',
+    what: 'The same file read from a saved spot: continuation pages stay with their invoice',
+    detect: { profiles: [HARBOR_PINE] },
+    pages: 4,
+    groups: [
+      { invoice: '50621', pages: [1, 2], continuation: [2], source: 'zone', flags: [] },
+      { invoice: '50698', pages: [3, 4], continuation: [4], source: 'zone', flags: [] },
     ],
   },
 ];

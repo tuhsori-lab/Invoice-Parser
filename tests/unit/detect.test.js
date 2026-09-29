@@ -13,6 +13,8 @@ import {
   detectFieldValue,
   detectInZone,
   detectInvoiceNumber,
+  fitsShape,
+  valueShape,
   detectPurchaseOrder,
   hasConflict,
   isDateShaped,
@@ -474,5 +476,52 @@ describe('the purchase order number', () => {
       value: '55103388-MAR26',
       label: 'P.O. No.',
     });
+  });
+});
+
+describe('the shape of a number', () => {
+  it('describes runs of letters and digits and what separates them', () => {
+    expect(valueShape('50621')).toBe('D5');
+    expect(valueShape('KLMN2231_4')).toBe('A4 D4 _ D1');
+    expect(valueShape('55103388-MAR26')).toBe('D8 - A3 D2');
+    expect(valueShape('inv-0042')).toBe('A3 - D4');
+  });
+
+  it('accepts another number of the same kind', () => {
+    expect(fitsShape('50698', 'D5')).toBe(true);
+    expect(fitsShape('KLMN2240_1', 'A4 D4 _ D1')).toBe(true);
+  });
+
+  it('allows a digit more or less, because numbering grows', () => {
+    expect(fitsShape('9998', 'D5')).toBe(true);
+    expect(fitsShape('100002', 'D5')).toBe(true);
+  });
+
+  it('refuses a number of a different kind', () => {
+    expect(fitsShape('472', 'D5')).toBe(false);
+    expect(fitsShape('ABC12', 'D5')).toBe(false);
+    expect(fitsShape('KLMN2231-4', 'A4 D4 _ D1')).toBe(false);
+    expect(fitsShape('KLMN2231', 'A4 D4 _ D1')).toBe(false);
+  });
+
+  it('accepts anything when no shape was kept', () => {
+    expect(fitsShape('472', '')).toBe(true);
+    expect(fitsShape('472', undefined)).toBe(true);
+  });
+
+  it('reads the first number of the right shape inside a spot', () => {
+    const item = (str, x, y) => ({
+      str,
+      transform: [9, 0, 0, 9, x, y],
+      width: str.length * 5,
+      height: 9,
+    });
+    // A continuation page: the spot holds a subtotal, not an invoice number.
+    const { text, layout } = buildPageText([item('Report', 430, 700), item('1,472.00', 430, 686)]);
+    const spot = { x0: 430 / 612, x1: 456 / 612, y0: 686 / 792, y1: 695 / 792 };
+    const size = { width: 612, height: 792 };
+
+    expect(detectInZone(text, layout, spot, size)).toBe('472');
+    expect(detectInZone(text, layout, spot, size, 'D5')).toBeNull();
   });
 });

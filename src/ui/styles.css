@@ -662,6 +662,34 @@ select {
   font-size: 0.95em;
 }
 
+/* The ask to be shown where the invoice number is, above the page strip. */
+.point-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+  flex-wrap: wrap;
+  padding: 0.8rem 1rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--sheet);
+  font-size: 0.875rem;
+}
+
+.point-prompt p {
+  margin: 0;
+  flex: 1 1 24rem;
+  max-width: 62ch;
+}
+
+.point-prompt-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
 /* ---------------------------------------------------------------- results */
 
 .results {
@@ -1531,4 +1559,35 @@ select {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ------------------------------------------------ drawing a box on the page */
+
+/*
+ * Laid over the drawn page while somebody is pointing at the invoice number,
+ * above the text layer so a drag draws a box instead of selecting words. The
+ * page is dimmed a little to say it is waiting for a box, the way a screenshot
+ * tool dims the screen.
+ */
+.spot-picker {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+  background: rgb(20 18 16 / 0.18);
+}
+
+/* Once there is a box, the dimming moves outside it, leaving the box clear. */
+.spot-picker.has-box {
+  background: transparent;
+}
+
+.spot-box {
+  position: absolute;
+  outline: 2px solid var(--accent);
+  box-shadow: 0 0 0 9999px rgb(20 18 16 / 0.32);
+  pointer-events: none;
 }

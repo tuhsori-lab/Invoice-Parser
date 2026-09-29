@@ -216,7 +216,7 @@ describe('remembering where the number sits', () => {
     ];
 
     expect(zonesForPage('Anchor Textile Group, Springfield', profiles)).toEqual([
-      { zone: spot, name: 'Anchor' },
+      { zone: spot, name: 'Anchor', shape: '' },
     ]);
   });
 
@@ -232,7 +232,7 @@ describe('remembering where the number sits', () => {
     const profiles = [createProfile({ name: 'Just this batch', zone: spot })];
 
     expect(zonesForPage('Some invoice or other', profiles)).toEqual([
-      { zone: spot, name: 'Just this batch' },
+      { zone: spot, name: 'Just this batch', shape: '' },
     ]);
   });
 
@@ -243,7 +243,45 @@ describe('remembering where the number sits', () => {
     ];
 
     expect(zonesForPage('Anchor Textile Group', profiles)).toEqual([
-      { zone: spot, name: 'Anchor' },
+      { zone: spot, name: 'Anchor', shape: '' },
+    ]);
+  });
+});
+
+describe('remembering what the number looks like', () => {
+  const spot = { x0: 0.7, y0: 0.86, x1: 0.75, y1: 0.88 };
+
+  it('keeps the shape of the number, never the number itself', () => {
+    const profile = createProfile({ zone: spot, zoneShape: 'A4 D4 _ D1' });
+
+    expect(profile.zoneShape).toBe('A4 D4 _ D1');
+    expect(JSON.stringify(profile)).not.toMatch(/\d{4}/);
+  });
+
+  it('drops a shape that is not one', () => {
+    expect(createProfile({ zone: spot, zoneShape: '50621' }).zoneShape).toBe('');
+    expect(createProfile({ zone: spot, zoneShape: 'D5; alert(1)' }).zoneShape).toBe('');
+    expect(createProfile({ zone: spot, zoneShape: 5 }).zoneShape).toBe('');
+  });
+
+  it('forgets the shape along with the spot', () => {
+    expect(createProfile({ zone: null, zoneShape: 'D5' }).zoneShape).toBe('');
+  });
+
+  it('carries the shape to another computer and back', () => {
+    const saved = [createProfile({ name: 'Harbor', zone: spot, zoneShape: 'D5' })];
+    const { profiles } = parseProfilesFile(serializeProfiles(saved));
+
+    expect(profiles[0].zoneShape).toBe('D5');
+  });
+
+  it('hands the shape over with the spot', () => {
+    const profiles = [
+      createProfile({ name: 'Harbor', identifyingText: ['Harbor'], zone: spot, zoneShape: 'D5' }),
+    ];
+
+    expect(zonesForPage('Harbor & Pine Apparel', profiles)).toEqual([
+      { zone: spot, name: 'Harbor', shape: 'D5' },
     ]);
   });
 });
