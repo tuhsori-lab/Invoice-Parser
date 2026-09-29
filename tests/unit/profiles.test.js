@@ -126,9 +126,9 @@ describe('teaching a label by highlighting it', () => {
     // highlight catches the label, its value, and the start of the next column.
     // The label is what comes before the number, not everything up to the last
     // word that happens to have a digit in it.
-    expect(
-      labelFromSelection('Our order + Ref 71402 SS27 REPEAT LOT 2 Ship.note: 7140')
-    ).toBe('Our order + Ref');
+    expect(labelFromSelection('Our order + Ref 71402 SS27 REPEAT LOT 2 Ship.note: 7140')).toBe(
+      'Our order + Ref'
+    );
   });
 
   it('is not fooled by a word with a digit sitting after the number', () => {

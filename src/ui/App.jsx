@@ -18,6 +18,7 @@ import SettingsPanel from './components/SettingsPanel.jsx';
 import PageStrip from './components/PageStrip.jsx';
 import InvoiceTable from './components/InvoiceTable.jsx';
 import PreviewModal from './components/PreviewModal.jsx';
+import PurchaseOrders from './components/PurchaseOrders.jsx';
 import ReviewQueue from './components/ReviewQueue.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
 import ProfilesPanel from './components/ProfilesPanel.jsx';
@@ -35,6 +36,7 @@ const INITIAL_SETTINGS = {
   useBareInvoice: true,
   customPattern: '',
   extraLabel: '',
+  listPurchaseOrders: true,
   prefix: '',
   template: DEFAULT_TEMPLATE,
 };
@@ -811,6 +813,14 @@ export default function App() {
                 onDownload={downloadInvoice}
                 onRename={renameInvoice}
                 busy={Boolean(exporting)}
+              />
+            )}
+
+            {settings.listPurchaseOrders && (
+              <PurchaseOrders
+                groups={shownGroups}
+                colourOf={colourOf}
+                onOpenPage={setPreviewIndex}
               />
             )}
           </section>

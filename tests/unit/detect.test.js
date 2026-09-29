@@ -13,6 +13,7 @@ import {
   detectFieldValue,
   detectInZone,
   detectInvoiceNumber,
+  detectPurchaseOrder,
   hasConflict,
   isDateShaped,
   normalizeValue,
@@ -392,5 +393,86 @@ describe('a spot on the page somebody pointed at', () => {
 
     expect(best.source).toBe('common');
     expect(best.value).toBe('SR-40881');
+  });
+});
+
+describe('the purchase order number', () => {
+  it('reads the everyday ways of labelling one', () => {
+    expect(detectPurchaseOrder('PO #: 4500012345')?.value).toBe('4500012345');
+    expect(detectPurchaseOrder('P.O. No. 88112')?.value).toBe('88112');
+    expect(detectPurchaseOrder('PO Number 88112')?.value).toBe('88112');
+    expect(detectPurchaseOrder('Purchase Order: 4500012345')?.value).toBe('4500012345');
+    expect(detectPurchaseOrder('Purchase Order No. 4500012345')?.value).toBe('4500012345');
+    expect(detectPurchaseOrder('Customer PO 88112')?.value).toBe('88112');
+    expect(detectPurchaseOrder('Your P.O. #55103388-MAR26')?.value).toBe('55103388-MAR26');
+  });
+
+  it('reads plain "PO" when the number follows straight after it', () => {
+    expect(detectPurchaseOrder('PO 4500012345')?.value).toBe('4500012345');
+    expect(detectPurchaseOrder('PO: 4500012345')?.value).toBe('4500012345');
+  });
+
+  it('never reads a PO box as a purchase order', () => {
+    // On a great many addresses. "Box" is not shaped like a value, so plain PO
+    // never gets as far as the number after it.
+    expect(detectPurchaseOrder('PO BOX 2623\nDubai')).toBeNull();
+    expect(detectPurchaseOrder('P.O. Box 2623')).toBeNull();
+    expect(detectPurchaseOrder('Remit to: PO Box 44710, Portland')).toBeNull();
+  });
+
+  it('takes the number under the PO heading, not the seller order number beside it', () => {
+    const item = (str, x, y) => ({
+      str,
+      transform: [8, 0, 0, 8, x, y],
+      width: str.length * 4.4,
+      height: 8,
+    });
+    // "ORDER #" is the seller's own order number, in the next column along.
+    // Read in order alone, its value comes first; the PO heading's column says
+    // which one belongs to it.
+    const { text, layout } = buildPageText([
+      item('ORDER #', 56, 540),
+      item('P.O. NUMBER', 150, 540),
+      item('TERMS', 280, 540),
+      item('5512086', 56, 526),
+      item('7730415', 150, 526),
+      item('NET 45 DAYS', 280, 526),
+    ]);
+
+    expect(detectPurchaseOrder(text, { layout })?.value).toBe('7730415');
+  });
+
+  it('says so when a page has no purchase order on it', () => {
+    expect(detectPurchaseOrder('Invoice No: 104501\nTotal due 1,200.00')).toBeNull();
+    expect(detectPurchaseOrder('')).toBeNull();
+  });
+
+  it('reads a PO column heading with its value underneath, beside a PO box', () => {
+    /** One piece of drawn text, the shape pdf.js hands over. */
+    const item = (str, { x, y, width, size = 9 }) => ({
+      str,
+      transform: [size, 0, 0, size, x, y],
+      width,
+      height: size,
+    });
+
+    // Laid out like a real reported invoice: the PO is a column heading in the
+    // shipping row, and the bill-to address above it has a PO box in it.
+    const { text, layout } = buildPageText([
+      item('Bill To', { x: 56, y: 640, width: 30 }),
+      item('PO BOX 2623', { x: 56, y: 626, width: 55 }),
+      item('Dubai', { x: 56, y: 614, width: 25 }),
+      item('Ship Date', { x: 56, y: 560, width: 40 }),
+      item('P.O. No.', { x: 150, y: 560, width: 34 }),
+      item('Terms', { x: 250, y: 560, width: 26 }),
+      item('9/21/2026', { x: 56, y: 546, width: 42 }),
+      item('55103388-MAR26', { x: 140, y: 546, width: 66 }),
+      item('Net 60', { x: 250, y: 546, width: 28 }),
+    ]);
+
+    expect(detectPurchaseOrder(text, { layout })).toEqual({
+      value: '55103388-MAR26',
+      label: 'P.O. No.',
+    });
   });
 });

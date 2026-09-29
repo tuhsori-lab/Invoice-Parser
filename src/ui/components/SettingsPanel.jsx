@@ -147,6 +147,18 @@ export default function SettingsPanel({ settings, onChange, nameExample }) {
           />
           <small>The words this is printed after, for example PO # or Store #.</small>
         </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={settings.listPurchaseOrders}
+            onChange={set('listPurchaseOrders')}
+            data-testid="list-pos"
+          />
+          <span>
+            List every invoice&rsquo;s PO number
+            <small>In its own section under the table, ready to copy out.</small>
+          </span>
+        </label>
       </fieldset>
 
       <fieldset className="field-group">

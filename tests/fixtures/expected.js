@@ -285,7 +285,17 @@ export const CASES = [
     file: '20-form-layout.pdf',
     what: 'A filled-in form: the labels drawn in one pass, the values in another',
     pages: 1,
-    groups: [{ invoice: '2071548', pages: [1], label: 'INVOICE NO.', source: 'common', flags: [] }],
+    groups: [
+      {
+        invoice: '2071548',
+        pages: [1],
+        label: 'INVOICE NO.',
+        source: 'common',
+        flags: [],
+        // Under the P.O. NUMBER heading, not the ORDER # one beside it.
+        po: '7730415',
+      },
+    ],
   },
   {
     case: 21,
@@ -293,8 +303,22 @@ export const CASES = [
     what: 'A column heading with its number below it, the number carrying a suffix',
     pages: 2,
     groups: [
-      { invoice: 'SR-40881_2', pages: [1], label: 'Invoice #', source: 'common', flags: [] },
-      { invoice: 'SR-40997_1', pages: [2], label: 'Invoice #', source: 'common', flags: [] },
+      {
+        invoice: 'SR-40881_2',
+        pages: [1],
+        label: 'Invoice #',
+        source: 'common',
+        flags: [],
+        po: null,
+      },
+      {
+        invoice: 'SR-40997_1',
+        pages: [2],
+        label: 'Invoice #',
+        source: 'common',
+        flags: [],
+        po: null,
+      },
     ],
   },
   {

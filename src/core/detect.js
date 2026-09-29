@@ -526,3 +526,63 @@ export function detectFieldValue(text, labels, options = {}) {
   }
   return null;
 }
+
+/** "PO" or "P.O.", with or without the dots and the space between them. */
+const PO_WORD = 'p\\.?[^\\S\\r\\n]?o\\.?';
+
+/** Whose purchase order it is, when a document says so. */
+const PO_OWNERS = '(?:customer|cust\\.?|client|your)';
+
+/**
+ * The labels a purchase order number comes after.
+ *
+ * "PO" on its own is the start of "PO Box", which is on a great many of the
+ * addresses an invoice prints. So plain "PO" only counts as a label with a
+ * number word or a # after it - "PO #", "P.O. No.", "PO Number". "Purchase
+ * order" and "Customer PO" say what they are without one.
+ *
+ * @returns {string}
+ */
+export function purchaseOrderLabelPattern() {
+  const numberWord = `(?:#|(?:number|num|nbr|no)\\b)`;
+  const owned = `${PO_OWNERS}${LABEL_GAP}${PO_WORD}(?:${LABEL_GAP}${numberWord})?`;
+  const spelled = `purchase${LABEL_GAP}order(?:${LABEL_GAP}${numberWord})?`;
+  const numbered = `${PO_WORD}${LABEL_GAP}${numberWord}`;
+  return `${NOT_AFTER_LETTER}(?:${owned}|${spelled}|${numbered})${LABEL_TAIL}`;
+}
+
+/** Plain "PO" with the number straight after it, on the same line. */
+function barePurchaseOrderPattern() {
+  return `${NOT_AFTER_LETTER}${PO_WORD}${SAME_LINE_SPACE}[:#-]?${SAME_LINE_SPACE}`;
+}
+
+/**
+ * The purchase order number on a page, or null if there is none.
+ *
+ * Collections work runs on POs as much as on invoice numbers: a customer's
+ * accounts payable team files by their own order number, so that is the number
+ * a remittance, a dispute or a chase refers to. Found the same way as an
+ * invoice number - after a label, standing in its column when the label is a
+ * heading - and then, failing that, plain "PO" with the number straight after
+ * it. That last rule only takes the very next run, so "PO Box 2623" is never a
+ * purchase order: "Box" is not shaped like a value.
+ *
+ * @param {string} text
+ * @param {object} [options]
+ * @param {Array<object>} [options.layout] - where each run sat on the page.
+ * @returns {{ value: string, label: string }|null}
+ */
+export function detectPurchaseOrder(text, options = {}) {
+  const page = String(text ?? '');
+  if (!page.trim()) return null;
+  const { layout = null } = options;
+
+  const [labelled] = hitsForPattern(page, purchaseOrderLabelPattern(), 'po', { layout });
+  if (labelled) return { value: labelled.value, label: labelled.label };
+
+  const [bare] = hitsForPattern(page, barePurchaseOrderPattern(), 'po', {
+    onlyImmediate: true,
+    layout,
+  });
+  return bare ? { value: bare.value, label: bare.label } : null;
+}

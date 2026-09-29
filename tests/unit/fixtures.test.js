@@ -53,6 +53,9 @@ describe('every sample layout', () => {
         if (wanted.extra !== undefined) {
           expect(group.extra?.value, 'extra field').toBe(wanted.extra);
         }
+        if (wanted.po !== undefined) {
+          expect(group.po?.value ?? null, 'purchase order').toBe(wanted.po);
+        }
         if (wanted.continuation !== undefined) {
           expect(group.continuationPages, 'pages carried over from the page before').toEqual(
             wanted.continuation

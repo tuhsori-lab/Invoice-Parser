@@ -218,6 +218,22 @@ slack, so a number that sits slightly differently is still found while the colum
 not swept in. One spot per profile: pointing again replaces it, and **Forget it** in the profile
 editor removes it.
 
+## PO numbers
+
+Collections work runs on purchase orders as much as on invoice numbers — a customer's payables team
+files by their own order number, so that is what a remittance or a dispute refers to. Every
+invoice's PO is listed in its own section under the table, with the label it was found after, and
+**Copy list** puts it on the clipboard as two tab-separated columns with a heading row, so it pastes
+straight into a spreadsheet as `Invoice` and `PO`. The list follows the search box, and copies
+exactly what it shows. It can be switched off under _Finding the number_.
+
+A PO is found the way an invoice number is — after a label, and in its column when the label is a
+heading — using `PO #`, `P.O. No.`, `PO Number`, `Purchase Order`, and `Customer PO` or `Your PO`.
+Plain `PO` counts only with the number straight after it, which is what keeps `PO Box 2623` from ever
+being read as a purchase order: `Box` is not shaped like a value. `Order #` is deliberately not a PO
+label, because on many invoices it is the seller's own order number, printed right beside the
+buyer's PO.
+
 ## File names
 
 Names come from a template with these tokens:
@@ -329,6 +345,9 @@ so the page never flashes the wrong colours on the way in.
   cannot fix is a file whose coordinates are themselves wrong, or text drawn as pictures of letters.
   If a page looks right and the text panel looks like nonsense, this is why.
 - **Password-protected files cannot be opened.** Save a copy without the password first.
+- **A PO under an unusual label is not found.** A client who prints their order reference after
+  something like `Our order + Ref` has a PO the everyday labels do not cover. It shows as
+  "none found" rather than as a wrong guess.
 
 ## Build phases
 
