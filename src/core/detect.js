@@ -7,6 +7,8 @@
  * words the number was found after are reported as `label`, so the person using
  * the app can always see why a number was picked.
  *
+ *   0. zone    - the spot on the page somebody pointed at for this client,
+ *                which replaces the tiers below it when it finds anything
  *   1. profile - a label from one of this client's saved profiles
  *   2. common  - an everyday label such as "Invoice No." or "Bill #"
  *   3. bare    - the word "Invoice" followed by a number on the same line
@@ -58,7 +60,7 @@ const NOT_AFTER_LETTER = '(?<![A-Za-z])';
  *
  * Hyphens and underscores are part of a number rather than a break in it:
  * plenty of accounting software prints a revision or print count as a suffix,
- * and "19205594_2" is the whole number, not "19205594" with something after it.
+ * and "40017822_2" is the whole number, not "40017822" with something after it.
  * A value still has to start with a letter or a digit.
  */
 const TOKEN_PATTERN = /[A-Za-z0-9][A-Za-z0-9_-]*/g;
@@ -121,8 +123,17 @@ export function normalizeValue(token) {
     .replace(/[-_]+$/, '');
 }
 
-/** Could this run of characters be an invoice number? */
-function isUsableValue(token) {
+/**
+ * Could this run of characters be an invoice number?
+ *
+ * Exported because teaching a label needs the same notion: the words a person
+ * highlights in front of a number are the label, and this says where the number
+ * starts.
+ *
+ * @param {string} token
+ * @returns {boolean}
+ */
+export function looksLikeValue(token) {
   if (!/\d/.test(token)) return false;
   if (isDateShaped(token)) return false;
   return normalizeValue(token).length >= MIN_VALUE_LENGTH;
@@ -139,8 +150,8 @@ const COLUMN_SLACK = 4;
  * Where a stretch of the page's text sat on the page.
  *
  * Positions are interpolated across each run, so that part of a run can be
- * placed as well as the whole of it - which is what makes the "10012" inside
- * "NEW YORK, NY 10012" locatable on its own.
+ * placed as well as the whole of it - which is what makes the "62704" inside
+ * "SPRINGFIELD, IL 62704" locatable on its own.
  *
  * @param {Array<object>} layout - the spans from extractText.js.
  * @param {number} start - first character of the stretch.
@@ -217,7 +228,7 @@ export function findValueAfterLabel(text, from, options = {}) {
   let match;
   while ((match = TOKEN_PATTERN.exec(window)) !== null) {
     const at = from + match.index;
-    if (isUsableValue(match[0]) && belongsToLabel(layout, label, at, at + match[0].length)) {
+    if (looksLikeValue(match[0]) && belongsToLabel(layout, label, at, at + match[0].length)) {
       TOKEN_PATTERN.lastIndex = 0;
       return normalizeValue(match[0]);
     }
@@ -261,7 +272,7 @@ function hitsForPattern(text, pattern, source, options = {}) {
       const next = /^[A-Za-z0-9][A-Za-z0-9_-]*/.exec(
         text.slice(after, after + VALUE_SEARCH_WINDOW)
       );
-      if (next && isUsableValue(next[0])) {
+      if (next && looksLikeValue(next[0])) {
         const label = layout ? rangeOf(layout, match.index, after) : null;
         if (belongsToLabel(layout, label, after, after + next[0].length)) {
           value = normalizeValue(next[0]);
@@ -281,6 +292,63 @@ function hitsForPattern(text, pattern, source, options = {}) {
     if (hits.length >= MAX_HITS_PER_PATTERN) break;
   }
   return hits;
+}
+
+/**
+ * How much slack a remembered spot gets, as a fraction of the page.
+ *
+ * About one line of an ordinary invoice, so a number that sits a little
+ * differently on the next invoice is still found, while the column alongside it
+ * is not swept in.
+ */
+const ZONE_SLACK = 0.012;
+
+/**
+ * Read whatever stands in one region of a page.
+ *
+ * This is what makes "show me where the number is" work. Labels are no help on
+ * a client whose wording is unreadable - text drawn over other text, a heading
+ * that never appears as its own words - but the number is still printed in the
+ * same place on every invoice they send, and that place can be pointed at once
+ * and read from then on.
+ *
+ * Every run whose box meets the spot is taken, read in the order the page reads,
+ * and the first run of characters among them shaped like a value is the answer.
+ * A label caught along with the number does no harm: a label is not value-shaped.
+ *
+ * @param {string} text - the full page text.
+ * @param {Array<object>} layout - where each run sat, from extractText.js.
+ * @param {object} zone - fractions of the page: { x0, y0, x1, y1 }, y from the bottom.
+ * @param {{ width: number, height: number }} pageSize - the page's own size.
+ * @returns {string|null}
+ */
+export function detectInZone(text, layout, zone, pageSize) {
+  if (!layout?.length || !zone || !pageSize?.width || !pageSize?.height) return null;
+
+  const left = (zone.x0 - ZONE_SLACK) * pageSize.width;
+  const right = (zone.x1 + ZONE_SLACK) * pageSize.width;
+  const bottom = (zone.y0 - ZONE_SLACK) * pageSize.height;
+  const top = (zone.y1 + ZONE_SLACK) * pageSize.height;
+
+  const page = String(text ?? '');
+  const parts = [];
+  for (const span of layout) {
+    if (span.endX < left || span.x > right) continue;
+    if (span.y + (span.fontSize ?? 0) < bottom || span.y > top) continue;
+    parts.push(page.slice(span.start, span.end));
+  }
+  if (parts.length === 0) return null;
+
+  const window = maskDates(parts.join(' '));
+  TOKEN_PATTERN.lastIndex = 0;
+  let match;
+  while ((match = TOKEN_PATTERN.exec(window)) !== null) {
+    if (looksLikeValue(match[0])) {
+      TOKEN_PATTERN.lastIndex = 0;
+      return normalizeValue(match[0]);
+    }
+  }
+  return null;
 }
 
 /**
@@ -349,6 +417,10 @@ function dedupe(hits) {
  * @property {string} [customPattern] a pattern that replaces all of the above.
  * @property {Array<object>} [layout] where each run sat on the page, from
  *   extractText.js. Without it detection falls back to reading order alone.
+ * @property {Array<{ zone: object, name: string }>} [zones] spots pointed at for
+ *   the clients that recognised this page. A spot that finds something is the
+ *   answer, and the label tiers are not tried.
+ * @property {{ width: number, height: number }} [pageSize] the page's own size.
  */
 
 /**
@@ -368,11 +440,24 @@ export function detectCandidates(text, settings = {}) {
     useBareInvoice = true,
     customPattern,
     layout = null,
+    zones = [],
+    pageSize = null,
   } = settings;
 
   if (customPattern && String(customPattern).trim()) {
     return dedupe(customHits(page, customPattern));
   }
+
+  // Somebody pointed at where the number is on this client's invoices. That is
+  // a better answer than any guess from the wording, so it is the only one.
+  const fromZones = [];
+  for (const entry of zones) {
+    const value = detectInZone(page, layout, entry?.zone, pageSize);
+    if (value) {
+      fromZones.push({ value, label: entry.name || 'this client', source: 'zone' });
+    }
+  }
+  if (fromZones.length > 0) return dedupe(fromZones);
 
   const hits = [];
   for (const label of profileLabels) {
@@ -440,4 +525,64 @@ export function detectFieldValue(text, labels, options = {}) {
     if (hit) return { value: hit.value, label: hit.label };
   }
   return null;
+}
+
+/** "PO" or "P.O.", with or without the dots and the space between them. */
+const PO_WORD = 'p\\.?[^\\S\\r\\n]?o\\.?';
+
+/** Whose purchase order it is, when a document says so. */
+const PO_OWNERS = '(?:customer|cust\\.?|client|your)';
+
+/**
+ * The labels a purchase order number comes after.
+ *
+ * "PO" on its own is the start of "PO Box", which is on a great many of the
+ * addresses an invoice prints. So plain "PO" only counts as a label with a
+ * number word or a # after it - "PO #", "P.O. No.", "PO Number". "Purchase
+ * order" and "Customer PO" say what they are without one.
+ *
+ * @returns {string}
+ */
+export function purchaseOrderLabelPattern() {
+  const numberWord = `(?:#|(?:number|num|nbr|no)\\b)`;
+  const owned = `${PO_OWNERS}${LABEL_GAP}${PO_WORD}(?:${LABEL_GAP}${numberWord})?`;
+  const spelled = `purchase${LABEL_GAP}order(?:${LABEL_GAP}${numberWord})?`;
+  const numbered = `${PO_WORD}${LABEL_GAP}${numberWord}`;
+  return `${NOT_AFTER_LETTER}(?:${owned}|${spelled}|${numbered})${LABEL_TAIL}`;
+}
+
+/** Plain "PO" with the number straight after it, on the same line. */
+function barePurchaseOrderPattern() {
+  return `${NOT_AFTER_LETTER}${PO_WORD}${SAME_LINE_SPACE}[:#-]?${SAME_LINE_SPACE}`;
+}
+
+/**
+ * The purchase order number on a page, or null if there is none.
+ *
+ * Collections work runs on POs as much as on invoice numbers: a customer's
+ * accounts payable team files by their own order number, so that is the number
+ * a remittance, a dispute or a chase refers to. Found the same way as an
+ * invoice number - after a label, standing in its column when the label is a
+ * heading - and then, failing that, plain "PO" with the number straight after
+ * it. That last rule only takes the very next run, so "PO Box 2623" is never a
+ * purchase order: "Box" is not shaped like a value.
+ *
+ * @param {string} text
+ * @param {object} [options]
+ * @param {Array<object>} [options.layout] - where each run sat on the page.
+ * @returns {{ value: string, label: string }|null}
+ */
+export function detectPurchaseOrder(text, options = {}) {
+  const page = String(text ?? '');
+  if (!page.trim()) return null;
+  const { layout = null } = options;
+
+  const [labelled] = hitsForPattern(page, purchaseOrderLabelPattern(), 'po', { layout });
+  if (labelled) return { value: labelled.value, label: labelled.label };
+
+  const [bare] = hitsForPattern(page, barePurchaseOrderPattern(), 'po', {
+    onlyImmediate: true,
+    layout,
+  });
+  return bare ? { value: bare.value, label: bare.label } : null;
 }

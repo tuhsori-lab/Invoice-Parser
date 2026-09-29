@@ -480,6 +480,19 @@ input[aria-invalid='true'] {
   gap: 0.25rem;
 }
 
+/* A setting that is already decided, shown as words rather than as a box. */
+.field-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.field-value {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
 .field > span:first-child {
   font-weight: 550;
 }
@@ -1026,6 +1039,90 @@ select {
 
 .table-wrap {
   overflow-x: auto;
+}
+
+/* ------------------------------------------------------------ PO numbers */
+
+.po-list {
+  margin-top: 2rem;
+  border-top: 1px solid var(--rule-strong);
+  padding-top: 1rem;
+}
+
+.po-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.po-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.po-count {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.po-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.po-copied {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+/* Room for a dozen or so; a big batch scrolls inside rather than down the page. */
+.po-scroll {
+  margin-top: 0.7rem;
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.po-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.po-table th,
+.po-table td {
+  text-align: left;
+  padding: 0.4rem 0.9rem 0.4rem 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+.po-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  border-bottom-color: var(--rule-strong);
+}
+
+.po-table .swatch {
+  display: inline-block;
+  height: 0.9rem;
+  margin-right: 0.5rem;
+  vertical-align: -0.1rem;
+}
+
+.po-value {
+  font-family: var(--mono);
 }
 
 /* Only when there are too many rows to draw them all at once. */

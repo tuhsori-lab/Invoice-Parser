@@ -67,6 +67,8 @@ export async function loadFixturePages(name) {
     text: page.text,
     hasText: page.hasText,
     layout: page.layout,
+    pageWidth: page.pageWidth,
+    pageHeight: page.pageHeight,
     ocr: false,
   }));
 }

@@ -5,6 +5,7 @@ import { FLAG_LABELS } from '../../core/group.js';
 
 /** Plain words for where a number came from. */
 const SOURCE_WORDS = {
+  zone: 'the spot you chose',
   profile: 'a label you saved',
   common: 'an everyday label',
   bare: 'the word "Invoice" alone',

@@ -11,6 +11,7 @@ import { analyzePages } from '../../src/core/analyze.js';
 import { groupPages } from '../../src/core/group.js';
 import { assignFileNames } from '../../src/core/naming.js';
 import { classifyError } from '../../src/core/errors.js';
+import { createProfile } from '../../src/core/profiles.js';
 import { CASES, SPECIAL_CASES } from '../fixtures/expected.js';
 import { loadFixturePages, openFixture } from '../helpers/loadFixture.js';
 
@@ -52,6 +53,9 @@ describe('every sample layout', () => {
         if (wanted.extra !== undefined) {
           expect(group.extra?.value, 'extra field').toBe(wanted.extra);
         }
+        if (wanted.po !== undefined) {
+          expect(group.po?.value ?? null, 'purchase order').toBe(wanted.po);
+        }
         if (wanted.continuation !== undefined) {
           expect(group.continuationPages, 'pages carried over from the page before').toEqual(
             wanted.continuation
@@ -90,5 +94,58 @@ describe('files the engine cannot read on its own', () => {
     const [group] = groupPages(recognised, {});
     expect(group.invoice).toBe('552211');
     expect(group.flags, 'text read from a scan is always worth checking').toContain('ocr');
+  });
+});
+
+describe('pointing at where the number is', () => {
+  /**
+   * The whole point of a saved spot: shown once where the number is, the app
+   * reads the same place on every other invoice from that client - without
+   * being told a single thing about the wording around it.
+   */
+  it('reads a whole batch from the spot pointed at on one page', async () => {
+    const pages = await loadFixturePages('21-column-heading.pdf');
+    const [first] = pages;
+
+    // What the preview works out when somebody highlights the number: the box
+    // it covers, as fractions of the page's own size.
+    const at = first.text.indexOf('SR-40881_2');
+    const span = first.layout.find((entry) => entry.start <= at && entry.end > at);
+    const zone = {
+      x0: span.x / first.pageWidth,
+      x1: span.endX / first.pageWidth,
+      y0: span.y / first.pageHeight,
+      y1: (span.y + span.fontSize) / first.pageHeight,
+    };
+
+    const profile = createProfile({
+      name: 'Anchor Textile Group',
+      identifyingText: ['Anchor Textile Group'],
+      zone,
+    });
+
+    const analyzed = analyzePages(pages, { profiles: [profile] });
+    const groups = groupPages(analyzed, {});
+
+    expect(groups.map((group) => group.invoice)).toEqual(['SR-40881_2', 'SR-40997_1']);
+    expect(groups.map((group) => group.provenance?.source)).toEqual(['zone', 'zone']);
+    expect(groups.map((group) => group.provenance?.label)).toEqual([
+      'Anchor Textile Group',
+      'Anchor Textile Group',
+    ]);
+  });
+
+  it('still reads the batch when the spot is pointed at nothing', async () => {
+    const pages = await loadFixturePages('21-column-heading.pdf');
+    const profile = createProfile({
+      name: 'Anchor Textile Group',
+      identifyingText: ['Anchor Textile Group'],
+      zone: { x0: 0.05, y0: 0.1, x1: 0.2, y1: 0.2 },
+    });
+
+    const groups = groupPages(analyzePages(pages, { profiles: [profile] }), {});
+
+    expect(groups.map((group) => group.invoice)).toEqual(['SR-40881_2', 'SR-40997_1']);
+    expect(groups.map((group) => group.provenance?.source)).toEqual(['common', 'common']);
   });
 });

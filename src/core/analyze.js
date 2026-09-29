@@ -10,8 +10,8 @@
  * changes a setting without re-reading a single byte.
  */
 
-import { detectCandidates, detectFieldValue, hasConflict } from './detect.js';
-import { labelsForPage } from './profiles.js';
+import { detectCandidates, detectFieldValue, detectPurchaseOrder, hasConflict } from './detect.js';
+import { labelsForPage, zonesForPage } from './profiles.js';
 
 /**
  * @typedef {object} ExtractedPage
@@ -22,6 +22,8 @@ import { labelsForPage } from './profiles.js';
  * @property {string} text the page's text.
  * @property {boolean} hasText false when the page has no usable text layer.
  * @property {Array<object>} [layout] where each run of the text sat on the page.
+ * @property {number} [pageWidth] the page's own width, for reading a saved spot.
+ * @property {number} [pageHeight] the page's own height.
  * @property {boolean} [ocr] true when the text came from text recognition.
  */
 
@@ -31,6 +33,7 @@ import { labelsForPage } from './profiles.js';
  * @property {Array<object>} candidates every number the page offered.
  * @property {boolean} conflict two different numbers after two different labels.
  * @property {{ value: string, label: string }|null} extra
+ * @property {{ value: string, label: string }|null} po the purchase order number.
  * @property {string} client the name of the profile that recognised this page.
  * @property {Array<object>} matchedProfiles
  */
@@ -68,6 +71,11 @@ export function analyzePages(pages = [], settings = {}) {
       useBareInvoice,
       customPattern,
       layout,
+      zones: zonesForPage(text, profiles),
+      pageSize:
+        page.pageWidth && page.pageHeight
+          ? { width: page.pageWidth, height: page.pageHeight }
+          : null,
     });
     const extraLabels = [
       ...matched.map((profile) => profile.extraLabel).filter(Boolean),
@@ -80,6 +88,9 @@ export function analyzePages(pages = [], settings = {}) {
       candidates,
       conflict: hasConflict(candidates),
       extra: extraLabels.length ? detectFieldValue(text, extraLabels, { layout }) : null,
+      // Always looked for: it costs next to nothing, and whether the list of
+      // them is shown is a question of display that should not re-read a page.
+      po: detectPurchaseOrder(text, { layout }),
       client,
       matchedProfiles: matched,
     };

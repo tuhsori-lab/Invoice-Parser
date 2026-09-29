@@ -46,6 +46,7 @@ picked rather than guessing.
 
 | Tier         | What it looks for                                                                                                     | Example              |
 | ------------ | --------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 0. `zone`    | The spot on the page you pointed at for this client, read before any wording is looked at                             | (wherever you chose) |
 | 1. `profile` | A label from one of your saved client profiles, in your order                                                         | `Our Ref 889900`     |
 | 2. `common`  | An everyday label: invoice/inv/bill/billing/document/doc/credit memo/debit memo, then `#` or number/num/nbr/no/id/ref | `Invoice No. 104501` |
 | 3. `bare`    | The word "Invoice" followed by a number **on the same line**                                                          | `INVOICE 445566`     |
@@ -59,7 +60,7 @@ A few rules do most of the work of not being confidently wrong:
 - **The bare tier never crosses a line.** An `INVOICE` title with a street address underneath does
   not turn `1234 Maple Street` into the invoice number.
 - **A suffix belongs to the number.** Hyphens and underscores are part of a value rather than a
-  break in it, so `19205594_2` is kept whole. Accounting software often prints a revision or print
+  break in it, so `40017822_2` is kept whole. Accounting software often prints a revision or print
   count that way, and two invoices can differ by nothing else. A dangling `-` or `_` on the end is
   trimmed, and a value still has to contain a digit — `DRAFT_COPY` is not an invoice number.
 - **Dates are not invoice numbers.** Anything shaped like `09-01-2026`, `09/04/26` or `Sep 4, 2026`
@@ -169,7 +170,8 @@ A profile is one client's way of printing invoices:
   "labels": ["Our Ref"],
   "extraLabel": "Store #",
   "filenameTemplate": "{prefix}{invoice}_{extra}",
-  "identifyingText": ["Northwind Traders"]
+  "identifyingText": ["Northwind Traders"],
+  "zone": { "x0": 0.84, "y0": 0.86, "x1": 0.92, "y1": 0.88 }
 }
 ```
 
@@ -194,6 +196,43 @@ invoice to invoice: highlighting `Our Ref 889900` teaches the label `Our Ref`. D
 immediately and the preview says what it found — "Found 889900 after Our Ref" — so you know it
 worked before closing the page. A brand new profile is named after the page's letterhead and
 recognises that client from then on.
+
+### Teaching a spot when the words are no help
+
+Some clients cannot be taught by their wording at all. The label is drawn over other text, or is
+part of a picture, or is worded differently on every invoice. But the number is still printed in the
+same place on every invoice they send, and that place can be pointed at once:
+
+1. Open a page from that client.
+2. Highlight **the invoice number itself**.
+3. Choose the client profile, and click **Use this spot**.
+
+The spot is kept as fractions of the page — `x0`/`x1` across, `y0`/`y1` up from the bottom — so it
+means the same place on the next invoice even if that page is a different size. Every page matched
+to that profile is then read from there, whatever the wording around it does.
+
+A saved spot answers before any label does, and it is the only answer when it finds something. If
+there is nothing there on some page — a client who moved the number, a page that is a continuation —
+the label tiers are tried as usual, so a spot can only ever help. It is given about one line of
+slack, so a number that sits slightly differently is still found while the column alongside it is
+not swept in. One spot per profile: pointing again replaces it, and **Forget it** in the profile
+editor removes it.
+
+## PO numbers
+
+Collections work runs on purchase orders as much as on invoice numbers — a customer's payables team
+files by their own order number, so that is what a remittance or a dispute refers to. Every
+invoice's PO is listed in its own section under the table, with the label it was found after, and
+**Copy list** puts it on the clipboard as two tab-separated columns with a heading row, so it pastes
+straight into a spreadsheet as `Invoice` and `PO`. The list follows the search box, and copies
+exactly what it shows. It can be switched off under _Finding the number_.
+
+A PO is found the way an invoice number is — after a label, and in its column when the label is a
+heading — using `PO #`, `P.O. No.`, `PO Number`, `Purchase Order`, and `Customer PO` or `Your PO`.
+Plain `PO` counts only with the number straight after it, which is what keeps `PO Box 2623` from ever
+being read as a purchase order: `Box` is not shaped like a value. `Order #` is deliberately not a PO
+label, because on many invoices it is the seller's own order number, printed right beside the
+buyer's PO.
 
 ## File names
 
@@ -306,6 +345,9 @@ so the page never flashes the wrong colours on the way in.
   cannot fix is a file whose coordinates are themselves wrong, or text drawn as pictures of letters.
   If a page looks right and the text panel looks like nonsense, this is why.
 - **Password-protected files cannot be opened.** Save a copy without the password first.
+- **A PO under an unusual label is not found.** A client who prints their order reference after
+  something like `Our order + Ref` has a PO the everyday labels do not cover. It shows as
+  "none found" rather than as a wrong guess.
 
 ## Build phases
 

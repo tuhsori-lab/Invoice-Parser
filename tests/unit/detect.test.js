@@ -11,7 +11,9 @@ import {
   compileCustomPattern,
   detectCandidates,
   detectFieldValue,
+  detectInZone,
   detectInvoiceNumber,
+  detectPurchaseOrder,
   hasConflict,
   isDateShaped,
   normalizeValue,
@@ -254,11 +256,11 @@ describe('a label that is a column heading', () => {
   it('still takes a value sitting beside its label on the same line', () => {
     const { text, layout } = buildPageText([
       item('INVOICE NO.', { x: 380, y: 700, width: 55 }),
-      item('1043396', { x: 470, y: 700, width: 40 }),
+      item('2071548', { x: 470, y: 700, width: 40 }),
       item('Northwind Traders', { x: 56, y: 700, width: 90 }),
     ]);
 
-    expect(detectInvoiceNumber(text, { layout })?.value).toBe('1043396');
+    expect(detectInvoiceNumber(text, { layout })?.value).toBe('2071548');
   });
 
   it('allows a value a little wider than its heading', () => {
@@ -275,12 +277,12 @@ describe('a number with a suffix', () => {
   it('keeps an underscore suffix, because it is part of the number', () => {
     // Accounting software prints a revision or print count this way, and two
     // invoices can differ by nothing else.
-    expect(detectInvoiceNumber('Invoice # 19205594_2')?.value).toBe('19205594_2');
+    expect(detectInvoiceNumber('Invoice # 40017822_2')?.value).toBe('40017822_2');
   });
 
   it('tells two invoices apart by their suffix alone', () => {
-    expect(detectInvoiceNumber('Invoice # BROR1054_1')?.value).not.toBe(
-      detectInvoiceNumber('Invoice # BROR1054_4')?.value
+    expect(detectInvoiceNumber('Invoice # KLMN2231_1')?.value).not.toBe(
+      detectInvoiceNumber('Invoice # KLMN2231_4')?.value
     );
   });
 
@@ -300,5 +302,177 @@ describe('a number with a suffix', () => {
 
   it('still refuses something with no digit in it at all', () => {
     expect(detectInvoiceNumber('Invoice No: DRAFT_COPY')).toBeNull();
+  });
+});
+
+describe('a spot on the page somebody pointed at', () => {
+  /** One piece of drawn text, the shape pdf.js hands over. */
+  function item(str, { x, y, width, size = 9 }) {
+    return { str, transform: [size, 0, 0, size, x, y], width, height: size };
+  }
+
+  const PAGE = { width: 612, height: 792 };
+
+  /** The top of one client's invoice. Only the number changes between them. */
+  const invoice = (number) =>
+    buildPageText([
+      item('3RD FLOOR', { x: 56, y: 707, width: 65, size: 12 }),
+      item('Date', { x: 463, y: 710, width: 19 }),
+      item('Invoice #', { x: 522, y: 710, width: 36 }),
+      item('SPRINGFIELD, IL 62704', { x: 56, y: 692, width: 120, size: 12 }),
+      item('09/22/26', { x: 454, y: 688, width: 37 }),
+      item(number, { x: 517, y: 688, width: 45 }),
+    ]);
+
+  /** Where the number is printed, as fractions of the page. */
+  const spot = { x0: 517 / 612, x1: 562 / 612, y0: 688 / 792, y1: 697 / 792 };
+
+  it('reads the number standing at that spot', () => {
+    const { text, layout } = invoice('SR-40881');
+
+    expect(detectInZone(text, layout, spot, PAGE)).toBe('SR-40881');
+  });
+
+  it('reads the next invoice from the same spot without being told again', () => {
+    const { text, layout } = invoice('SR-40997');
+
+    expect(detectInZone(text, layout, spot, PAGE)).toBe('SR-40997');
+  });
+
+  it('leaves alone what is printed elsewhere at the same height', () => {
+    const { text, layout } = invoice('SR-40881');
+
+    // The postcode sits on the same line, on the other side of the page.
+    expect(detectInZone(text, layout, spot, PAGE)).not.toBe('62704');
+  });
+
+  it('is unbothered by the label being caught in the highlight', () => {
+    const { text, layout } = invoice('SR-40881');
+    const roomy = { x0: 515 / 612, x1: 565 / 612, y0: 685 / 792, y1: 715 / 792 };
+
+    // "Invoice #" comes into the spot too, and a label is not value-shaped.
+    expect(detectInZone(text, layout, roomy, PAGE)).toBe('SR-40881');
+  });
+
+  it('gives nothing when there is nothing at that spot', () => {
+    const { text, layout } = invoice('SR-40881');
+
+    expect(detectInZone(text, layout, { x0: 0.05, x1: 0.2, y0: 0.2, y1: 0.3 }, PAGE)).toBeNull();
+  });
+
+  it('cannot work without the page size, and says so rather than guessing', () => {
+    const { text, layout } = invoice('SR-40881');
+
+    expect(detectInZone(text, layout, spot, null)).toBeNull();
+  });
+
+  it('answers ahead of the label tiers, having been pointed at on purpose', () => {
+    const { text, layout } = invoice('SR-40881');
+
+    const [best] = detectCandidates(text, {
+      layout,
+      pageSize: PAGE,
+      zones: [{ zone: spot, name: 'Anchor Textile Group' }],
+    });
+
+    expect(best).toEqual({
+      value: 'SR-40881',
+      label: 'Anchor Textile Group',
+      source: 'zone',
+    });
+  });
+
+  it('steps aside for the labels when the spot finds nothing', () => {
+    const { text, layout } = invoice('SR-40881');
+
+    const [best] = detectCandidates(text, {
+      layout,
+      pageSize: PAGE,
+      zones: [{ zone: { x0: 0.05, x1: 0.2, y0: 0.2, y1: 0.3 }, name: 'Anchor Textile Group' }],
+    });
+
+    expect(best.source).toBe('common');
+    expect(best.value).toBe('SR-40881');
+  });
+});
+
+describe('the purchase order number', () => {
+  it('reads the everyday ways of labelling one', () => {
+    expect(detectPurchaseOrder('PO #: 4500012345')?.value).toBe('4500012345');
+    expect(detectPurchaseOrder('P.O. No. 88112')?.value).toBe('88112');
+    expect(detectPurchaseOrder('PO Number 88112')?.value).toBe('88112');
+    expect(detectPurchaseOrder('Purchase Order: 4500012345')?.value).toBe('4500012345');
+    expect(detectPurchaseOrder('Purchase Order No. 4500012345')?.value).toBe('4500012345');
+    expect(detectPurchaseOrder('Customer PO 88112')?.value).toBe('88112');
+    expect(detectPurchaseOrder('Your P.O. #55103388-MAR26')?.value).toBe('55103388-MAR26');
+  });
+
+  it('reads plain "PO" when the number follows straight after it', () => {
+    expect(detectPurchaseOrder('PO 4500012345')?.value).toBe('4500012345');
+    expect(detectPurchaseOrder('PO: 4500012345')?.value).toBe('4500012345');
+  });
+
+  it('never reads a PO box as a purchase order', () => {
+    // On a great many addresses. "Box" is not shaped like a value, so plain PO
+    // never gets as far as the number after it.
+    expect(detectPurchaseOrder('PO BOX 2623\nDubai')).toBeNull();
+    expect(detectPurchaseOrder('P.O. Box 2623')).toBeNull();
+    expect(detectPurchaseOrder('Remit to: PO Box 44710, Portland')).toBeNull();
+  });
+
+  it('takes the number under the PO heading, not the seller order number beside it', () => {
+    const item = (str, x, y) => ({
+      str,
+      transform: [8, 0, 0, 8, x, y],
+      width: str.length * 4.4,
+      height: 8,
+    });
+    // "ORDER #" is the seller's own order number, in the next column along.
+    // Read in order alone, its value comes first; the PO heading's column says
+    // which one belongs to it.
+    const { text, layout } = buildPageText([
+      item('ORDER #', 56, 540),
+      item('P.O. NUMBER', 150, 540),
+      item('TERMS', 280, 540),
+      item('5512086', 56, 526),
+      item('7730415', 150, 526),
+      item('NET 45 DAYS', 280, 526),
+    ]);
+
+    expect(detectPurchaseOrder(text, { layout })?.value).toBe('7730415');
+  });
+
+  it('says so when a page has no purchase order on it', () => {
+    expect(detectPurchaseOrder('Invoice No: 104501\nTotal due 1,200.00')).toBeNull();
+    expect(detectPurchaseOrder('')).toBeNull();
+  });
+
+  it('reads a PO column heading with its value underneath, beside a PO box', () => {
+    /** One piece of drawn text, the shape pdf.js hands over. */
+    const item = (str, { x, y, width, size = 9 }) => ({
+      str,
+      transform: [size, 0, 0, size, x, y],
+      width,
+      height: size,
+    });
+
+    // Laid out like a real reported invoice: the PO is a column heading in the
+    // shipping row, and the bill-to address above it has a PO box in it.
+    const { text, layout } = buildPageText([
+      item('Bill To', { x: 56, y: 640, width: 30 }),
+      item('PO BOX 2623', { x: 56, y: 626, width: 55 }),
+      item('Dubai', { x: 56, y: 614, width: 25 }),
+      item('Ship Date', { x: 56, y: 560, width: 40 }),
+      item('P.O. No.', { x: 150, y: 560, width: 34 }),
+      item('Terms', { x: 250, y: 560, width: 26 }),
+      item('9/21/2026', { x: 56, y: 546, width: 42 }),
+      item('55103388-MAR26', { x: 140, y: 546, width: 66 }),
+      item('Net 60', { x: 250, y: 546, width: 28 }),
+    ]);
+
+    expect(detectPurchaseOrder(text, { layout })).toEqual({
+      value: '55103388-MAR26',
+      label: 'P.O. No.',
+    });
   });
 });

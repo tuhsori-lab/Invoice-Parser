@@ -13,9 +13,40 @@
  * between computers.
  */
 
+import { looksLikeValue } from './detect.js';
+
 /** Shape of the file written by "Export profiles". */
 export const PROFILE_FILE_KIND = 'invoice-splitter-profiles';
 export const PROFILE_FILE_VERSION = 1;
+
+/**
+ * A spot on a page, remembered so it can be found again on the next invoice.
+ *
+ * Kept as fractions of the page's width and height rather than as points, so a
+ * spot pointed at on one invoice means the same spot on the next even when the
+ * two pages are not the same size. `y` runs from the bottom of the page, which
+ * is the direction PDFs themselves measure in.
+ *
+ * @param {object} [value]
+ * @returns {{ x0: number, y0: number, x1: number, y1: number }|null}
+ */
+function cleanZone(value) {
+  if (!value || typeof value !== 'object') return null;
+  const numbers = ['x0', 'y0', 'x1', 'y1'].map((key) => Number(value[key]));
+  if (numbers.some((number) => !Number.isFinite(number))) return null;
+
+  const clamp = (number) => Math.min(1, Math.max(0, number));
+  const [x0, y0, x1, y1] = numbers.map(clamp);
+  const zone = {
+    x0: Math.min(x0, x1),
+    y0: Math.min(y0, y1),
+    x1: Math.max(x0, x1),
+    y1: Math.max(y0, y1),
+  };
+  // A spot with no width or no height was a click, not a highlight.
+  if (zone.x1 <= zone.x0 || zone.y1 <= zone.y0) return null;
+  return zone;
+}
 
 /** Longest label worth keeping from a highlight. */
 const MAX_LABEL_LENGTH = 60;
@@ -50,7 +81,7 @@ function cleanList(value) {
  *
  * @param {object} [input]
  * @returns {{ id: string, name: string, labels: string[], extraLabel: string,
- *   filenameTemplate: string, identifyingText: string[] }}
+ *   filenameTemplate: string, identifyingText: string[], zone: object|null }}
  */
 export function createProfile(input = {}) {
   return {
@@ -60,6 +91,7 @@ export function createProfile(input = {}) {
     extraLabel: (input.extraLabel ?? '').trim(),
     filenameTemplate: (input.filenameTemplate ?? '').trim(),
     identifyingText: cleanList(input.identifyingText),
+    zone: cleanZone(input.zone),
   };
 }
 
@@ -108,6 +140,30 @@ export function labelsForPage(text, profiles = []) {
 }
 
 /**
+ * The remembered spots to read on one page.
+ *
+ * A spot is only meaningful on the client it was pointed at, so normally only
+ * profiles that recognised the page contribute one. A profile with no
+ * identifying text can never recognise anything, so when nothing recognised the
+ * page those profiles' spots are used instead: somebody who saved a spot
+ * without saying how to spot the client meant it to apply to what they are
+ * looking at.
+ *
+ * @param {string} text
+ * @param {Array<object>} profiles - the active profiles, in the user's order.
+ * @returns {Array<{ zone: object, name: string }>}
+ */
+export function zonesForPage(text, profiles = []) {
+  const matched = matchProfiles(text, profiles);
+  const source = matched.length
+    ? matched
+    : profiles.filter((profile) => (profile?.identifyingText ?? []).length === 0);
+  return source
+    .filter((profile) => profile?.zone)
+    .map((profile) => ({ zone: profile.zone, name: profile.name }));
+}
+
+/**
  * The profile that should decide an invoice's file name and extra field.
  *
  * @param {Array<object>} profiles - profiles matched by the pages of one invoice.
@@ -133,11 +189,19 @@ export function labelFromSelection(selection) {
     .trim();
   if (!text) return '';
 
+  // Everything from the first number-shaped word onwards is the value, not the
+  // label. Trimming digits off the end instead stops at the first word without
+  // one, and on a line that runs several columns together - "Our order +
+  // Ref 71402 SS27 REPEAT LOT 2 Ship.note: 7140" - that leaves
+  // the whole line as the label. Cutting at the number leaves "Our order +
+  // Ref", which is what was pointed at.
   const words = text.split(' ');
-  // Anything at the end with a digit in it is the value, not the label.
-  while (words.length > 0 && /\d/.test(words[words.length - 1])) words.pop();
+  const valueAt = words.findIndex((word) => {
+    const [token] = /[A-Za-z0-9][A-Za-z0-9_-]*/.exec(word) ?? [];
+    return token ? looksLikeValue(token) : false;
+  });
 
-  const label = words
+  const label = (valueAt === -1 ? words : words.slice(0, valueAt))
     .join(' ')
     .replace(/[\s:.,;]+$/, '')
     .trim();
@@ -165,6 +229,7 @@ export function serializeProfiles(profiles = []) {
         extraLabel: profile.extraLabel ?? '',
         filenameTemplate: profile.filenameTemplate ?? '',
         identifyingText: profile.identifyingText ?? [],
+        zone: profile.zone ?? null,
       })),
     },
     null,

@@ -24,8 +24,9 @@
  * underneath rather than beside it, and some unrelated text can sit at that same
  * height on the far side of the page. So alongside the text this module returns
  * a `layout`: for every run, the characters it occupies in the text and the
- * horizontal space it occupied on the page. detect.js uses that to tell a value
- * standing in a label's column from one that merely follows it in reading order.
+ * space it occupied on the page. detect.js uses that to tell a value standing in
+ * a label's column from one that merely follows it in reading order, and to read
+ * whatever stands in a region of the page somebody pointed at.
  *
  * This module is plain JavaScript. It takes the raw text items so it can be
  * tested without opening a PDF at all.
@@ -147,6 +148,8 @@ export function buildPageText(items) {
         end: line.length + str.length,
         x: piece.x,
         endX: piece.x + piece.width,
+        y: piece.y,
+        fontSize: piece.fontSize,
       });
       line += str;
     }
@@ -162,6 +165,8 @@ export function buildPageText(items) {
         end: offset + Math.min(span.end, trimmed.length),
         x: span.x,
         endX: span.endX,
+        y: span.y,
+        fontSize: span.fontSize,
         band: bandIndex,
       });
     }
@@ -195,7 +200,8 @@ export function countReadableCharacters(text) {
  * @param {object} [options]
  * @param {(done: number, total: number) => void} [options.onProgress]
  * @param {{ aborted: boolean }} [options.signal] - set `aborted` to stop early.
- * @returns {Promise<Array<{ pageNumber: number, text: string, hasText: boolean, layout: Array<object> }>>}
+ * @returns {Promise<Array<object>>} one entry per page: its text, whether that
+ *   text is usable, where each run sat, and the page's own size.
  */
 export async function extractDocumentText(document, options = {}) {
   const { onProgress, signal } = options;
@@ -205,7 +211,8 @@ export async function extractDocumentText(document, options = {}) {
     const page = await document.getPage(pageNumber);
     const content = await page.getTextContent();
     const { text, hasText, layout } = buildPageText(content.items);
-    pages.push({ pageNumber, text, hasText, layout });
+    const { width, height } = page.getViewport({ scale: 1 });
+    pages.push({ pageNumber, text, hasText, layout, pageWidth: width, pageHeight: height });
     page.cleanup?.();
     onProgress?.(pageNumber, document.numPages);
   }

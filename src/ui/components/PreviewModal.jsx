@@ -7,6 +7,35 @@ import { useDialog } from '../../lib/useDialog.js';
 const PAGE_WIDTH = 660;
 
 /**
+ * Where on the page somebody dragged, as fractions of the page's own size.
+ *
+ * The text layer is drawn exactly over the page, so the highlight's box
+ * measured against that layer is already the fraction of the page wanted - at
+ * whatever size the dialog happens to draw it, and whatever size the page is.
+ * Screens measure downwards from the top and PDFs measure upwards from the
+ * bottom, so the vertical pair is turned over on the way out.
+ *
+ * @param {Selection|null} selection
+ * @param {HTMLElement|null} layer - the text layer over the drawn page.
+ * @returns {{ x0: number, y0: number, x1: number, y1: number }|null}
+ */
+function zoneFromSelection(selection, layer) {
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+  if (!layer || !layer.contains(selection.anchorNode)) return null;
+
+  const box = selection.getRangeAt(0).getBoundingClientRect();
+  const sheet = layer.getBoundingClientRect();
+  if (!box.width || !box.height || !sheet.width || !sheet.height) return null;
+
+  return {
+    x0: (box.left - sheet.left) / sheet.width,
+    x1: (box.right - sheet.left) / sheet.width,
+    y0: 1 - (box.bottom - sheet.top) / sheet.height,
+    y1: 1 - (box.top - sheet.top) / sheet.height,
+  };
+}
+
+/**
  * One page, big enough to read, with the text pdf.js found sitting invisibly on
  * top of it. The text layer is what makes the page selectable now, and what
  * teaching a label by highlighting will use later.
@@ -23,13 +52,14 @@ export default function PreviewModal({
   canMoveOn,
   profiles,
   onTeachLabel,
+  onTeachZone,
   busy,
 }) {
   const canvasRef = useRef(null);
   const textRef = useRef(null);
   const dialogRef = useDialog({ onClose });
   const [drawing, setDrawing] = useState(true);
-  const [taught, setTaught] = useState('');
+  const [taught, setTaught] = useState(null);
   const [teaching, setTeaching] = useState(null);
 
   // Draw the page, and put its text on top of it.
@@ -90,18 +120,25 @@ export default function PreviewModal({
   // exactly what makes detection re-run.
   useEffect(() => {
     setTeaching(null);
-    setTaught('');
+    setTaught(null);
   }, [page.index]);
 
   /**
-   * Somebody dragged across the page. What they highlighted is usually the
-   * label and the number together, so the number is dropped and the words in
-   * front of it are offered as a label.
+   * Somebody dragged across the page, and there are two things worth learning
+   * from that.
+   *
+   * What they highlighted is usually the label and the number together, so the
+   * number is dropped and the words in front of it are offered as a label. And
+   * wherever they dragged is offered as a spot: on a client whose wording is
+   * unusable - text drawn over other text, a heading that is really a picture -
+   * the number is still printed in the same place on every invoice, and being
+   * shown that place once is enough.
    */
   const readSelection = () => {
-    const selected = window.getSelection?.()?.toString() ?? '';
-    const label = labelFromSelection(selected);
-    if (label) setTeaching({ label, profileId: profiles?.[0]?.id ?? 'new' });
+    const selection = window.getSelection?.() ?? null;
+    const label = labelFromSelection(selection?.toString() ?? '');
+    const zone = zoneFromSelection(selection, textRef.current);
+    if (label || zone) setTeaching({ label, zone, profileId: profiles?.[0]?.id ?? 'new' });
   };
 
   // Arrow keys step through pages. Escape and the focus trap are handled by
@@ -205,7 +242,13 @@ export default function PreviewModal({
         {teaching && (
           <div className="teach" data-testid="teach-bar">
             <span>
-              Add <strong data-testid="teach-label">{teaching.label}</strong> as a label for
+              {teaching.label ? (
+                <>
+                  Teach <strong data-testid="teach-label">{teaching.label}</strong> to
+                </>
+              ) : (
+                <>Teach this spot on the page to</>
+              )}
             </span>
             <label>
               <span className="visually-hidden">Client profile</span>
@@ -224,19 +267,37 @@ export default function PreviewModal({
                 <option value="new">A new profile&hellip;</option>
               </select>
             </label>
-            <button
-              type="button"
-              className="button"
-              data-testid="teach-add"
-              onClick={() => {
-                onTeachLabel(teaching.label, teaching.profileId, page);
-                setTaught(teaching.label);
-                setTeaching(null);
-                window.getSelection?.()?.removeAllRanges();
-              }}
-            >
-              Add as label
-            </button>
+            {teaching.label && (
+              <button
+                type="button"
+                className="button"
+                data-testid="teach-add"
+                onClick={() => {
+                  onTeachLabel(teaching.label, teaching.profileId, page);
+                  setTaught({ kind: 'label', text: teaching.label });
+                  setTeaching(null);
+                  window.getSelection?.()?.removeAllRanges();
+                }}
+              >
+                Add as label
+              </button>
+            )}
+            {teaching.zone && (
+              <button
+                type="button"
+                className="button"
+                data-testid="teach-spot"
+                title="Read this same place on every page from this client"
+                onClick={() => {
+                  onTeachZone(teaching.zone, teaching.profileId, page);
+                  setTaught({ kind: 'zone', text: '' });
+                  setTeaching(null);
+                  window.getSelection?.()?.removeAllRanges();
+                }}
+              >
+                Use this spot
+              </button>
+            )}
             <button type="button" className="link-button" onClick={() => setTeaching(null)}>
               Not now
             </button>
@@ -245,15 +306,35 @@ export default function PreviewModal({
 
         {taught && (
           <div className="teach teach-done" role="status" data-testid="teach-result">
-            {group?.invoice && group.provenance?.source === 'profile' ? (
+            {group?.invoice &&
+            group.provenance?.source === (taught.kind === 'zone' ? 'zone' : 'profile') ? (
               <span>
-                Found <strong>{group.invoice}</strong> after <code>{group.provenance.label}</code>.
-                Every page with that label is read the same way now.
+                Found <strong>{group.invoice}</strong>{' '}
+                {taught.kind === 'zone' ? (
+                  <>
+                    at that spot. Every page from this client is read from there now, whatever the
+                    wording around it does.
+                  </>
+                ) : (
+                  <>
+                    after <code>{group.provenance.label}</code>. Every page with that label is read
+                    the same way now.
+                  </>
+                )}
               </span>
             ) : (
               <span>
-                <code>{taught}</code> was added, but no number was found after it on this page.
-                Check the highlight, or correct the number in the table.
+                {taught.kind === 'zone' ? (
+                  <>
+                    That spot was saved, but nothing shaped like a number was found there on this
+                    page. Check the highlight, or correct the number in the table.
+                  </>
+                ) : (
+                  <>
+                    <code>{taught.text}</code> was added, but no number was found after it on this
+                    page. Check the highlight, or correct the number in the table.
+                  </>
+                )}
               </span>
             )}
           </div>
