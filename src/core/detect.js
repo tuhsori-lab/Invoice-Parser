@@ -304,6 +304,61 @@ function hitsForPattern(text, pattern, source, options = {}) {
 const ZONE_SLACK = 0.012;
 
 /**
+ * How far each run of letters or digits may differ in length from the example
+ * and still be the same kind of number. One either way, because numbering
+ * grows: invoice 9998 is followed by 10002.
+ */
+const SHAPE_SLACK = 1;
+
+/**
+ * The shape of a value: its runs of letters and of digits, how long each run
+ * is, and whatever separates them. "KLMN2231_4" is "A4 D4 _ D1".
+ *
+ * Kept instead of the value itself, so a profile remembers what a client's
+ * invoice numbers look like without holding one of them.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+export function valueShape(value) {
+  const runs =
+    String(value ?? '')
+      .toUpperCase()
+      .match(/[A-Z]+|[0-9]+|[^A-Z0-9\s]/g) ?? [];
+  return runs
+    .map((run) => {
+      if (/^[A-Z]/.test(run)) return `A${run.length}`;
+      if (/^[0-9]/.test(run)) return `D${run.length}`;
+      return run;
+    })
+    .join(' ');
+}
+
+/**
+ * Could this value be another number of the kind that has this shape?
+ *
+ * The same runs in the same order with the same separators, each run within a
+ * character of the example's length. A spot saved with no shape accepts
+ * anything value-shaped, as spots saved before shapes existed always did.
+ *
+ * @param {string} value
+ * @param {string} [shape]
+ * @returns {boolean}
+ */
+export function fitsShape(value, shape) {
+  if (!shape) return true;
+  const want = String(shape).split(' ');
+  const have = valueShape(value).split(' ');
+  if (want.length !== have.length) return false;
+  return want.every((part, position) => {
+    const wanted = /^([AD])(\d+)$/.exec(part);
+    const found = /^([AD])(\d+)$/.exec(have[position]);
+    if (!wanted || !found) return part === have[position];
+    return wanted[1] === found[1] && Math.abs(Number(wanted[2]) - Number(found[2])) <= SHAPE_SLACK;
+  });
+}
+
+/**
  * Read whatever stands in one region of a page.
  *
  * This is what makes "show me where the number is" work. Labels are no help on
@@ -316,13 +371,19 @@ const ZONE_SLACK = 0.012;
  * and the first run of characters among them shaped like a value is the answer.
  * A label caught along with the number does no harm: a label is not value-shaped.
  *
+ * Given a shape, only a value of that shape counts. That is what keeps a
+ * continuation page right: page 2 of an invoice often has nothing in the spot,
+ * but sometimes has a subtotal or a line of the table there instead, and a
+ * number of the wrong shape is ignored rather than read as a new invoice.
+ *
  * @param {string} text - the full page text.
  * @param {Array<object>} layout - where each run sat, from extractText.js.
  * @param {object} zone - fractions of the page: { x0, y0, x1, y1 }, y from the bottom.
  * @param {{ width: number, height: number }} pageSize - the page's own size.
+ * @param {string} [shape] - what the number looked like where it was pointed at.
  * @returns {string|null}
  */
-export function detectInZone(text, layout, zone, pageSize) {
+export function detectInZone(text, layout, zone, pageSize, shape = '') {
   if (!layout?.length || !zone || !pageSize?.width || !pageSize?.height) return null;
 
   const left = (zone.x0 - ZONE_SLACK) * pageSize.width;
@@ -343,9 +404,11 @@ export function detectInZone(text, layout, zone, pageSize) {
   TOKEN_PATTERN.lastIndex = 0;
   let match;
   while ((match = TOKEN_PATTERN.exec(window)) !== null) {
-    if (looksLikeValue(match[0])) {
+    if (!looksLikeValue(match[0])) continue;
+    const value = normalizeValue(match[0]);
+    if (fitsShape(value, shape)) {
       TOKEN_PATTERN.lastIndex = 0;
-      return normalizeValue(match[0]);
+      return value;
     }
   }
   return null;
@@ -452,7 +515,7 @@ export function detectCandidates(text, settings = {}) {
   // a better answer than any guess from the wording, so it is the only one.
   const fromZones = [];
   for (const entry of zones) {
-    const value = detectInZone(page, layout, entry?.zone, pageSize);
+    const value = detectInZone(page, layout, entry?.zone, pageSize, entry?.shape);
     if (value) {
       fromZones.push({ value, label: entry.name || 'this client', source: 'zone' });
     }

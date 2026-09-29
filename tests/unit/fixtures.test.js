@@ -12,7 +12,7 @@ import { groupPages } from '../../src/core/group.js';
 import { assignFileNames } from '../../src/core/naming.js';
 import { classifyError } from '../../src/core/errors.js';
 import { createProfile } from '../../src/core/profiles.js';
-import { CASES, SPECIAL_CASES } from '../fixtures/expected.js';
+import { CASES, HARBOR_PINE, SPECIAL_CASES } from '../fixtures/expected.js';
 import { loadFixturePages, openFixture } from '../helpers/loadFixture.js';
 
 /** Run one sample PDF through the engine, exactly as the app does. */
@@ -147,5 +147,21 @@ describe('pointing at where the number is', () => {
 
     expect(groups.map((group) => group.invoice)).toEqual(['SR-40881_2', 'SR-40997_1']);
     expect(groups.map((group) => group.provenance?.source)).toEqual(['common', 'common']);
+  });
+});
+
+describe('a saved spot on a client with continuation pages', () => {
+  it('passes over a subtotal in the spot, because it is not shaped like the number', async () => {
+    const pages = await loadFixturePages('22-boxed-number.pdf');
+    const shapeless = createProfile({ ...HARBOR_PINE, zoneShape: '' });
+
+    const withShape = groupPages(analyzePages(pages, { profiles: [HARBOR_PINE] }), {});
+    const without = groupPages(analyzePages(pages, { profiles: [shapeless] }), {});
+
+    expect(withShape.map((group) => group.invoice)).toEqual(['50621', '50698']);
+    // Without the shape, the subtotal each continuation page carries in that
+    // same spot is read as an invoice number of its own. This is what the
+    // shape is there to stop.
+    expect(without.map((group) => group.invoice)).toContain('472');
   });
 });

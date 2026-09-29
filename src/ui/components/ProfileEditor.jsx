@@ -101,7 +101,7 @@ export default function ProfileEditor({ profile, canDelete, onSave, onDelete, on
             {draft.zone ? (
               <div className="field-row">
                 <p className="field-value" data-testid="profile-zone">
-                  A spot you pointed at is saved, and read before any label below.
+                  A box you drew is saved, and read before any label below.
                 </p>
                 <button
                   type="button"
@@ -114,13 +114,14 @@ export default function ProfileEditor({ profile, canDelete, onSave, onDelete, on
               </div>
             ) : (
               <p className="field-value muted" data-testid="profile-zone">
-                None. Open a page, highlight the invoice number on it, and choose &ldquo;Use this
-                spot&rdquo;.
+                None. Open one of their pages, choose &ldquo;Point to the invoice number&rdquo;, and
+                draw a box around it.
               </p>
             )}
             <small>
               Worth saving for a client whose wording cannot be relied on. The same place is read on
-              every page of theirs; if nothing is there, the labels below are tried instead.
+              every page of theirs, and only a number shaped like the one you boxed counts. A page
+              with nothing there stays with the invoice before it.
             </small>
           </div>
 

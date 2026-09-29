@@ -46,7 +46,7 @@ picked rather than guessing.
 
 | Tier         | What it looks for                                                                                                     | Example              |
 | ------------ | --------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| 0. `zone`    | The spot on the page you pointed at for this client, read before any wording is looked at                             | (wherever you chose) |
+| 0. `zone`    | The box you drew around this client's number, read before any wording is looked at                                    | (wherever you drew)  |
 | 1. `profile` | A label from one of your saved client profiles, in your order                                                         | `Our Ref 889900`     |
 | 2. `common`  | An everyday label: invoice/inv/bill/billing/document/doc/credit memo/debit memo, then `#` or number/num/nbr/no/id/ref | `Invoice No. 104501` |
 | 3. `bare`    | The word "Invoice" followed by a number **on the same line**                                                          | `INVOICE 445566`     |
@@ -171,7 +171,8 @@ A profile is one client's way of printing invoices:
   "extraLabel": "Store #",
   "filenameTemplate": "{prefix}{invoice}_{extra}",
   "identifyingText": ["Northwind Traders"],
-  "zone": { "x0": 0.84, "y0": 0.86, "x1": 0.92, "y1": 0.88 }
+  "zone": { "x0": 0.84, "y0": 0.86, "x1": 0.92, "y1": 0.88 },
+  "zoneShape": "A4 D4 _ D1"
 }
 ```
 
@@ -197,26 +198,43 @@ immediately and the preview says what it found — "Found 889900 after Our Ref" 
 worked before closing the page. A brand new profile is named after the page's letterhead and
 recognises that client from then on.
 
-### Teaching a spot when the words are no help
+### Drawing a box around the invoice number
 
-Some clients cannot be taught by their wording at all. The label is drawn over other text, or is
-part of a picture, or is worded differently on every invoice. But the number is still printed in the
-same place on every invoice they send, and that place can be pointed at once:
+Every client prints invoices differently, and some cannot be taught by their wording at all: the
+label is drawn over other text, or is part of a picture, or is worded differently on every invoice.
+But the number is still printed in the same place on every invoice they send, so the app asks to be
+shown that place once.
 
-1. Open a page from that client.
-2. Highlight **the invoice number itself**.
-3. Choose the client profile, and click **Use this spot**.
+When a batch has pages no saved spot covers, a card above the page strip says so and names the first
+of them. **Point to it on page 1** opens that page with the page dimmed, and you drag a box around
+the invoice number — like taking a screenshot. The bar above the page shows what is inside the box
+before anything is saved; **Save this spot** puts it on the client's profile, a new one named after
+the letterhead if the client has none. The same **Point to the invoice number** button is on every
+page's preview, for pointing at any time.
 
-The spot is kept as fractions of the page — `x0`/`x1` across, `y0`/`y1` up from the bottom — so it
-means the same place on the next invoice even if that page is a different size. Every page matched
-to that profile is then read from there, whatever the wording around it does.
+Every page matched to that client is then read from inside the box, in this batch and in their next
+one, which is not asked about again. In a batch from several clients the card moves on to the first
+page of the next client nobody has pointed at, so they can be taught one after another.
 
-A saved spot answers before any label does, and it is the only answer when it finds something. If
-there is nothing there on some page — a client who moved the number, a page that is a continuation —
-the label tiers are tried as usual, so a spot can only ever help. It is given about one line of
-slack, so a number that sits slightly differently is still found while the column alongside it is
-not swept in. One spot per profile: pointing again replaces it, and **Forget it** in the profile
-editor removes it.
+**Pages with nothing in the box.** On many invoices only the first page carries the number; the
+pages after it are continuations. A page with no number in the box has no number, and pages with no
+number stay with the invoice before them (_Pages with no number on them → Keep with the invoice
+before_, the default). So the first page starts an invoice and the pages after it join it, until the
+next page with a number in the box starts the next one.
+
+**Something else in the box.** A continuation page sometimes prints a subtotal or a line of the table
+where the number goes on the first page. Read blindly, that would start an invoice of its own. So
+along with the box the profile keeps the _shape_ of the number that was boxed — `50621` is five
+digits, `KLMN2231_4` is four letters, four digits, an underscore and a digit — and only a number of
+that shape counts, give or take one character in each run because numbering grows. Anything else in
+the box is ignored and the page is treated as a continuation. Only the shape is kept, never the
+number: a profile describes what a client's invoices look like, not what is on one.
+
+The box is kept as fractions of the page — `x0`/`x1` across, `y0`/`y1` up from the bottom — so it
+means the same place on a page of a different size, with about a line of slack so a number that sits
+slightly differently is still found while the column beside it is not swept in. A saved box answers
+before any label does; when it finds nothing, the label tiers are tried as usual. One box per
+profile: drawing again replaces it, and **Forget it** in the profile editor removes it.
 
 ## PO numbers
 

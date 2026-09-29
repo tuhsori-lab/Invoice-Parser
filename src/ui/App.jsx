@@ -4,7 +4,7 @@ import { groupPages } from '../core/group.js';
 import { assignFileNames, buildFileName, DEFAULT_TEMPLATE } from '../core/naming.js';
 import { explain } from '../core/errors.js';
 import { exportWarning, reviewQueue } from '../core/review.js';
-import { createProfile } from '../core/profiles.js';
+import { createProfile, zonesForPage } from '../core/profiles.js';
 import { closeBatch, loadBatch } from '../lib/loadBatch.js';
 import { clearThumbnails } from '../lib/thumbnails.js';
 import { saveFile } from '../lib/download.js';
@@ -18,6 +18,7 @@ import SettingsPanel from './components/SettingsPanel.jsx';
 import PageStrip from './components/PageStrip.jsx';
 import InvoiceTable from './components/InvoiceTable.jsx';
 import PreviewModal from './components/PreviewModal.jsx';
+import PointPrompt from './components/PointPrompt.jsx';
 import PurchaseOrders from './components/PurchaseOrders.jsx';
 import ReviewQueue from './components/ReviewQueue.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
@@ -85,6 +86,10 @@ export default function App() {
   const fixes = useUndoable({ boundaries: {}, numbers: {}, moves: {} });
 
   const [reading, setReading] = useState(null);
+  // Showing the app where the invoice number is: whether the preview was opened
+  // to draw a box, and whether the ask was waved off for this batch.
+  const [pointing, setPointing] = useState(false);
+  const [pointDismissed, setPointDismissed] = useState(false);
   const readCancelRef = useRef(null);
   const cancelRef = useRef(null);
   const sourcesRef = useRef(new Map());
@@ -120,6 +125,8 @@ export default function App() {
       setPages([]);
       setProblems([]);
       setPreviewIndex(null);
+      setPointing(false);
+      setPointDismissed(false);
       setQuery('');
       setIssueAt(-1);
       fixes.reset({ boundaries: {}, numbers: {}, moves: {} });
@@ -155,6 +162,8 @@ export default function App() {
     setPages([]);
     setProblems([]);
     setPreviewIndex(null);
+    setPointing(false);
+    setPointDismissed(false);
     setQuery('');
     setIssueAt(-1);
     fixes.reset({ boundaries: {}, numbers: {}, moves: {} });
@@ -337,7 +346,11 @@ export default function App() {
 
   /* --------------------------------------------------------------- profiles */
 
-  const saveProfile = useCallback((profile) => {
+  const saveProfile = useCallback((changed) => {
+    // Through the one place that knows what a profile may hold, so a spot that
+    // has been forgotten cannot leave its shape behind, whichever way it was
+    // forgotten.
+    const profile = createProfile(changed);
     setProfiles((current) => {
       const known = current.some((entry) => entry.id === profile.id);
       return known
@@ -410,20 +423,21 @@ export default function App() {
    * pointing at the number again is how somebody corrects a spot that was off.
    */
   const teachZone = useCallback(
-    (zone, profileId, page) => {
+    (zone, profileId, page, zoneShape = '') => {
       if (profileId === 'new') {
         const [letterhead = ''] = (page.text ?? '').split('\n');
         const fresh = createProfile({
           name: letterhead.trim().slice(0, 60) || 'Untitled client',
           identifyingText: letterhead.trim() ? [letterhead.trim()] : [],
           zone,
+          zoneShape,
         });
         saveProfile(fresh);
         return;
       }
       const existing = profiles.find((entry) => entry.id === profileId);
       if (!existing) return;
-      saveProfile({ ...existing, zone });
+      saveProfile({ ...existing, zone, zoneShape });
     },
     [profiles, saveProfile]
   );
@@ -563,6 +577,26 @@ export default function App() {
   const previewPage = previewIndex === null ? null : analyzed[previewIndex - 1];
   const needingReview = groups.filter((group) => group.flags.length > 0).length;
   const pageCount = pages.length;
+
+  /**
+   * Pages a box could be drawn on that no saved spot covers yet, in page order.
+   * The same rule detection uses to decide which spots to read on a page, so the
+   * app never asks about a page it already knows how to read.
+   */
+  const unpointed = useMemo(
+    () =>
+      analyzed.filter(
+        (page) => page.layout?.length && zonesForPage(page.text, profilesInUse).length === 0
+      ),
+    [analyzed, profilesInUse]
+  );
+  const anyPointed = unpointed.length < analyzed.filter((page) => page.layout?.length).length;
+  const spotInvoices = groups.filter((group) => group.provenance?.source === 'zone').length;
+
+  const pointAt = useCallback((pageIndex) => {
+    setPointing(true);
+    setPreviewIndex(pageIndex);
+  }, []);
 
   return (
     <div className="app">
@@ -732,6 +766,15 @@ export default function App() {
               </div>
             </div>
 
+            {!pointDismissed && unpointed.length > 0 && (
+              <PointPrompt
+                page={unpointed[0].index}
+                anyPointed={anyPointed}
+                onPoint={pointAt}
+                onDismiss={() => setPointDismissed(true)}
+              />
+            )}
+
             {(scannedPages.length > 0 || reading) && (
               <div className="scanned" data-testid="scanned-notice">
                 {reading ? (
@@ -832,12 +875,17 @@ export default function App() {
           page={previewPage}
           group={groupOfPage.get(previewPage.index)}
           doc={docsById.get(previewPage.fileId)}
-          onClose={() => setPreviewIndex(null)}
+          onClose={() => {
+            setPreviewIndex(null);
+            setPointing(false);
+          }}
           onStep={stepPreview}
           onDownload={downloadInvoice}
           profiles={profiles}
           onTeachLabel={teachLabel}
           onTeachZone={teachZone}
+          pointing={pointing}
+          spotInvoices={spotInvoices}
           onMoveToNeighbour={(direction) => {
             const anchor = previewPage.index + direction;
             if (anchor >= 1 && anchor <= pages.length) movePage(previewPage.index, anchor);
