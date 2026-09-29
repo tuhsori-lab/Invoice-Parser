@@ -3,6 +3,22 @@ import { parseProfilesFile, serializeProfiles } from '../../core/profiles.js';
 import { saveFile } from '../../lib/download.js';
 
 /**
+ * What this profile has been taught, in a line under its name.
+ *
+ * A saved spot is said first because it answers before any label does, so
+ * somebody wondering why a client reads the way it does sees the reason first.
+ *
+ * @param {object} profile
+ * @returns {string}
+ */
+function describeProfile(profile) {
+  const parts = [];
+  if (profile.zone) parts.push('a spot on the page');
+  if (profile.labels.length > 0) parts.push(profile.labels.slice(0, 3).join(', '));
+  return parts.length > 0 ? parts.join(' · ') : 'nothing taught yet';
+}
+
+/**
  * The client profiles this person has taught the app.
  *
  * A profile is one client's way of printing invoices. Switching several on at
@@ -48,11 +64,7 @@ export default function ProfilesPanel({
                 />
                 <span className="profile-name">
                   {profile.name}
-                  <small>
-                    {profile.labels.length === 0
-                      ? 'no labels yet'
-                      : profile.labels.slice(0, 3).join(', ')}
-                  </small>
+                  <small>{describeProfile(profile)}</small>
                 </span>
               </label>
               <button

@@ -11,7 +11,7 @@
  */
 
 import { detectCandidates, detectFieldValue, hasConflict } from './detect.js';
-import { labelsForPage } from './profiles.js';
+import { labelsForPage, zonesForPage } from './profiles.js';
 
 /**
  * @typedef {object} ExtractedPage
@@ -22,6 +22,8 @@ import { labelsForPage } from './profiles.js';
  * @property {string} text the page's text.
  * @property {boolean} hasText false when the page has no usable text layer.
  * @property {Array<object>} [layout] where each run of the text sat on the page.
+ * @property {number} [pageWidth] the page's own width, for reading a saved spot.
+ * @property {number} [pageHeight] the page's own height.
  * @property {boolean} [ocr] true when the text came from text recognition.
  */
 
@@ -68,6 +70,11 @@ export function analyzePages(pages = [], settings = {}) {
       useBareInvoice,
       customPattern,
       layout,
+      zones: zonesForPage(text, profiles),
+      pageSize:
+        page.pageWidth && page.pageHeight
+          ? { width: page.pageWidth, height: page.pageHeight }
+          : null,
     });
     const extraLabels = [
       ...matched.map((profile) => profile.extraLabel).filter(Boolean),

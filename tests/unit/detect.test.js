@@ -11,6 +11,7 @@ import {
   compileCustomPattern,
   detectCandidates,
   detectFieldValue,
+  detectInZone,
   detectInvoiceNumber,
   hasConflict,
   isDateShaped,
@@ -300,5 +301,96 @@ describe('a number with a suffix', () => {
 
   it('still refuses something with no digit in it at all', () => {
     expect(detectInvoiceNumber('Invoice No: DRAFT_COPY')).toBeNull();
+  });
+});
+
+describe('a spot on the page somebody pointed at', () => {
+  /** One piece of drawn text, the shape pdf.js hands over. */
+  function item(str, { x, y, width, size = 9 }) {
+    return { str, transform: [size, 0, 0, size, x, y], width, height: size };
+  }
+
+  const PAGE = { width: 612, height: 792 };
+
+  /** The top of one client's invoice. Only the number changes between them. */
+  const invoice = (number) =>
+    buildPageText([
+      item('3RD FLOOR', { x: 56, y: 707, width: 65, size: 12 }),
+      item('Date', { x: 463, y: 710, width: 19 }),
+      item('Invoice #', { x: 522, y: 710, width: 36 }),
+      item('SPRINGFIELD, IL 62704', { x: 56, y: 692, width: 120, size: 12 }),
+      item('09/22/26', { x: 454, y: 688, width: 37 }),
+      item(number, { x: 517, y: 688, width: 45 }),
+    ]);
+
+  /** Where the number is printed, as fractions of the page. */
+  const spot = { x0: 517 / 612, x1: 562 / 612, y0: 688 / 792, y1: 697 / 792 };
+
+  it('reads the number standing at that spot', () => {
+    const { text, layout } = invoice('SR-40881');
+
+    expect(detectInZone(text, layout, spot, PAGE)).toBe('SR-40881');
+  });
+
+  it('reads the next invoice from the same spot without being told again', () => {
+    const { text, layout } = invoice('SR-40997');
+
+    expect(detectInZone(text, layout, spot, PAGE)).toBe('SR-40997');
+  });
+
+  it('leaves alone what is printed elsewhere at the same height', () => {
+    const { text, layout } = invoice('SR-40881');
+
+    // The postcode sits on the same line, on the other side of the page.
+    expect(detectInZone(text, layout, spot, PAGE)).not.toBe('62704');
+  });
+
+  it('is unbothered by the label being caught in the highlight', () => {
+    const { text, layout } = invoice('SR-40881');
+    const roomy = { x0: 515 / 612, x1: 565 / 612, y0: 685 / 792, y1: 715 / 792 };
+
+    // "Invoice #" comes into the spot too, and a label is not value-shaped.
+    expect(detectInZone(text, layout, roomy, PAGE)).toBe('SR-40881');
+  });
+
+  it('gives nothing when there is nothing at that spot', () => {
+    const { text, layout } = invoice('SR-40881');
+
+    expect(detectInZone(text, layout, { x0: 0.05, x1: 0.2, y0: 0.2, y1: 0.3 }, PAGE)).toBeNull();
+  });
+
+  it('cannot work without the page size, and says so rather than guessing', () => {
+    const { text, layout } = invoice('SR-40881');
+
+    expect(detectInZone(text, layout, spot, null)).toBeNull();
+  });
+
+  it('answers ahead of the label tiers, having been pointed at on purpose', () => {
+    const { text, layout } = invoice('SR-40881');
+
+    const [best] = detectCandidates(text, {
+      layout,
+      pageSize: PAGE,
+      zones: [{ zone: spot, name: 'Anchor Textile Group' }],
+    });
+
+    expect(best).toEqual({
+      value: 'SR-40881',
+      label: 'Anchor Textile Group',
+      source: 'zone',
+    });
+  });
+
+  it('steps aside for the labels when the spot finds nothing', () => {
+    const { text, layout } = invoice('SR-40881');
+
+    const [best] = detectCandidates(text, {
+      layout,
+      pageSize: PAGE,
+      zones: [{ zone: { x0: 0.05, x1: 0.2, y0: 0.2, y1: 0.3 }, name: 'Anchor Textile Group' }],
+    });
+
+    expect(best.source).toBe('common');
+    expect(best.value).toBe('SR-40881');
   });
 });

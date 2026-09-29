@@ -480,6 +480,19 @@ input[aria-invalid='true'] {
   gap: 0.25rem;
 }
 
+/* A setting that is already decided, shown as words rather than as a box. */
+.field-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.field-value {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
 .field > span:first-child {
   font-weight: 550;
 }

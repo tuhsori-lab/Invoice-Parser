@@ -7,6 +7,8 @@
  * words the number was found after are reported as `label`, so the person using
  * the app can always see why a number was picked.
  *
+ *   0. zone    - the spot on the page somebody pointed at for this client,
+ *                which replaces the tiers below it when it finds anything
  *   1. profile - a label from one of this client's saved profiles
  *   2. common  - an everyday label such as "Invoice No." or "Bill #"
  *   3. bare    - the word "Invoice" followed by a number on the same line
@@ -293,6 +295,63 @@ function hitsForPattern(text, pattern, source, options = {}) {
 }
 
 /**
+ * How much slack a remembered spot gets, as a fraction of the page.
+ *
+ * About one line of an ordinary invoice, so a number that sits a little
+ * differently on the next invoice is still found, while the column alongside it
+ * is not swept in.
+ */
+const ZONE_SLACK = 0.012;
+
+/**
+ * Read whatever stands in one region of a page.
+ *
+ * This is what makes "show me where the number is" work. Labels are no help on
+ * a client whose wording is unreadable - text drawn over other text, a heading
+ * that never appears as its own words - but the number is still printed in the
+ * same place on every invoice they send, and that place can be pointed at once
+ * and read from then on.
+ *
+ * Every run whose box meets the spot is taken, read in the order the page reads,
+ * and the first run of characters among them shaped like a value is the answer.
+ * A label caught along with the number does no harm: a label is not value-shaped.
+ *
+ * @param {string} text - the full page text.
+ * @param {Array<object>} layout - where each run sat, from extractText.js.
+ * @param {object} zone - fractions of the page: { x0, y0, x1, y1 }, y from the bottom.
+ * @param {{ width: number, height: number }} pageSize - the page's own size.
+ * @returns {string|null}
+ */
+export function detectInZone(text, layout, zone, pageSize) {
+  if (!layout?.length || !zone || !pageSize?.width || !pageSize?.height) return null;
+
+  const left = (zone.x0 - ZONE_SLACK) * pageSize.width;
+  const right = (zone.x1 + ZONE_SLACK) * pageSize.width;
+  const bottom = (zone.y0 - ZONE_SLACK) * pageSize.height;
+  const top = (zone.y1 + ZONE_SLACK) * pageSize.height;
+
+  const page = String(text ?? '');
+  const parts = [];
+  for (const span of layout) {
+    if (span.endX < left || span.x > right) continue;
+    if (span.y + (span.fontSize ?? 0) < bottom || span.y > top) continue;
+    parts.push(page.slice(span.start, span.end));
+  }
+  if (parts.length === 0) return null;
+
+  const window = maskDates(parts.join(' '));
+  TOKEN_PATTERN.lastIndex = 0;
+  let match;
+  while ((match = TOKEN_PATTERN.exec(window)) !== null) {
+    if (looksLikeValue(match[0])) {
+      TOKEN_PATTERN.lastIndex = 0;
+      return normalizeValue(match[0]);
+    }
+  }
+  return null;
+}
+
+/**
  * Compile a user's own pattern, reporting a plain-language problem if it is broken.
  *
  * @param {string} pattern
@@ -358,6 +417,10 @@ function dedupe(hits) {
  * @property {string} [customPattern] a pattern that replaces all of the above.
  * @property {Array<object>} [layout] where each run sat on the page, from
  *   extractText.js. Without it detection falls back to reading order alone.
+ * @property {Array<{ zone: object, name: string }>} [zones] spots pointed at for
+ *   the clients that recognised this page. A spot that finds something is the
+ *   answer, and the label tiers are not tried.
+ * @property {{ width: number, height: number }} [pageSize] the page's own size.
  */
 
 /**
@@ -377,11 +440,24 @@ export function detectCandidates(text, settings = {}) {
     useBareInvoice = true,
     customPattern,
     layout = null,
+    zones = [],
+    pageSize = null,
   } = settings;
 
   if (customPattern && String(customPattern).trim()) {
     return dedupe(customHits(page, customPattern));
   }
+
+  // Somebody pointed at where the number is on this client's invoices. That is
+  // a better answer than any guess from the wording, so it is the only one.
+  const fromZones = [];
+  for (const entry of zones) {
+    const value = detectInZone(page, layout, entry?.zone, pageSize);
+    if (value) {
+      fromZones.push({ value, label: entry.name || 'this client', source: 'zone' });
+    }
+  }
+  if (fromZones.length > 0) return dedupe(fromZones);
 
   const hits = [];
   for (const label of profileLabels) {

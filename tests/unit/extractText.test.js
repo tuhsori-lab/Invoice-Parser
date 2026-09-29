@@ -143,8 +143,8 @@ describe('remembering where the text sat', () => {
 
     expect(text).toBe('Date Invoice #');
     expect(layout).toEqual([
-      { start: 0, end: 4, x: 463, endX: 482, band: 0 },
-      { start: 5, end: 14, x: 522, endX: 558, band: 0 },
+      { start: 0, end: 4, x: 463, endX: 482, y: 710, fontSize: 9, band: 0 },
+      { start: 5, end: 14, x: 522, endX: 558, y: 710, fontSize: 9, band: 0 },
     ]);
   });
 

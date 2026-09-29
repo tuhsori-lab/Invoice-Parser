@@ -12,6 +12,7 @@ import {
   parseProfilesFile,
   PROFILE_FILE_KIND,
   serializeProfiles,
+  zonesForPage,
 } from '../../src/core/profiles.js';
 
 const northwind = createProfile({
@@ -171,5 +172,78 @@ describe('moving profiles to another computer', () => {
     expect(parseProfilesFile('this is not json').error).toMatch(/not a profiles file/i);
     expect(parseProfilesFile('{"kind":"something else"}').error).toMatch(/no profiles in it/i);
     expect(parseProfilesFile('[]').error).toMatch(/no profiles in it/i);
+  });
+});
+
+describe('remembering where the number sits', () => {
+  const spot = { x0: 0.84, y0: 0.86, x1: 0.92, y1: 0.88 };
+
+  it('keeps a spot the right way round however it was dragged', () => {
+    // Dragged up and to the left, which is the same rectangle backwards.
+    const profile = createProfile({ zone: { x0: 0.92, y0: 0.88, x1: 0.84, y1: 0.86 } });
+
+    expect(profile.zone).toEqual(spot);
+  });
+
+  it('keeps a spot inside the page when the highlight ran off the edge', () => {
+    const profile = createProfile({ zone: { x0: -0.2, y0: 0.5, x1: 1.4, y1: 0.6 } });
+
+    expect(profile.zone).toEqual({ x0: 0, y0: 0.5, x1: 1, y1: 0.6 });
+  });
+
+  it('refuses a spot with no size, because that was a click not a highlight', () => {
+    expect(createProfile({ zone: { x0: 0.5, y0: 0.2, x1: 0.5, y1: 0.3 } }).zone).toBeNull();
+  });
+
+  it('refuses a spot that is not a spot at all', () => {
+    expect(createProfile({ zone: { x0: 'over there' } }).zone).toBeNull();
+    expect(createProfile({ zone: 'over there' }).zone).toBeNull();
+    expect(createProfile({}).zone).toBeNull();
+  });
+
+  it('carries a spot to another computer and back', () => {
+    const saved = [createProfile({ name: 'Anchor Textile Group', zone: spot })];
+    const { profiles, error } = parseProfilesFile(serializeProfiles(saved));
+
+    expect(error).toBeNull();
+    expect(profiles[0].zone).toEqual(spot);
+  });
+
+  it('reads a spot only on the pages of the client it was pointed at', () => {
+    const profiles = [
+      createProfile({ name: 'Anchor', identifyingText: ['Anchor Textile'], zone: spot }),
+      createProfile({ name: 'Lantern', identifyingText: ['Lantern Apparel'], zone: spot }),
+    ];
+
+    expect(zonesForPage('Anchor Textile Group, Springfield', profiles)).toEqual([
+      { zone: spot, name: 'Anchor' },
+    ]);
+  });
+
+  it('leaves out a client whose page this is but who has no spot', () => {
+    const profiles = [createProfile({ name: 'Anchor', identifyingText: ['Anchor Textile'] })];
+
+    expect(zonesForPage('Anchor Textile Group', profiles)).toEqual([]);
+  });
+
+  it('uses a spot saved without any way to recognise the client', () => {
+    // Nothing can match such a profile, so a spot on it was meant for whatever
+    // is in front of the person who saved it.
+    const profiles = [createProfile({ name: 'Just this batch', zone: spot })];
+
+    expect(zonesForPage('Some invoice or other', profiles)).toEqual([
+      { zone: spot, name: 'Just this batch' },
+    ]);
+  });
+
+  it('prefers the client that was recognised over one that recognises nothing', () => {
+    const profiles = [
+      createProfile({ name: 'Loose', zone: spot }),
+      createProfile({ name: 'Anchor', identifyingText: ['Anchor Textile'], zone: spot }),
+    ];
+
+    expect(zonesForPage('Anchor Textile Group', profiles)).toEqual([
+      { zone: spot, name: 'Anchor' },
+    ]);
   });
 });

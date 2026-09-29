@@ -81,6 +81,7 @@ export async function loadBatch(inputFiles, options = {}) {
       const page = await file.doc.getPage(pageNumber);
       const content = await page.getTextContent();
       const { text, hasText, layout } = buildPageText(content.items);
+      const { width, height } = page.getViewport({ scale: 1 });
       page.cleanup();
 
       pages.push({
@@ -92,6 +93,8 @@ export async function loadBatch(inputFiles, options = {}) {
         text,
         hasText,
         layout,
+        pageWidth: width,
+        pageHeight: height,
         ocr: false,
       });
 

@@ -46,6 +46,7 @@ picked rather than guessing.
 
 | Tier         | What it looks for                                                                                                     | Example              |
 | ------------ | --------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 0. `zone`    | The spot on the page you pointed at for this client, read before any wording is looked at                             | (wherever you chose) |
 | 1. `profile` | A label from one of your saved client profiles, in your order                                                         | `Our Ref 889900`     |
 | 2. `common`  | An everyday label: invoice/inv/bill/billing/document/doc/credit memo/debit memo, then `#` or number/num/nbr/no/id/ref | `Invoice No. 104501` |
 | 3. `bare`    | The word "Invoice" followed by a number **on the same line**                                                          | `INVOICE 445566`     |
@@ -169,7 +170,8 @@ A profile is one client's way of printing invoices:
   "labels": ["Our Ref"],
   "extraLabel": "Store #",
   "filenameTemplate": "{prefix}{invoice}_{extra}",
-  "identifyingText": ["Northwind Traders"]
+  "identifyingText": ["Northwind Traders"],
+  "zone": { "x0": 0.84, "y0": 0.86, "x1": 0.92, "y1": 0.88 }
 }
 ```
 
@@ -194,6 +196,27 @@ invoice to invoice: highlighting `Our Ref 889900` teaches the label `Our Ref`. D
 immediately and the preview says what it found — "Found 889900 after Our Ref" — so you know it
 worked before closing the page. A brand new profile is named after the page's letterhead and
 recognises that client from then on.
+
+### Teaching a spot when the words are no help
+
+Some clients cannot be taught by their wording at all. The label is drawn over other text, or is
+part of a picture, or is worded differently on every invoice. But the number is still printed in the
+same place on every invoice they send, and that place can be pointed at once:
+
+1. Open a page from that client.
+2. Highlight **the invoice number itself**.
+3. Choose the client profile, and click **Use this spot**.
+
+The spot is kept as fractions of the page — `x0`/`x1` across, `y0`/`y1` up from the bottom — so it
+means the same place on the next invoice even if that page is a different size. Every page matched
+to that profile is then read from there, whatever the wording around it does.
+
+A saved spot answers before any label does, and it is the only answer when it finds something. If
+there is nothing there on some page — a client who moved the number, a page that is a continuation —
+the label tiers are tried as usual, so a spot can only ever help. It is given about one line of
+slack, so a number that sits slightly differently is still found while the column alongside it is
+not swept in. One spot per profile: pointing again replaces it, and **Forget it** in the profile
+editor removes it.
 
 ## File names
 

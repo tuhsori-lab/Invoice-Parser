@@ -396,6 +396,36 @@ export default function App() {
     [profiles, saveProfile]
   );
 
+  /**
+   * Teach a spot by highlighting the number itself on a page.
+   *
+   * Some clients cannot be taught by their wording: the label is drawn over
+   * other text, or is a picture, or is worded differently on every invoice.
+   * Where the number sits is steadier than what is written beside it, so the
+   * spot is kept as fractions of the page and read on every page of theirs.
+   *
+   * A profile only ever has one spot, so teaching a new one replaces the old:
+   * pointing at the number again is how somebody corrects a spot that was off.
+   */
+  const teachZone = useCallback(
+    (zone, profileId, page) => {
+      if (profileId === 'new') {
+        const [letterhead = ''] = (page.text ?? '').split('\n');
+        const fresh = createProfile({
+          name: letterhead.trim().slice(0, 60) || 'Untitled client',
+          identifyingText: letterhead.trim() ? [letterhead.trim()] : [],
+          zone,
+        });
+        saveProfile(fresh);
+        return;
+      }
+      const existing = profiles.find((entry) => entry.id === profileId);
+      if (!existing) return;
+      saveProfile({ ...existing, zone });
+    },
+    [profiles, saveProfile]
+  );
+
   /* ----------------------------------------------------------------- export */
 
   /**
@@ -797,6 +827,7 @@ export default function App() {
           onDownload={downloadInvoice}
           profiles={profiles}
           onTeachLabel={teachLabel}
+          onTeachZone={teachZone}
           onMoveToNeighbour={(direction) => {
             const anchor = previewPage.index + direction;
             if (anchor >= 1 && anchor <= pages.length) movePage(previewPage.index, anchor);

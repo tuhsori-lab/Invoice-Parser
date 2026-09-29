@@ -24,6 +24,7 @@ export default function ProfileEditor({ profile, canDelete, onSave, onDelete, on
     extraLabel: profile.extraLabel ?? '',
     filenameTemplate: profile.filenameTemplate ?? '',
     identifyingText: asLines(profile.identifyingText),
+    zone: profile.zone ?? null,
   });
   const dialog = useDialog({ onClose });
   const nameField = useRef(null);
@@ -43,6 +44,7 @@ export default function ProfileEditor({ profile, canDelete, onSave, onDelete, on
       extraLabel: draft.extraLabel.trim(),
       filenameTemplate: draft.filenameTemplate.trim(),
       identifyingText: fromLines(draft.identifyingText),
+      zone: draft.zone,
     });
   };
 
@@ -93,6 +95,34 @@ export default function ProfileEditor({ profile, canDelete, onSave, onDelete, on
               any of these on it has this profile&rsquo;s labels tried first.
             </small>
           </label>
+
+          <div className="field">
+            <span>Where their number sits on the page</span>
+            {draft.zone ? (
+              <div className="field-row">
+                <p className="field-value" data-testid="profile-zone">
+                  A spot you pointed at is saved, and read before any label below.
+                </p>
+                <button
+                  type="button"
+                  className="link-button"
+                  data-testid="profile-zone-clear"
+                  onClick={() => setDraft((current) => ({ ...current, zone: null }))}
+                >
+                  Forget it
+                </button>
+              </div>
+            ) : (
+              <p className="field-value muted" data-testid="profile-zone">
+                None. Open a page, highlight the invoice number on it, and choose &ldquo;Use this
+                spot&rdquo;.
+              </p>
+            )}
+            <small>
+              Worth saving for a client whose wording cannot be relied on. The same place is read on
+              every page of theirs; if nothing is there, the labels below are tried instead.
+            </small>
+          </div>
 
           <label className="field">
             <span>Their invoice number comes after</span>

@@ -210,3 +210,47 @@ test('deletes a profile and leaves detection as it was before', async ({ page })
     '1 page split into 1 invoice, 1 worth a look.'
   );
 });
+
+test('learns where a number sits, and reads the next invoice from that spot', async ({ page }) => {
+  await loadFixtures(page, ['21-column-heading.pdf']);
+
+  await page.getByTestId('tile-1').click();
+
+  // Highlighting the number alone teaches no label - there are no words in
+  // front of it to keep - but it does say where the number is printed.
+  await highlight(page, 'SR-40881_2');
+  await expect(page.getByTestId('teach-bar')).toContainText('Teach this spot on the page to');
+  await page.getByTestId('teach-spot').click();
+
+  await expect(page.getByTestId('teach-result')).toContainText('Found SR-40881_2 at that spot');
+  await page.keyboard.press('Escape');
+
+  // The second invoice was never pointed at, and is read from the same place.
+  const table = page.getByTestId('invoice-table');
+  await expect(table).toContainText('the spot you chose');
+  await expect(table).toContainText('SR-40881_2.pdf');
+  await expect(table).toContainText('SR-40997_1.pdf');
+
+  await expect(page.getByTestId('profiles-panel')).toContainText('a spot on the page');
+});
+
+test('a spot can be forgotten again from the profile', async ({ page }) => {
+  await loadFixtures(page, ['21-column-heading.pdf']);
+
+  await page.getByTestId('tile-1').click();
+  await highlight(page, 'SR-40881_2');
+  await page.getByTestId('teach-spot').click();
+  await page.keyboard.press('Escape');
+
+  const panel = page.getByTestId('profiles-panel');
+  await expect(panel).toContainText('a spot on the page');
+  await panel.getByRole('button', { name: 'Edit' }).first().click();
+
+  await expect(page.getByTestId('profile-zone')).toContainText('A spot you pointed at is saved');
+  await page.getByTestId('profile-zone-clear').click();
+  await page.getByTestId('profile-save').click();
+
+  await expect(panel).not.toContainText('a spot on the page');
+  // Without the spot the everyday label answers instead, and still gets it right.
+  await expect(page.getByTestId('invoice-table')).toContainText('an everyday label');
+});
