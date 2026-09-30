@@ -8,9 +8,15 @@ import { createProfile, zonesForPage } from '../core/profiles.js';
 import { closeBatch, loadBatch } from '../lib/loadBatch.js';
 import { clearThumbnails } from '../lib/thumbnails.js';
 import { saveFile } from '../lib/download.js';
+import {
+  canSaveToFolder,
+  chooseFolder,
+  namesAlreadyThere,
+  writeIntoFolder,
+} from '../lib/saveToFolder.js';
 import { useDebounced } from '../lib/useDebounced.js';
 import { useUndoable } from '../lib/useUndoable.js';
-import { loadProfiles, saveProfiles } from '../lib/profileStore.js';
+import { loadBoxes, saveBoxes } from '../lib/boxStore.js';
 import { applyTheme, loadTheme, watchSystemTheme } from '../lib/theme.js';
 import { readScannedPages, stopOcr } from '../lib/ocr.js';
 import DropZone from './components/DropZone.jsx';
@@ -22,8 +28,6 @@ import PointPrompt from './components/PointPrompt.jsx';
 import PurchaseOrders from './components/PurchaseOrders.jsx';
 import ReviewQueue from './components/ReviewQueue.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
-import ProfilesPanel from './components/ProfilesPanel.jsx';
-import ProfileEditor from './components/ProfileEditor.jsx';
 import ThemeChoice from './components/ThemeChoice.jsx';
 
 /** What the app does before anyone changes anything. */
@@ -71,11 +75,9 @@ export default function App() {
   const [issueAt, setIssueAt] = useState(-1);
   const [confirming, setConfirming] = useState(null);
 
-  // Client profiles, read back from this browser's storage on the way in.
-  const [saved] = useState(loadProfiles);
-  const [profiles, setProfiles] = useState(saved.profiles);
-  const [activeProfiles, setActiveProfiles] = useState(saved.active);
-  const [editingProfile, setEditingProfile] = useState(null);
+  // The boxes drawn around clients' invoice numbers, one per client, read back
+  // from this browser's storage on the way in.
+  const [boxes, setBoxes] = useState(loadBoxes);
   const [theme, setTheme] = useState(loadTheme);
 
   /**
@@ -90,6 +92,8 @@ export default function App() {
   // to draw a box, and whether the ask was waved off for this batch.
   const [pointing, setPointing] = useState(false);
   const [pointDismissed, setPointDismissed] = useState(false);
+  // Where the last "Save to a folder" put this batch, to say so.
+  const [savedTo, setSavedTo] = useState(null);
   const readCancelRef = useRef(null);
   const cancelRef = useRef(null);
   const sourcesRef = useRef(new Map());
@@ -98,8 +102,8 @@ export default function App() {
   const settled = useDebounced(settings, 180);
 
   useEffect(() => {
-    saveProfiles(profiles, activeProfiles);
-  }, [profiles, activeProfiles]);
+    saveBoxes(boxes);
+  }, [boxes]);
 
   const themeRef = useRef(theme);
   themeRef.current = theme;
@@ -107,12 +111,6 @@ export default function App() {
     applyTheme(theme);
     return watchSystemTheme(() => themeRef.current);
   }, [theme]);
-
-  /** The profiles switched on, in the order they are listed. */
-  const profilesInUse = useMemo(
-    () => profiles.filter((profile) => activeProfiles.includes(profile.id)),
-    [profiles, activeProfiles]
-  );
 
   /* ---------------------------------------------------------------- loading */
 
@@ -127,6 +125,7 @@ export default function App() {
       setPreviewIndex(null);
       setPointing(false);
       setPointDismissed(false);
+      setSavedTo(null);
       setQuery('');
       setIssueAt(-1);
       fixes.reset({ boundaries: {}, numbers: {}, moves: {} });
@@ -164,6 +163,7 @@ export default function App() {
     setPreviewIndex(null);
     setPointing(false);
     setPointDismissed(false);
+    setSavedTo(null);
     setQuery('');
     setIssueAt(-1);
     fixes.reset({ boundaries: {}, numbers: {}, moves: {} });
@@ -174,7 +174,7 @@ export default function App() {
   const analyzed = useMemo(
     () =>
       analyzePages(pages, {
-        profiles: profilesInUse,
+        profiles: boxes,
         useCommonLabels: settled.useCommonLabels,
         useBareInvoice: settled.useBareInvoice,
         customPattern: settled.customPattern,
@@ -182,7 +182,7 @@ export default function App() {
       }),
     [
       pages,
-      profilesInUse,
+      boxes,
       settled.useCommonLabels,
       settled.useBareInvoice,
       settled.customPattern,
@@ -344,103 +344,60 @@ export default function App() {
     }
   }, [scannedPages, docsById]);
 
-  /* --------------------------------------------------------------- profiles */
+  /* ------------------------------------------------------------------ boxes */
 
-  const saveProfile = useCallback((changed) => {
-    // Through the one place that knows what a profile may hold, so a spot that
-    // has been forgotten cannot leave its shape behind, whichever way it was
-    // forgotten.
-    const profile = createProfile(changed);
-    setProfiles((current) => {
-      const known = current.some((entry) => entry.id === profile.id);
-      return known
-        ? current.map((entry) => (entry.id === profile.id ? profile : entry))
-        : [...current, profile];
+  /**
+   * Remember a box drawn around the invoice number on a page.
+   *
+   * It belongs to the client that page already belongs to, if one is
+   * remembered; drawing again is how somebody corrects a box that was off. A
+   * page from a client not seen before starts a new one, recognised from then
+   * on by the first line of their page - on an invoice, nearly always the
+   * letterhead - so their next batch is read without being asked.
+   *
+   * @param {object} zone - fractions of the page, y from the bottom.
+   * @param {object} page - the page it was drawn on.
+   * @param {string} zoneShape - the shape of the number inside it.
+   */
+  const rememberBox = useCallback((zone, page, zoneShape = '') => {
+    const known = page.matchedProfiles?.[0];
+    const [letterhead = ''] = (page.text ?? '').split('\n');
+    // Through createProfile, the one place that knows what a box may hold.
+    const box = createProfile(
+      known
+        ? { ...known, zone, zoneShape }
+        : {
+            name: letterhead.trim().slice(0, 60) || 'Untitled client',
+            identifyingText: letterhead.trim() ? [letterhead.trim()] : [],
+            zone,
+            zoneShape,
+          }
+    );
+    setBoxes((current) =>
+      current.some((entry) => entry.id === box.id)
+        ? current.map((entry) => (entry.id === box.id ? box : entry))
+        : [...current, box]
+    );
+  }, []);
+
+  /** Forget the box for one client, so their pages are read by their wording again. */
+  const forgetBox = useCallback((id) => {
+    setBoxes((current) => current.filter((entry) => entry.id !== id));
+  }, []);
+
+  /** Forget every box, after asking: it cannot be undone. */
+  const askThenForgetAll = useCallback(() => {
+    setConfirming({
+      question:
+        boxes.length === 1
+          ? 'Forget the box for the one client remembered?'
+          : `Forget the boxes for all ${boxes.length} clients remembered?`,
+      detail:
+        'Their pages are read by their wording again, and the app asks to be shown the number the next time it sees them.',
+      confirmLabel: 'Yes, forget them',
+      act: () => setBoxes([]),
     });
-    setActiveProfiles((current) =>
-      current.includes(profile.id) ? current : [...current, profile.id]
-    );
-    setEditingProfile(null);
-  }, []);
-
-  const deleteProfile = useCallback((id) => {
-    setProfiles((current) => current.filter((entry) => entry.id !== id));
-    setActiveProfiles((current) => current.filter((entry) => entry !== id));
-    setEditingProfile(null);
-  }, []);
-
-  const toggleProfile = useCallback((id) => {
-    setActiveProfiles((current) =>
-      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]
-    );
-  }, []);
-
-  const reportProblem = useCallback((message) => {
-    setProblems((current) => [...current, { fileName: '', message }]);
-  }, []);
-
-  const importProfiles = useCallback((imported) => {
-    setProfiles((current) => [...current, ...imported]);
-    setActiveProfiles((current) => [...current, ...imported.map((profile) => profile.id)]);
-  }, []);
-
-  /**
-   * Teach a label by highlighting it on a page.
-   *
-   * A brand new profile is given the first line of the page to recognise its
-   * client by - on an invoice that is nearly always the letterhead - so the
-   * next batch from them is matched without anyone doing anything.
-   */
-  const teachLabel = useCallback(
-    (label, profileId, page) => {
-      if (profileId === 'new') {
-        const [letterhead = ''] = (page.text ?? '').split('\n');
-        const fresh = createProfile({
-          name: letterhead.trim().slice(0, 60) || 'Untitled client',
-          labels: [label],
-          identifyingText: letterhead.trim() ? [letterhead.trim()] : [],
-        });
-        saveProfile(fresh);
-        return;
-      }
-      const existing = profiles.find((entry) => entry.id === profileId);
-      if (!existing) return;
-      if (existing.labels.includes(label)) return;
-      saveProfile({ ...existing, labels: [...existing.labels, label] });
-    },
-    [profiles, saveProfile]
-  );
-
-  /**
-   * Teach a spot by highlighting the number itself on a page.
-   *
-   * Some clients cannot be taught by their wording: the label is drawn over
-   * other text, or is a picture, or is worded differently on every invoice.
-   * Where the number sits is steadier than what is written beside it, so the
-   * spot is kept as fractions of the page and read on every page of theirs.
-   *
-   * A profile only ever has one spot, so teaching a new one replaces the old:
-   * pointing at the number again is how somebody corrects a spot that was off.
-   */
-  const teachZone = useCallback(
-    (zone, profileId, page, zoneShape = '') => {
-      if (profileId === 'new') {
-        const [letterhead = ''] = (page.text ?? '').split('\n');
-        const fresh = createProfile({
-          name: letterhead.trim().slice(0, 60) || 'Untitled client',
-          identifyingText: letterhead.trim() ? [letterhead.trim()] : [],
-          zone,
-          zoneShape,
-        });
-        saveProfile(fresh);
-        return;
-      }
-      const existing = profiles.find((entry) => entry.id === profileId);
-      if (!existing) return;
-      saveProfile({ ...existing, zone, zoneShape });
-    },
-    [profiles, saveProfile]
-  );
+  }, [boxes.length]);
 
   /* ----------------------------------------------------------------- export */
 
@@ -528,6 +485,94 @@ export default function App() {
     });
   }, [issues.length, downloadZip]);
 
+  /**
+   * Save every invoice straight into a folder the person picks, one PDF each.
+   *
+   * The folder is asked for first, while the click that asked for it still
+   * counts: browsers only show the picker in answer to something just done. A
+   * file of the same name already in the folder is only replaced after asking.
+   */
+  const saveIntoFolder = useCallback(async () => {
+    let folder;
+    try {
+      folder = await chooseFolder();
+    } catch {
+      setProblems((current) => [
+        ...current,
+        {
+          fileName: '',
+          message:
+            'The browser would not let the app save into that folder. Choose another one, or download the ZIP instead.',
+        },
+      ]);
+      return;
+    }
+    if (!folder) return;
+
+    const write = async () => {
+      const total = groups.length;
+      setExporting({ what: 'folder', phase: 'Building', done: 0, total });
+      try {
+        const { buildAllInvoicePdfs } = await exportTools();
+        const sources = await sourcesFor(groups);
+        const built = await buildAllInvoicePdfs(groups, sources, {
+          onProgress: (done) => setExporting({ what: 'folder', phase: 'Building', done, total }),
+        });
+        await writeIntoFolder(folder, built, {
+          onProgress: (done) => setExporting({ what: 'folder', phase: 'Saving', done, total }),
+        });
+        setSavedTo({ folder: folder.name, count: built.length });
+      } catch (error) {
+        setProblems((current) => [
+          ...current,
+          error?.name === 'NotAllowedError'
+            ? {
+                fileName: folder.name,
+                message:
+                  'The browser was not allowed to save into that folder. Choose another one, or download the ZIP instead.',
+              }
+            : { fileName: folder.name, kind: explain(error).kind },
+        ]);
+      } finally {
+        setExporting(null);
+      }
+    };
+
+    const taken = await namesAlreadyThere(
+      folder,
+      groups.map((group) => group.fileName)
+    );
+    if (taken.length === 0) {
+      await write();
+      return;
+    }
+    setConfirming({
+      question:
+        taken.length === 1
+          ? `${taken[0]} is already in \u201c${folder.name}\u201d. Replace it?`
+          : `${taken.length} of these files are already in \u201c${folder.name}\u201d. Replace them?`,
+      detail: 'The files there now are overwritten. Nothing else in the folder is touched.',
+      confirmLabel: taken.length === 1 ? 'Replace it' : 'Replace them',
+      cancelLabel: 'Cancel',
+      act: write,
+    });
+  }, [groups, sourcesFor, exportTools]);
+
+  /** The same warning as the ZIP, before anything with problems left is saved. */
+  const askThenSaveIntoFolder = useCallback(() => {
+    if (issues.length === 0) {
+      saveIntoFolder();
+      return;
+    }
+    setConfirming({
+      question: exportWarning(issues.length),
+      detail:
+        'Every invoice is saved, including the ones that need a look. An invoice with no number is named after its pages.',
+      confirmLabel: 'Export anyway',
+      act: saveIntoFolder,
+    });
+  }, [issues.length, saveIntoFolder]);
+
   /* -------------------------------------------------------------- shortcuts */
 
   /** Step to the next thing that needs a look, wrapping round at the end. */
@@ -585,10 +630,8 @@ export default function App() {
    */
   const unpointed = useMemo(
     () =>
-      analyzed.filter(
-        (page) => page.layout?.length && zonesForPage(page.text, profilesInUse).length === 0
-      ),
-    [analyzed, profilesInUse]
+      analyzed.filter((page) => page.layout?.length && zonesForPage(page.text, boxes).length === 0),
+    [analyzed, boxes]
   );
   const anyPointed = unpointed.length < analyzed.filter((page) => page.layout?.length).length;
   const spotInvoices = groups.filter((group) => group.provenance?.source === 'zone').length;
@@ -670,36 +713,15 @@ export default function App() {
         </div>
       )}
 
-      {pageCount === 0 && !loading && (
-        <aside className="settings-column standalone" aria-label="Client profiles">
-          <ProfilesPanel
-            profiles={profiles}
-            active={activeProfiles}
-            onToggle={toggleProfile}
-            onEdit={(id) => setEditingProfile(profiles.find((entry) => entry.id === id))}
-            onAdd={() => setEditingProfile(createProfile())}
-            onImport={importProfiles}
-            onProblem={reportProblem}
-          />
-        </aside>
-      )}
-
       {pageCount > 0 && (
         <main className="workspace">
           <div className="settings-column">
-            <ProfilesPanel
-              profiles={profiles}
-              active={activeProfiles}
-              onToggle={toggleProfile}
-              onEdit={(id) => setEditingProfile(profiles.find((entry) => entry.id === id))}
-              onAdd={() => setEditingProfile(createProfile())}
-              onImport={importProfiles}
-              onProblem={reportProblem}
-            />
             <SettingsPanel
               settings={settings}
               nameExample={nameExample}
               onChange={(key, value) => setSettings((current) => ({ ...current, [key]: value }))}
+              rememberedBoxes={boxes.length}
+              onForgetBoxes={askThenForgetAll}
             />
           </div>
 
@@ -710,6 +732,12 @@ export default function App() {
                 {groups.length === 1 ? 'invoice' : 'invoices'}
                 {needingReview > 0 && `, ${needingReview} worth a look`}.
               </p>
+              {savedTo && (
+                <p className="saved-to" role="status" data-testid="saved-to">
+                  Saved {savedTo.count === 1 ? '1 invoice' : `${savedTo.count} invoices`} to &ldquo;
+                  {savedTo.folder}&rdquo;.
+                </p>
+              )}
               <div className="results-tools">
                 <span className="undo-pair">
                   <button
@@ -755,6 +783,20 @@ export default function App() {
                     ? `Building ${exporting.done}/${exporting.total}…`
                     : 'Download all as ZIP'}
                 </button>
+                {canSaveToFolder() && (
+                  <button
+                    type="button"
+                    className="button quiet"
+                    onClick={askThenSaveIntoFolder}
+                    disabled={Boolean(exporting)}
+                    data-testid="save-folder"
+                    title="Choose a folder, and every invoice is saved into it as its own PDF"
+                  >
+                    {exporting?.what === 'folder'
+                      ? `${exporting.phase} ${exporting.done}/${exporting.total}…`
+                      : 'Save to a folder…'}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="button quiet"
@@ -881,9 +923,8 @@ export default function App() {
           }}
           onStep={stepPreview}
           onDownload={downloadInvoice}
-          profiles={profiles}
-          onTeachLabel={teachLabel}
-          onTeachZone={teachZone}
+          onTeachZone={rememberBox}
+          onForgetBox={forgetBox}
           pointing={pointing}
           spotInvoices={spotInvoices}
           onMoveToNeighbour={(direction) => {
@@ -896,21 +937,12 @@ export default function App() {
         />
       )}
 
-      {editingProfile && (
-        <ProfileEditor
-          profile={editingProfile}
-          canDelete={profiles.some((entry) => entry.id === editingProfile.id)}
-          onSave={saveProfile}
-          onDelete={deleteProfile}
-          onClose={() => setEditingProfile(null)}
-        />
-      )}
-
       {confirming && (
         <ConfirmDialog
           question={confirming.question}
           detail={confirming.detail}
           confirmLabel={confirming.confirmLabel}
+          cancelLabel={confirming.cancelLabel}
           onCancel={() => setConfirming(null)}
           onConfirm={() => {
             const act = confirming.act;

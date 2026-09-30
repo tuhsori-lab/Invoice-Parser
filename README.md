@@ -9,9 +9,10 @@ Accounts receivable and collections teams get invoice batches from dozens of cli
 own layout, arriving as one 400-page PDF. Splitting that by hand is an afternoon. This does it in a
 few seconds, shows its working, and lets you fix anything it got wrong before you export.
 
-![Three PDFs are dropped in and split into invoices. One page belongs to a client whose label
-nothing recognises, so it is swept in with the invoice before it; highlighting the words the number
-comes after teaches the app that client, and the batch re-splits correctly.](docs/demo.gif)
+![A four-page batch is dropped in. Nothing recognises the heading its invoice number sits
+under, so all four pages run together as one invoice and the app asks to be shown the number. A
+box is drawn around it on the first page, like a screenshot, and the batch splits into its two
+invoices, each keeping its continuation page. Both are then saved straight into a folder.](docs/demo.gif)
 
 Every invoice in that recording is made up. It was recorded from the real app by `npm run demo`,
 using the sample PDFs this repository generates.
@@ -40,17 +41,16 @@ anything other than a `GET`.
 
 ## How the invoice number is found
 
-Detection tries four tiers in order and stops at the first hit. The app always shows **which tier
+Detection tries these in order and stops at the first hit. The app always shows **which tier
 answered** and **the exact words the number was found after**, so you can see why a number was
 picked rather than guessing.
 
-| Tier         | What it looks for                                                                                                     | Example              |
-| ------------ | --------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| 0. `zone`    | The box you drew around this client's number, read before any wording is looked at                                    | (wherever you drew)  |
-| 1. `profile` | A label from one of your saved client profiles, in your order                                                         | `Our Ref 889900`     |
-| 2. `common`  | An everyday label: invoice/inv/bill/billing/document/doc/credit memo/debit memo, then `#` or number/num/nbr/no/id/ref | `Invoice No. 104501` |
-| 3. `bare`    | The word "Invoice" followed by a number **on the same line**                                                          | `INVOICE 445566`     |
-| 4. `custom`  | A regular expression you type, which replaces tiers 1–3                                                               | `Job code ([0-9-]+)` |
+| Tier        | What it looks for                                                                                                     | Example              |
+| ----------- | --------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| 1. `zone`   | The box you drew around this client's number, read before any wording is looked at                                    | (wherever you drew)  |
+| 2. `common` | An everyday label: invoice/inv/bill/billing/document/doc/credit memo/debit memo, then `#` or number/num/nbr/no/id/ref | `Invoice No. 104501` |
+| 3. `bare`   | The word "Invoice" followed by a number **on the same line**                                                          | `INVOICE 445566`     |
+| 4. `custom` | A regular expression you type, which replaces the other three                                                         | `Job code ([0-9-]+)` |
 
 A few rules do most of the work of not being confidently wrong:
 
@@ -160,45 +160,7 @@ A batch of a thousand pages has to stay as quick as a batch of ten:
 - **Each source file is loaded into pdf-lib once** and reused for every export.
 - **The code that builds PDFs and ZIPs is fetched when you first export**, not on the way in.
 
-## Client profiles
-
-A profile is one client's way of printing invoices:
-
-```json
-{
-  "name": "Northwind Traders",
-  "labels": ["Our Ref"],
-  "extraLabel": "Store #",
-  "filenameTemplate": "{prefix}{invoice}_{extra}",
-  "identifyingText": ["Northwind Traders"],
-  "zone": { "x0": 0.84, "y0": 0.86, "x1": 0.92, "y1": 0.88 },
-  "zoneShape": "A4 D4 _ D1"
-}
-```
-
-`identifyingText` is what makes a mixed batch work. Each page is matched to a profile on its own, so
-one file can hold invoices from several clients and each one gets its own labels tried first. A
-profile can also name its own files, which wins over the batch-wide pattern.
-
-Profiles are saved in this browser's storage and nowhere else. They hold only what a client's
-invoices _look_ like — never anything from an invoice itself. Export writes them to a JSON file so
-they can be imported on another computer.
-
-### Teaching a label by highlighting it
-
-The quickest way to add a label is to show the app one:
-
-1. Open a page where the number was missed.
-2. Drag across the words the number comes after — including the number is fine.
-3. Choose a client profile, or a new one, and click **Add as label**.
-
-The number is dropped from what you highlighted, because the number is the part that changes from
-invoice to invoice: highlighting `Our Ref 889900` teaches the label `Our Ref`. Detection re-runs
-immediately and the preview says what it found — "Found 889900 after Our Ref" — so you know it
-worked before closing the page. A brand new profile is named after the page's letterhead and
-recognises that client from then on.
-
-### Drawing a box around the invoice number
+## Drawing a box around the invoice number
 
 Every client prints invoices differently, and some cannot be taught by their wording at all: the
 label is drawn over other text, or is part of a picture, or is worded differently on every invoice.
@@ -208,9 +170,9 @@ shown that place once.
 When a batch has pages no saved spot covers, a card above the page strip says so and names the first
 of them. **Point to it on page 1** opens that page with the page dimmed, and you drag a box around
 the invoice number — like taking a screenshot. The bar above the page shows what is inside the box
-before anything is saved; **Save this spot** puts it on the client's profile, a new one named after
-the letterhead if the client has none. The same **Point to the invoice number** button is on every
-page's preview, for pointing at any time.
+before anything is saved; **Save this spot** remembers the box for that client, recognised from
+then on by the first line of their page — nearly always the letterhead. The same **Point to the
+invoice number** button is on every page's preview, for pointing at any time.
 
 Every page matched to that client is then read from inside the box, in this batch and in their next
 one, which is not asked about again. In a batch from several clients the card moves on to the first
@@ -224,17 +186,20 @@ next page with a number in the box starts the next one.
 
 **Something else in the box.** A continuation page sometimes prints a subtotal or a line of the table
 where the number goes on the first page. Read blindly, that would start an invoice of its own. So
-along with the box the profile keeps the _shape_ of the number that was boxed — `50621` is five
+along with the box the app keeps the _shape_ of the number that was boxed — `50621` is five
 digits, `KLMN2231_4` is four letters, four digits, an underscore and a digit — and only a number of
 that shape counts, give or take one character in each run because numbering grows. Anything else in
 the box is ignored and the page is treated as a continuation. Only the shape is kept, never the
-number: a profile describes what a client's invoices look like, not what is on one.
+number: what is remembered describes what a client's invoices look like, not what is on one.
 
 The box is kept as fractions of the page — `x0`/`x1` across, `y0`/`y1` up from the bottom — so it
 means the same place on a page of a different size, with about a line of slack so a number that sits
 slightly differently is still found while the column beside it is not swept in. A saved box answers
-before any label does; when it finds nothing, the label tiers are tried as usual. One box per
-profile: drawing again replaces it, and **Forget it** in the profile editor removes it.
+before any label does; when it finds nothing, the label tiers are tried as usual.
+
+One box per client: **Draw the box again** on any of their pages replaces it, **Forget this
+client's box** on the same page removes it, and **Forget them all** under _Finding the number_
+clears every one. Boxes are kept in this browser's storage and nowhere else.
 
 ## PO numbers
 
@@ -252,6 +217,20 @@ being read as a purchase order: `Box` is not shaped like a value. `Order #` is d
 label, because on many invoices it is the seller's own order number, printed right beside the
 buyer's PO.
 
+## Saving the invoices
+
+- **Download all as ZIP** puts every invoice in one ZIP, saved wherever the browser saves downloads.
+- **Save to a folder…** asks which folder, then writes every invoice into it as its own PDF — no ZIP
+  to unpack. If a file of the same name is already there, it asks before replacing it, and nothing
+  else in the folder is touched. This uses the browser's File System Access feature, which Chrome
+  and Edge have and Firefox and Safari do not; where it is missing the button is not shown and the
+  ZIP is the way out. The folder picker opens where the last batch was saved.
+- **Download** on a row saves one invoice, and **Download page map** saves the CSV of which pages
+  went where.
+
+Every one of these writes files on this computer only. Choosing a folder gives this page permission
+to save into it, and nothing more.
+
 ## File names
 
 Names come from a template with these tokens:
@@ -261,7 +240,7 @@ Names come from a template with these tokens:
 | `{prefix}`  | Text you type in front of every name                |
 | `{invoice}` | The invoice number                                  |
 | `{extra}`   | The extra field, e.g. a PO or store number          |
-| `{client}`  | The client profile that recognised the pages        |
+| `{client}`  | The client whose box read the pages                 |
 | `{pages}`   | The pages this invoice came from, e.g. `5-6`        |
 | `{index}`   | Its position in the batch, padded so a folder sorts |
 
@@ -311,10 +290,10 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   naming.js        building file names from a template
   export.js        the output PDFs, the ZIP, and the CSV page map
   review.js        what needs a person's eye, said in plain words
-  profiles.js      client profiles: matching, teaching, import and export
+  profiles.js      what the app remembers about a client, and matching it to pages
   errors.js        plain-language messages for everything that can go wrong
 src/lib/           the browser side: pdf.js setup, reading a batch, text recognition,
-                   thumbnails, downloads, and the storage profiles are kept in
+                   thumbnails, downloads, saving to a folder, and where boxes are kept
 src/ui/            the interface (React) and its one stylesheet
 scripts/           the fixture generator and its small helpers
 tests/unit/        unit tests, including every layout in tests/fixtures/expected.js
@@ -329,7 +308,7 @@ detection rules can be tested on their own — most of the test suite never open
 
 Every part of this can be worked from the keyboard, and the whole thing is checked against the
 WCAG 2.1 AA rules by an automated audit on every push — the empty page, a split batch in both
-themes, the page preview and the profile editor.
+themes, the page preview, and the preview while a box is being drawn.
 
 | Key            | Does                                    |
 | -------------- | --------------------------------------- |
@@ -372,7 +351,8 @@ so the page never flashes the wrong colours on the way in.
 1. **Engine** — the core, the fixture generator, unit tests, CI. ✅
 2. **Core UI** — drop zone, page strip, invoice table, preview, and the three exports. ✅
 3. **Review and fixing** — the review queue, manual split/join/move, inline edits, undo and redo. ✅
-4. **Profiles** — client profiles and teaching a label by highlighting it. ✅
+4. **Profiles** — client profiles and teaching a label by highlighting it. ✅ Later replaced by
+   drawing a box around the number, which does the same job with one gesture.
 5. **Scale and scanned files** — OCR, 1,000-page batches, virtualised table, lazy thumbnails. ✅
 6. **Polish and ship** — dark theme, accessibility pass, empty and error states, README GIF,
    GitHub Pages. ✅

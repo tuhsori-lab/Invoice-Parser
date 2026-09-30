@@ -1,23 +1,18 @@
 /**
- * Client profiles.
+ * What the app knows about a client's invoices.
  *
- * A profile is one client's way of printing invoices: the labels their invoice
- * number comes after, an extra field worth putting in the file name, and some
- * identifying text (usually the client's company name) that says "this page is
- * theirs". Identifying text is what lets one bulk file hold several clients:
- * each page is matched to a profile on its own, and that profile's labels are
- * tried first for that page.
+ * In the app a client is a box: where their invoice number sits on the page,
+ * the shape of that number, and the first line of their page - usually the
+ * letterhead - that says "this page is theirs". Recognising pages that way is
+ * what lets one bulk file hold several clients, each read from their own box.
  *
- * Storing profiles is the app's job. This module only describes them, matches
- * them against page text, and reads and writes the file used to move them
- * between computers.
+ * The engine also accepts labels a client's number comes after, which the
+ * detection tests use to exercise the label tier; the app itself only ever
+ * draws boxes.
+ *
+ * Storing them is the app's job. This module only describes them and matches
+ * them against page text.
  */
-
-import { looksLikeValue } from './detect.js';
-
-/** Shape of the file written by "Export profiles". */
-export const PROFILE_FILE_KIND = 'invoice-splitter-profiles';
-export const PROFILE_FILE_VERSION = 1;
 
 /**
  * A spot on a page, remembered so it can be found again on the next invoice.
@@ -63,9 +58,6 @@ function cleanShape(value) {
   const valid = parts.every((part) => /^[AD]\d{1,3}$/.test(part) || /^[^A-Za-z0-9]$/.test(part));
   return valid ? parts.join(' ') : '';
 }
-
-/** Longest label worth keeping from a highlight. */
-const MAX_LABEL_LENGTH = 60;
 
 let idCounter = 0;
 
@@ -181,112 +173,4 @@ export function zonesForPage(text, profiles = []) {
   return source
     .filter((profile) => profile?.zone)
     .map((profile) => ({ zone: profile.zone, name: profile.name, shape: profile.zoneShape ?? '' }));
-}
-
-/**
- * The profile that should decide an invoice's file name and extra field.
- *
- * @param {Array<object>} profiles - profiles matched by the pages of one invoice.
- * @returns {object|null}
- */
-export function leadProfile(profiles = []) {
-  return profiles.find(Boolean) ?? null;
-}
-
-/**
- * Turn a phrase somebody highlighted on a page into a label.
- *
- * People highlight what they see, which is usually the label *and* the number:
- * "Our Ref 889900". The number is the part that changes from invoice to
- * invoice, so it is dropped and only the words before it are kept.
- *
- * @param {string} selection - the text the user dragged across.
- * @returns {string} a label, or an empty string if there was nothing usable.
- */
-export function labelFromSelection(selection) {
-  const text = String(selection ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!text) return '';
-
-  // Everything from the first number-shaped word onwards is the value, not the
-  // label. Trimming digits off the end instead stops at the first word without
-  // one, and on a line that runs several columns together - "Our order +
-  // Ref 71402 SS27 REPEAT LOT 2 Ship.note: 7140" - that leaves
-  // the whole line as the label. Cutting at the number leaves "Our order +
-  // Ref", which is what was pointed at.
-  const words = text.split(' ');
-  const valueAt = words.findIndex((word) => {
-    const [token] = /[A-Za-z0-9][A-Za-z0-9_-]*/.exec(word) ?? [];
-    return token ? looksLikeValue(token) : false;
-  });
-
-  const label = (valueAt === -1 ? words : words.slice(0, valueAt))
-    .join(' ')
-    .replace(/[\s:.,;]+$/, '')
-    .trim();
-
-  // A label made only of punctuation would match everywhere and mean nothing.
-  if (!/[A-Za-z]/.test(label)) return '';
-  return label.slice(0, MAX_LABEL_LENGTH);
-}
-
-/**
- * The text of a profiles file, ready to be saved.
- *
- * @param {Array<object>} profiles
- * @returns {string}
- */
-export function serializeProfiles(profiles = []) {
-  return `${JSON.stringify(
-    {
-      kind: PROFILE_FILE_KIND,
-      version: PROFILE_FILE_VERSION,
-      exportedAt: new Date().toISOString(),
-      profiles: profiles.map((profile) => ({
-        name: profile.name,
-        labels: profile.labels ?? [],
-        extraLabel: profile.extraLabel ?? '',
-        filenameTemplate: profile.filenameTemplate ?? '',
-        identifyingText: profile.identifyingText ?? [],
-        zone: profile.zone ?? null,
-        zoneShape: profile.zoneShape ?? '',
-      })),
-    },
-    null,
-    2
-  )}\n`;
-}
-
-/**
- * Read a profiles file, explaining in plain language what is wrong if it cannot
- * be read.
- *
- * @param {string} contents
- * @returns {{ profiles: Array<object>, error: string|null }}
- */
-export function parseProfilesFile(contents) {
-  let data;
-  try {
-    data = JSON.parse(contents);
-  } catch {
-    return {
-      profiles: [],
-      error: 'This file is not a profiles file. Choose the .json file saved by "Export profiles".',
-    };
-  }
-  const list = Array.isArray(data) ? data : data?.profiles;
-  if (!Array.isArray(list)) {
-    return {
-      profiles: [],
-      error: 'This file has no profiles in it. Choose the .json file saved by "Export profiles".',
-    };
-  }
-  const profiles = list
-    .filter((entry) => entry && typeof entry === 'object')
-    .map((entry) => createProfile({ ...entry, id: undefined }));
-  if (profiles.length === 0) {
-    return { profiles: [], error: 'This file has no profiles in it.' };
-  }
-  return { profiles, error: null };
 }

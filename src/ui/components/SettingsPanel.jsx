@@ -8,7 +8,13 @@ import { compileCustomPattern } from '../../core/detect.js';
  * Everything here re-runs detection over text that is already in memory, so
  * changing a setting is instant and never re-reads a PDF.
  */
-export default function SettingsPanel({ settings, onChange, nameExample }) {
+export default function SettingsPanel({
+  settings,
+  onChange,
+  nameExample,
+  rememberedBoxes = 0,
+  onForgetBoxes,
+}) {
   const [advancedOpen, setAdvancedOpen] = useState(Boolean(settings.customPattern));
   const set = (key) => (event) => {
     const target = event.target;
@@ -159,6 +165,32 @@ export default function SettingsPanel({ settings, onChange, nameExample }) {
             <small>In its own section under the table, ready to copy out.</small>
           </span>
         </label>
+        <div className="field" data-testid="remembered-boxes">
+          <span>Boxes you have drawn</span>
+          {rememberedBoxes > 0 ? (
+            <div className="field-row">
+              <p className="field-value">
+                {rememberedBoxes === 1
+                  ? 'One client is remembered in this browser.'
+                  : `${rememberedBoxes} clients are remembered in this browser.`}
+              </p>
+              <button
+                type="button"
+                className="link-button"
+                data-testid="forget-boxes"
+                onClick={onForgetBoxes}
+              >
+                Forget them all
+              </button>
+            </div>
+          ) : (
+            <p className="field-value muted">None yet.</p>
+          )}
+          <small>
+            Kept only in this browser: where the number sits and what it looks like, never the
+            number itself.
+          </small>
+        </div>
       </fieldset>
 
       <fieldset className="field-group">

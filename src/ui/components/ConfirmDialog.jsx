@@ -7,7 +7,14 @@ import { useDialog } from '../../lib/useDialog.js';
  * exactly what they are doing, so this says how many are left and gets out of
  * the way rather than blocking.
  */
-export default function ConfirmDialog({ question, detail, confirmLabel, onConfirm, onCancel }) {
+export default function ConfirmDialog({
+  question,
+  detail,
+  confirmLabel,
+  cancelLabel = 'Go back and check',
+  onConfirm,
+  onCancel,
+}) {
   const dialog = useDialog({ onClose: onCancel });
 
   return (
@@ -26,7 +33,7 @@ export default function ConfirmDialog({ question, detail, confirmLabel, onConfir
         {detail && <p className="confirm-detail">{detail}</p>}
         <div className="confirm-buttons">
           <button type="button" className="button quiet" onClick={onCancel}>
-            Go back and check
+            {cancelLabel}
           </button>
           <button type="button" className="button" onClick={onConfirm} data-testid="confirm-export">
             {confirmLabel}
