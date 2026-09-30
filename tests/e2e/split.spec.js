@@ -188,3 +188,38 @@ test('never sends anything anywhere while a batch is being worked on', async ({ 
   // And nothing is ever sent: every request only asks for something.
   expect(requests.filter((request) => request.method !== 'GET')).toEqual([]);
 });
+
+test('brackets each invoice with its number, and stripes every page after its first', async ({
+  page,
+}) => {
+  await loadFixtures(page, ['01-same-line.pdf', '03-repeated-number.pdf']);
+
+  await expect(page.getByTestId('run-1')).toContainText('104233');
+  await expect(page.getByTestId('run-3')).toContainText('100777');
+
+  // 100777 is printed on all three of its pages. Only the first is solid: the
+  // stripes mean "more of the invoice before", whether or not the number is
+  // printed again.
+  await expect(page.getByTestId('tile-3')).not.toHaveClass(/tile-continuation/);
+  await expect(page.getByTestId('tile-4')).toHaveClass(/tile-continuation/);
+  await expect(page.getByTestId('tile-5')).toHaveClass(/tile-continuation/);
+
+  // Splitting redraws the brackets: page 5 now starts an invoice of its own.
+  await page.getByTestId('gap-5').click();
+  await expect(page.getByTestId('run-5')).toBeVisible();
+  await expect(page.getByTestId('tile-5')).not.toHaveClass(/tile-continuation/);
+});
+
+test('an invoice with no number is bracketed and striped in yellow', async ({ page }) => {
+  await loadFixtures(page, ['22-boxed-number.pdf']);
+
+  await expect(page.getByTestId('run-1')).toContainText('No number');
+  await expect(page.getByTestId('run-1')).toHaveClass(/run-aside/);
+
+  // Its later pages are striped like any invoice's: the yellow must not paint
+  // over the stripes.
+  const background = (testId) =>
+    page.getByTestId(testId).evaluate((tile) => getComputedStyle(tile).backgroundImage);
+  expect(await background('tile-1')).toBe('none');
+  expect(await background('tile-2')).toContain('repeating-linear-gradient');
+});

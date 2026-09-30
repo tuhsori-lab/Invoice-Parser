@@ -736,7 +736,7 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
-/* Carried over from the page before: same invoice, no number of its own. */
+/* A later page of the same invoice: every page after the invoice's first. */
 .tile-continuation {
   background: repeating-linear-gradient(
     -45deg,
@@ -747,10 +747,15 @@ select {
   );
 }
 
-/* Marker yellow means one thing only: a person needs to look at this. */
-.tile-aside {
+/*
+ * Marker yellow means one thing only: a person needs to look at this. It sets
+ * the tile's colour rather than its background, so the later pages of an
+ * invoice with no number are striped in yellow like any other invoice's; and it
+ * is written with two classes so it wins over the invoice colour, whichever
+ * comes later in this file.
+ */
+.tile.tile-aside {
   --tile: var(--marker);
-  background: var(--marker);
 }
 
 .tile-aside .tile-number {
@@ -922,6 +927,56 @@ select {
 
 .key-hint {
   color: var(--ink-faint);
+}
+
+/*
+ * One unbroken stretch of one invoice's pages: the invoice's number, a bracket
+ * in its colour, and the tiles under it. Placed after the tile colours so that
+ * an invoice with no number can take marker yellow over its colour.
+ */
+.strip-run {
+  display: flex;
+  max-width: 100%;
+}
+
+.run-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.run-aside {
+  --tile: var(--marker);
+}
+
+.run-label {
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 2px;
+  font-size: 0.66rem;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.run-bracket {
+  height: 5px;
+  margin: 1px 0 4px;
+  border: 2px solid var(--tile);
+  border-bottom: 0;
+  border-radius: 2px 2px 0 0;
+}
+
+.run-tiles {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
 }
 
 /* ------------------------------------------------------------ review queue */

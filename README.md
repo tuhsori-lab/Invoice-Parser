@@ -89,10 +89,12 @@ Anything the engine is unsure about is flagged for review rather than quietly gu
 ## The page strip
 
 The strip along the top of the results is the one place this app uses colour to say something. One
-tile per page, coloured by invoice, with a visible gap wherever a new invoice starts. A page that
-carries no number of its own and was kept with the invoice before it is striped. A page nothing
-could be worked out about is marker yellow — the only thing that colour ever means here. Hover a
-tile to see the page itself; click to open it full size with its text beside it.
+tile per page, coloured by invoice, with a visible gap wherever a new invoice starts and a bracket
+over each invoice's pages with its number above it. An invoice's first page is solid and every page
+after it is striped, whether or not the number is printed on it again, so where each invoice starts
+reads at a glance. An invoice nothing could be worked out about is marker yellow, bracket and all —
+the only thing that colour ever means here. Hover a tile to see the page itself; click to open it
+full size with its text beside it.
 
 ## Fixing what detection got wrong
 
