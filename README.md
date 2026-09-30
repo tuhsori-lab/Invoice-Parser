@@ -45,12 +45,12 @@ Detection tries these in order and stops at the first hit. The app always shows 
 answered** and **the exact words the number was found after**, so you can see why a number was
 picked rather than guessing.
 
-| Tier        | What it looks for                                                                                                     | Example              |
-| ----------- | --------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| 1. `zone`   | The box you drew around this client's number, read before any wording is looked at                                    | (wherever you drew)  |
-| 2. `common` | An everyday label: invoice/inv/bill/billing/document/doc/credit memo/debit memo, then `#` or number/num/nbr/no/id/ref | `Invoice No. 104501` |
-| 3. `bare`   | The word "Invoice" followed by a number **on the same line**                                                          | `INVOICE 445566`     |
-| 4. `custom` | A regular expression you type, which replaces the other three                                                         | `Job code ([0-9-]+)` |
+| Tier        | What it looks for                                                                                                                                       | Example                     |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| 1. `zone`   | The box you drew around this client's number, read before any wording is looked at                                                                      | (wherever you drew)         |
+| 2. `common` | An everyday label: invoice/inv/bill/billing/document/doc/credit memo/debit memo/credit note/debit note, then `#`, N°, N. or number/num/nbr/nr/no/id/ref | `Invoice Nr. 2031/TB/00412` |
+| 3. `bare`   | The word "Invoice" followed by a number **on the same line**                                                                                            | `INVOICE 445566`            |
+| 4. `custom` | A regular expression you type, which replaces the other three                                                                                           | `Job code ([0-9-]+)`        |
 
 A few rules do most of the work of not being confidently wrong:
 
@@ -63,6 +63,13 @@ A few rules do most of the work of not being confidently wrong:
   break in it, so `40017822_2` is kept whole. Accounting software often prints a revision or print
   count that way, and two invoices can differ by nothing else. A dangling `-` or `_` on the end is
   trimmed, and a value still has to contain a digit — `DRAFT_COPY` is not an invoice number.
+- **So do slashes between characters.** A lot of European invoicing numbers by year and ledger, and
+  `2031/TB/00412` is one number, saved as `2031-TB-00412.pdf` because a file name cannot hold a
+  slash. Only letters and digits count towards a number's length, so a page count such as `1/2` is
+  never taken for one.
+- **A credit note is read by its own number.** `Cred. Note N. 2031/TB/00587` is a label, so a credit
+  note that says `REF. INVOICE 2031/TB/00412` further down is filed under its own number, not the
+  invoice it credits.
 - **Dates are not invoice numbers.** Anything shaped like `09-01-2026`, `09/04/26` or `Sep 4, 2026`
   is skipped when looking for a value.
 - **Heading words are stepped over.** With `Invoice No.  Date  Terms` on one line and the values on
@@ -130,14 +137,36 @@ heading.
 
 ## Scanned pages
 
-A scanned invoice has no text in it at all — it is a photograph of a piece of paper. When a batch
-holds pages like that, the app says so and offers to read them:
+A scanned invoice is a photograph of a piece of paper. Some scans have no text in them at all.
+Others have a few words typed on top — a stamp, a customs note, a table somebody pasted in — so the
+page has text, just not the text printed on the paper, and the invoice number is nowhere in it. The
+app tells those apart by asking pdf.js how much of the page is an image, which it only asks about
+pages that came out with no number. Either way it says so and offers to read them:
 
-> One page has no readable text on it. It looks like a scan. **[Read scanned pages (slower)]**
+> 3 pages look like scans, so their invoice numbers could not be read. **[Read scanned pages (slower)]**
 
 It is offered rather than done automatically because it is slow, and it can be stopped part way
 without losing what has already been read. Anything read this way carries an `ocr` flag, because
 recognition is never certain — and where it gets the number wrong, you type over it.
+
+Recognition is also not steady, and the app is built around that:
+
+- **Each scan is read at the size it was made**, which pdf.js reports along with the picture — a
+  300 dpi scan is read at about 2,480 pixels across — within 1,500 and 2,600. Shrinking a scan to a
+  smaller picture blurs exactly the small print invoice numbers are set in.
+- **An unsure reading gets a second look.** Recognition says how sure it was of every word. When a
+  page gives no invoice number, or gives one it was less than 75% sure of, it is read again a quarter
+  smaller and the surer reading is kept. On a real scanned batch the same two ledger letters in the
+  middle of an invoice number came out as a letter and a `%` on some pages at one size and as the
+  wrong letter on others at another, each time with a low score, and the second look read every one
+  of them correctly.
+- **A label misread by one letter still counts.** On text read from a scan, `Inveice Nr.` or
+  `lnvoice No` is taken as the label it plainly is. Only label words of five letters or more, and
+  never anything with a digit in it.
+- **A box works on a scan.** What recognition reads comes with where each word sat, in the same form
+  as a PDF's own text, so a box drawn on a scanned page reads the number from that spot on every
+  page of the client — which sidesteps the label altogether. Until a scan has been read the app does
+  not ask for a box, since there would be nothing inside it to read.
 
 The recognition engine, its WebAssembly and the English language data are all served by this app
 (copied out of `node_modules` by `npm run assets`, about 14 MB). They are fetched the first time
@@ -175,6 +204,13 @@ the invoice number — like taking a screenshot. The bar above the page shows wh
 before anything is saved; **Save this spot** remembers the box for that client, recognised from
 then on by the first line of their page — nearly always the letterhead. The same **Point to the
 invoice number** button is on every page's preview, for pointing at any time.
+
+On a scan the first line is as likely to be a logo read as nonsense, and any one line can be run
+together with the next or missing from another page's reading. So a client first seen on a scan is
+known by up to three lines near the top of the page that turn up on at least half of the batch's
+other scanned pages — their name and address, not the customer's. On a scanned page, a line counts
+as there when most of its words are, each allowed a letter wrong, and the client counts as there when
+most of their lines are: an address shared with a neighbour in the same town is not enough.
 
 Every page matched to that client is then read from inside the box, in this batch and in their next
 one, which is not asked about again. In a batch from several clients the card moves on to the first
@@ -293,6 +329,7 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   export.js        the output PDFs, the ZIP, and the CSV page map
   review.js        what needs a person's eye, said in plain words
   profiles.js      what the app remembers about a client, and matching it to pages
+  scans.js         telling a scan from a typed page, and how large to read it
   errors.js        plain-language messages for everything that can go wrong
 src/lib/           the browser side: pdf.js setup, reading a batch, text recognition,
                    thumbnails, downloads, saving to a folder, and where boxes are kept
@@ -335,10 +372,10 @@ so the page never flashes the wrong colours on the way in.
 ## What it cannot do
 
 - **OCR is only as good as the scan.** Text recognition is slower and much less certain than
-  reading a real text layer. On the sample scan in this repository it reads the body text correctly
-  but stumbles on the invoice number itself — that sample is drawn with a dot-matrix font built into
-  the fixture script, which is harder to read than a real scanner's output, but it is a fair warning
-  all the same. Anything read this way is flagged, and the number can be typed over.
+  reading a real text layer — about five to ten seconds a page. Of the two sample scans in this
+  repository, both drawn with a dot-matrix font built into the fixture script, it reads every number
+  on the second (some only on a second look) but still stumbles on the number on the first, which is
+  drawn larger and blurrier. Anything read this way is flagged, and the number can be typed over.
 - **Some PDFs have a scrambled text layer.** Text is laid out by position rather than by the order
   the file stores it in, which handles the usual culprits — form templates especially. What it
   cannot fix is a file whose coordinates are themselves wrong, or text drawn as pictures of letters.

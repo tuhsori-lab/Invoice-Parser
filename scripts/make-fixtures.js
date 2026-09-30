@@ -178,6 +178,50 @@ async function writePdf(name, pages) {
 /* The fixtures                                                               */
 /* -------------------------------------------------------------------------- */
 
+/** A4, in points, and in pixels at 300 dpi. */
+const A4_WIDTH = 595;
+const A4_HEIGHT = 842;
+const SCAN_WIDTH = 2480;
+const SCAN_HEIGHT = 3508;
+
+/** Dot size for the scanned sheets: small print, about 6.5 points a letter. */
+const SCAN_DOT = 3;
+
+/** Where the invoice number sits on a scanned sheet, in pixels from the top left. */
+export const SCANNED_NUMBER_AT = { x: 1824, y: 700 };
+
+/**
+ * The sheets of fixture 23. Every name, address and number is invented, and
+ * the ledger letters are ones the dot font reads cleanly after a slash.
+ */
+const SCANNED_SHEETS = [
+  { label: 'INVOICE NR.', number: '2031/TB/00412', sheet: 1, body: ['LINEN SHIRT 12 1,264.00'] },
+  { label: 'INVOICE NR.', number: '2031/TB/00412', sheet: 2, body: ['WOOL SCARF 6 540.00'] },
+  {
+    label: 'CRED. NOTE NR.',
+    number: '2031/TB/00587',
+    sheet: 1,
+    body: ['REF. INVOICE 2031/TB/00412', 'LINEN SHIRT 2 118.00'],
+  },
+];
+
+/** Draw one scanned sheet: letterhead, customer, the number in its box, a line or two. */
+function drawScannedSheet(canvas, { label, number, sheet, body }) {
+  const write = (text, x, y) => drawBitmapText(canvas, text, { x, y, scale: SCAN_DOT, gray: 25 });
+  write('VALLOMBROSA TESSUTI SPA', 150, 150);
+  write('VIA DEI TELAI 14 40066 REGGELLO', 150, 210);
+  write('SPETT. TIDEWATER BOUTIQUE LLC', 1300, 400);
+  write('88 HARBOR ROAD, MYSTIC CT', 1300, 460);
+  write('DOCUMENT AND NUMBER', 1500, 640);
+  // The label is written so that the number starts exactly where the tests
+  // expect it: the dot font is fixed-width, 9 dots a letter.
+  const labelStart = SCANNED_NUMBER_AT.x - `${label} `.length * 9 * SCAN_DOT;
+  write(`${label} ${number}`, labelStart, SCANNED_NUMBER_AT.y);
+  write(`PAG ${sheet}`, 2250, SCANNED_NUMBER_AT.y);
+  write('DESCRIPTION QTY AMOUNT', 150, 900);
+  body.forEach((line, row) => write(line, 150, 960 + row * 60));
+}
+
 const FIXTURES = [
   /** 1. The everyday case: label and number on one line, and a second page
    * that carries no number of its own. */
@@ -529,6 +573,39 @@ const FIXTURES = [
         ],
       })
     );
+    return name;
+  },
+
+  /**
+   * 23. Three scanned pages with a line of real text added on top of each.
+   *
+   * Every page is a picture of paper, but software has typed a customs note over
+   * it, so each page has text - just none of it the invoice number. The numbers
+   * run by year and ledger, with slashes, and the last page is a credit note
+   * that mentions the invoice it credits. Made at 300 dpi, as an office scanner
+   * leaves a page.
+   */
+  async () => {
+    const name = '23-scanned-with-notes.pdf';
+    const pdf = await PDFDocument.create();
+    pdf.setTitle('Scanned invoices with a note typed on top (synthetic)');
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    for (const sheet of SCANNED_SHEETS) {
+      const canvas = createCanvas(SCAN_WIDTH, SCAN_HEIGHT);
+      drawScannedSheet(canvas, sheet);
+      soften(canvas);
+      const image = await pdf.embedPng(encodeGrayPng(canvas));
+      const page = pdf.addPage([A4_WIDTH, A4_HEIGHT]);
+      page.drawImage(image, { x: 0, y: 0, width: A4_WIDTH, height: A4_HEIGHT });
+      page.drawText('CUSTOMS COPY - HS 6205.20', {
+        x: 40,
+        y: 40,
+        size: 9,
+        font,
+        color: rgb(0.1, 0.2, 0.7),
+      });
+    }
+    await writeFile(join(FIXTURE_DIR, name), await pdf.save());
     return name;
   },
 

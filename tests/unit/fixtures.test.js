@@ -12,6 +12,9 @@ import { groupPages } from '../../src/core/group.js';
 import { assignFileNames } from '../../src/core/naming.js';
 import { classifyError } from '../../src/core/errors.js';
 import { createProfile } from '../../src/core/profiles.js';
+import { buildRecognisedText } from '../../src/core/extractText.js';
+import { describePicture, isPicture } from '../../src/core/scans.js';
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { CASES, HARBOR_PINE, SPECIAL_CASES } from '../fixtures/expected.js';
 import { loadFixturePages, openFixture } from '../helpers/loadFixture.js';
 
@@ -94,6 +97,116 @@ describe('files the engine cannot read on its own', () => {
     const [group] = groupPages(recognised, {});
     expect(group.invoice).toBe('552211');
     expect(group.flags, 'text read from a scan is always worth checking').toContain('ocr');
+  });
+});
+
+describe('scanned pages with a few words typed on top', () => {
+  const entry = SPECIAL_CASES.scannedWithNotes;
+
+  /** What text recognition reads off one sheet, as lines of positioned words. */
+  function recognised({ number, label, sheet, note }) {
+    const scale = 2480 / 595;
+    const line = (top, left, words) => {
+      let x = left;
+      const placed = words.map((text) => {
+        const box = {
+          x0: x * scale,
+          y0: top * scale,
+          x1: (x + text.length * 6.5) * scale,
+          y1: (top + 7) * scale,
+        };
+        x += (text.length + 1) * 6.5;
+        return { text, bbox: box, confidence: 90 };
+      });
+      return {
+        bbox: {
+          x0: placed[0].bbox.x0,
+          y0: top * scale,
+          x1: placed.at(-1).bbox.x1,
+          y1: (top + 7) * scale,
+        },
+        words: placed,
+      };
+    };
+    const lines = [
+      line(36, 36, ['VALLOMBROSA', 'TESSUTI', 'SPA']),
+      line(50, 36, ['VIA', 'DEI', 'TELAI', '14', '40066', 'REGGELLO']),
+      line(168, 350, [...label.split(' '), number, 'PAG', String(sheet)]),
+      ...(note ? [line(230, 36, note.split(' '))] : []),
+      line(820, 10, ['CUSTOMS', 'COPY', '-', 'HS', '6205.20']),
+    ];
+    return buildRecognisedText(lines, { scale, pageHeight: 842 });
+  }
+
+  it(`case ${entry.case}: ${entry.what}`, async () => {
+    const pages = await loadFixturePages(entry.file);
+
+    expect(pages).toHaveLength(3);
+    for (const page of pages) {
+      expect(page.hasText, 'the typed note is real text').toBe(true);
+    }
+    const [group] = groupPages(analyzePages(pages, {}), {});
+    expect(group.invoice, 'the note carries no invoice number').toBeNull();
+  });
+
+  it('knows every page for a picture of paper, scanned at 300 dpi', async () => {
+    const document = await openFixture(entry.file);
+    for (let number = 1; number <= document.numPages; number += 1) {
+      const page = await document.getPage(number);
+      const { width, height } = page.getViewport({ scale: 1 });
+      const picture = describePicture(await page.getOperatorList(), pdfjs.OPS, width, height);
+
+      expect(isPicture(picture)).toBe(true);
+      expect(picture.pixelsAcross).toBe(2480);
+    }
+  });
+
+  it('once read, splits into the invoice and the credit note that refers to it', async () => {
+    const pages = await loadFixturePages(entry.file);
+    const read = pages.map((page, position) => ({
+      ...page,
+      ...recognised(entry.read[position]),
+      ocr: true,
+    }));
+    const groups = assignFileNames(groupPages(analyzePages(read, {}), {}));
+
+    expect(
+      groups.map((group) => ({
+        invoice: group.invoice,
+        pages: group.pages.map((page) => page.index),
+        fileName: group.fileName,
+      }))
+    ).toEqual(entry.groups);
+    for (const group of groups) expect(group.flags).toContain('ocr');
+  });
+
+  it('reads the whole batch from a box drawn on one scanned page', async () => {
+    const pages = await loadFixturePages(entry.file);
+    const read = pages.map((page, position) => ({
+      ...page,
+      ...recognised(entry.read[position]),
+      ocr: true,
+    }));
+    const [first] = read;
+    const at = first.text.indexOf('2031/TB/00412');
+    const span = first.layout.find((part) => part.start <= at && part.end > at);
+    const box = createProfile({
+      name: 'VALLOMBROSA TESSUTI SPA',
+      identifyingText: ['VALLOMBROSA TESSUTI SPA', 'VIA DEI TELAI 14 40066 REGGELLO'],
+      zone: {
+        x0: span.x / first.pageWidth,
+        x1: span.endX / first.pageWidth,
+        y0: span.y / first.pageHeight,
+        y1: (span.y + span.fontSize) / first.pageHeight,
+      },
+      zoneShape: 'D4 / A2 / D5',
+    });
+    const groups = groupPages(analyzePages(read, { profiles: [box] }), {});
+
+    expect(groups.map((group) => [group.invoice, group.provenance?.source])).toEqual([
+      ['2031/TB/00412', 'zone'],
+      ['2031/TB/00587', 'zone'],
+    ]);
   });
 });
 

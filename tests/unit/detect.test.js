@@ -18,7 +18,9 @@ import {
   detectPurchaseOrder,
   hasConflict,
   isDateShaped,
+  mendMisreadLabels,
   normalizeValue,
+  valueConfidence,
 } from '../../src/core/detect.js';
 import { buildPageText } from '../../src/core/extractText.js';
 
@@ -307,6 +309,82 @@ describe('a number with a suffix', () => {
   });
 });
 
+describe('a number numbered by year and ledger', () => {
+  it('reads the slashes as part of the number', () => {
+    expect(detectInvoiceNumber('Invoice No: 2031/VT/00412')?.value).toBe('2031/VT/00412');
+  });
+
+  it('tells two invoices of the same year apart', () => {
+    expect(detectInvoiceNumber('Invoice No: 2031/VT/00412')?.value).not.toBe(
+      detectInvoiceNumber('Invoice No: 2031/VT/00418')?.value
+    );
+  });
+
+  it('keeps the slashes on a value the bare tier found', () => {
+    expect(detectInvoiceNumber('Invoice 2031/VT/00412', { useCommonLabels: false })?.value).toBe(
+      '2031/VT/00412'
+    );
+  });
+
+  it('leaves no slash dangling at the end of a line', () => {
+    expect(detectInvoiceNumber('Invoice No: 2031/\nVT/00412')?.value).toBe('2031');
+    expect(normalizeValue('2031/')).toBe('2031');
+  });
+
+  it('still reads a date as a date, not as a number', () => {
+    expect(detectInvoiceNumber('Invoice No: 11/06/31 2031/VT/00412')?.value).toBe('2031/VT/00412');
+  });
+
+  it('does not take a page count for an invoice number', () => {
+    expect(detectInvoiceNumber('Invoice 1/2', { useCommonLabels: false })).toBeNull();
+  });
+
+  it('describes its shape with the slashes in it', () => {
+    expect(valueShape('2031/VT/00412')).toBe('D4 / A2 / D5');
+    expect(fitsShape('2031/VT/00998', 'D4 / A2 / D5')).toBe(true);
+    expect(fitsShape('2031-VT-00998', 'D4 / A2 / D5')).toBe(false);
+  });
+});
+
+describe('labels printed in Europe', () => {
+  it('reads "Nr." as "number"', () => {
+    expect(detectInvoiceNumber('(00871) Invoice Nr. 2031/VT/00412 11/06/31 1')).toEqual({
+      value: '2031/VT/00412',
+      label: 'Invoice Nr.',
+      source: 'common',
+    });
+  });
+
+  it('reads "N°", "Nº" and "N." as "number"', () => {
+    expect(detectInvoiceNumber('Invoice N° 88213')?.value).toBe('88213');
+    expect(detectInvoiceNumber('Invoice Nº 88213')?.value).toBe('88213');
+    expect(detectInvoiceNumber('Document n. 88213')?.value).toBe('88213');
+  });
+
+  it('does not take a lone "N" for "number"', () => {
+    expect(detectCandidates('Invoice N 88213', { useBareInvoice: false })).toEqual([]);
+  });
+
+  it('reads a credit note by its own number, not the invoice it refers to', () => {
+    const text = [
+      '(04418) Cred.Note N. 2031/VT/00587 14/05/31 1',
+      'CREDIT NOTE: 12 UNITS RETURNED AS AGREED, SEE INVOICE 2031/',
+      'VT/00412 OF 11/06/31',
+    ].join('\n');
+
+    expect(detectInvoiceNumber(text)).toEqual({
+      value: '2031/VT/00587',
+      label: 'Cred.Note N.',
+      source: 'common',
+    });
+  });
+
+  it('reads "Credit Note No." and "Debit Note No." spelled out', () => {
+    expect(detectInvoiceNumber('Credit Note No: CN-5521')?.value).toBe('CN-5521');
+    expect(detectInvoiceNumber('Debit Note No: DN-5521')?.value).toBe('DN-5521');
+  });
+});
+
 describe('a spot on the page somebody pointed at', () => {
   /** One piece of drawn text, the shape pdf.js hands over. */
   function item(str, { x, y, width, size = 9 }) {
@@ -523,5 +601,59 @@ describe('the shape of a number', () => {
 
     expect(detectInZone(text, layout, spot, size)).toBe('472');
     expect(detectInZone(text, layout, spot, size, 'D5')).toBeNull();
+  });
+});
+
+describe('text read from a scan', () => {
+  it('reads a label word misread by one letter as the word it was', () => {
+    expect(mendMisreadLabels('|Inveice Nr. 2031/VT/00412')).toBe('|Invoice Nr. 2031/VT/00412');
+    expect(mendMisreadLabels('tnvoice No: 88213')).toBe('Invoice No: 88213');
+    expect(mendMisreadLabels('INVOLCE NUMBER 88213')).toBe('INVOICE NUMBER 88213');
+  });
+
+  it('keeps the text the same length, so everything found in it keeps its place', () => {
+    const text = 'Crebit Nate Nr. 2031/VT/00587 and lnvoice 88213';
+    expect(mendMisreadLabels(text)).toHaveLength(text.length);
+  });
+
+  it('leaves words two letters off, short words, and numbers alone', () => {
+    expect(mendMisreadLabels('Inveica 2031/VT/00412')).toBe('Inveica 2031/VT/00412');
+    expect(mendMisreadLabels('Ncte N. 00587')).toBe('Ncte N. 00587');
+    expect(mendMisreadLabels('INV0ICE 88213')).toBe('INV0ICE 88213');
+  });
+
+  it('only does so on a page that was read from a scan', () => {
+    const text = '(00871) |Inveice Nr. 2031/VT/00412 11/06/31';
+
+    expect(detectInvoiceNumber(text)).toBeNull();
+    expect(detectInvoiceNumber(text, { scanned: true })).toEqual({
+      value: '2031/VT/00412',
+      label: 'Invoice Nr.',
+      source: 'common',
+    });
+  });
+
+  it('says how sure recognition was of a value', () => {
+    const { text, layout } = buildPageText([
+      {
+        str: 'Invoice Nr.',
+        transform: [8, 0, 0, 8, 372, 688],
+        width: 48,
+        height: 8,
+        confidence: 90,
+      },
+      { str: '2031/VT', transform: [8, 0, 0, 8, 427, 688], width: 30, height: 8, confidence: 38 },
+    ]);
+
+    expect(valueConfidence(text, layout, '2031/VT')).toBe(38);
+    expect(valueConfidence(text, layout, '99999')).toBeNull();
+  });
+
+  it('says nothing about how sure it was on a page that was not scanned', () => {
+    const { text, layout } = buildPageText([
+      { str: 'Invoice No: 88213', transform: [9, 0, 0, 9, 50, 700], width: 90, height: 9 },
+    ]);
+
+    expect(valueConfidence(text, layout, '88213')).toBeNull();
   });
 });

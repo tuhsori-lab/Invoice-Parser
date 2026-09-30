@@ -6,8 +6,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   createProfile,
+  identifyingLinesFor,
   labelsForPage,
   matchProfiles,
+  nearlyIncludes,
   zonesForPage,
 } from '../../src/core/profiles.js';
 
@@ -183,5 +185,108 @@ describe('remembering what the number looks like', () => {
     expect(zonesForPage('Harbor & Pine Apparel', profiles)).toEqual([
       { zone: spot, name: 'Harbor', shape: 'D5' },
     ]);
+  });
+});
+
+describe('a client seen on a scan', () => {
+  const vallombrosa = createProfile({
+    name: 'Vallombrosa Tessuti SpA',
+    identifyingText: ['VALLOMBROSA TESSUTI SPA', 'VIA DEI TELAI 14 50066 REGGELLO (FI) - Italy'],
+    zone: { x0: 0.7, x1: 0.83, y0: 0.81, y1: 0.83 },
+    zoneShape: 'D4 / A2 / D5',
+  });
+
+  it('finds a near match inside a longer text', () => {
+    expect(nearlyIncludes('sede: via dei telal 14 reggello', 'telai', 1)).toBe(true);
+    expect(nearlyIncludes('sede: via dei telal 14 reggello', 'telai', 0)).toBe(false);
+    expect(nearlyIncludes('anything', '', 0)).toBe(true);
+  });
+
+  it('knows the client on a scan despite a misread letter or two', () => {
+    const scanned = 'VALL0MBROSA TESSUTI SPA\nVIA DEI TELAl 14 50066 REGGELL0 (FI) - ltaly';
+
+    expect(matchProfiles(scanned, [vallombrosa], { tolerant: true })).toEqual([vallombrosa]);
+  });
+
+  it('knows the client when recognition ran the words of a line together', () => {
+    const scanned = 'Vmbrs0 ,\nVIADEITELAI 14 50066 REGGELLO (FI) - aly\nVALLOMBROSATESSUTISPA';
+
+    expect(matchProfiles(scanned, [vallombrosa], { tolerant: true })).toEqual([vallombrosa]);
+  });
+
+  it('is strict on a typed page, where the text is exactly what was printed', () => {
+    const typed = 'VALL0MBROSA TESSUTI SPA\nVIA DEI TELAl 14 50066 REGGELL0 (FI) - ltaly';
+
+    expect(matchProfiles(typed, [vallombrosa])).toEqual([]);
+  });
+
+  it('does not take another client for this one because a few words are shared', () => {
+    const other = 'LANIFICIO BELCORE SPA\nVIA DEL LAVORO 3 50066 REGGELLO (FI) - Italy';
+
+    expect(matchProfiles(other, [vallombrosa], { tolerant: true })).toEqual([]);
+  });
+
+  it("needs most of the client's lines, not just one of them", () => {
+    expect(matchProfiles('VALL0MBROSA TESSUTI SPA', [vallombrosa], { tolerant: true })).toEqual([]);
+  });
+
+  it('is content with one line printed exactly', () => {
+    expect(matchProfiles('VALLOMBROSA TESSUTI SPA', [vallombrosa], { tolerant: true })).toEqual([
+      vallombrosa,
+    ]);
+  });
+
+  it('reads the box on a scanned page of that client', () => {
+    const scanned = 'VALLOMBR0SA TESSUTI SPA\nVIA DEI TELAl 14 50066 REGGELLO (FI) - Italy';
+
+    expect(zonesForPage(scanned, [vallombrosa], { tolerant: true })).toHaveLength(1);
+    expect(zonesForPage(scanned, [vallombrosa])).toHaveLength(0);
+  });
+});
+
+describe('choosing the lines a new client is known by', () => {
+  const scan = (index, lines) => ({ index, ocr: true, text: lines.join('\n') });
+  const batch = [
+    scan(1, [
+      'Vmbrs0 ,',
+      'Spett. TIDEWATER BOUTIQUE LLC',
+      'VALLOMBROSA TESSUTI SPA',
+      'VIA DEI TELAI 14 50066 REGGELLO (FI) - Italy',
+      '(00871) Invoice Nr. 2031/VT/00412',
+    ]),
+    scan(2, [
+      'VmbrsO .',
+      'Spett. TIDEWATER BOUTIQUE LLC',
+      'VALLOMBROSA TESSUTI SPA',
+      'VIA DEI TELAl 14 50066 REGGELLO (FI) - ltaly',
+    ]),
+    scan(3, [
+      'Vnbrs0',
+      'Spett. MARLOWE & FINCH INC',
+      'VALL0MBROSA TESSUTI SPA',
+      'VIA DEI TELAI 14 50066 REGGELL0 (FI) - Italy',
+    ]),
+    scan(4, ['Spett. MARLOWE & FINCH INC', 'VALLOMBROSA TESSUTI SPA']),
+  ];
+
+  it('takes the first line of a typed page, as it always has', () => {
+    expect(identifyingLinesFor({ index: 9, ocr: false, text: 'Harbor & Pine\nInvoice 5' })).toEqual(
+      ['Harbor & Pine']
+    );
+  });
+
+  it('on a scan, takes the lines that turn up across the batch, not a logo read as letters', () => {
+    expect(identifyingLinesFor(batch[0], batch)).toEqual([
+      'VALLOMBROSA TESSUTI SPA',
+      'VIA DEI TELAI 14 50066 REGGELLO (FI) - Italy',
+    ]);
+  });
+
+  it('leaves out the customer the page was addressed to', () => {
+    expect(identifyingLinesFor(batch[0], batch)).not.toContain('Spett. TIDEWATER BOUTIQUE LLC');
+  });
+
+  it('falls back to its best guess when the batch has nothing to compare with', () => {
+    expect(identifyingLinesFor(batch[0], [batch[0]])).toEqual(['Spett. TIDEWATER BOUTIQUE LLC']);
   });
 });
