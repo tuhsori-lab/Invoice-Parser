@@ -85,19 +85,27 @@ function scannedNotice(scanned, pageCount) {
  * The pages to offer for text recognition: pictures of paper not read yet.
  *
  * A page with no text at all is one. So is a page with no invoice number whose
- * surface is mostly an image, whatever few words sit on top of it. Each carries
- * how finely it was scanned, which decides the size it is read at.
+ * surface is mostly an image, whatever few words sit on top of it - unless a box
+ * already reads its invoice. The box being read from the scan's own text means
+ * that text was good enough, and a page with nothing in the box is one of the
+ * pages after the first. Each page carries how finely it was scanned, which
+ * decides the size it is read at.
  *
  * @param {Array<object>} analyzed - the batch's pages, after detection.
  * @param {Map<string, { share: number, pixelsAcross: number }>} pictures - by pictureKey.
+ * @param {Set<number>} [boxed] - pages of invoices whose number came from a box.
  * @returns {Array<object>}
  */
-function scansToRead(analyzed, pictures) {
+function scansToRead(analyzed, pictures, boxed = new Set()) {
   return analyzed
     .filter(
       (page) =>
         !page.ocr &&
-        (!page.hasText || (!page.detection && isPicture(pictures.get(pictureKey(page)))))
+        (!page.hasText ||
+          (!page.detection &&
+            !boxed.has(page.index) &&
+            !page.matchedProfiles?.some((profile) => profile.zone) &&
+            isPicture(pictures.get(pictureKey(page)))))
     )
     .map((page) => ({ ...page, pixelsAcross: pictures.get(pictureKey(page))?.pixelsAcross ?? 0 }));
 }
@@ -146,6 +154,8 @@ export default function App() {
   // to draw a box, and whether the ask was waved off for this batch.
   const [pointing, setPointing] = useState(false);
   const [pointDismissed, setPointDismissed] = useState(false);
+  // Whether the offer to read scanned pages was waved off for this batch.
+  const [scanDismissed, setScanDismissed] = useState(false);
   // Where the last "Save to a folder" put this batch, to say so.
   const [savedTo, setSavedTo] = useState(null);
   const readCancelRef = useRef(null);
@@ -179,6 +189,7 @@ export default function App() {
       setPreviewIndex(null);
       setPointing(false);
       setPointDismissed(false);
+      setScanDismissed(false);
       setSavedTo(null);
       setQuery('');
       setIssueAt(-1);
@@ -218,6 +229,7 @@ export default function App() {
     setPreviewIndex(null);
     setPointing(false);
     setPointDismissed(false);
+    setScanDismissed(false);
     setSavedTo(null);
     setQuery('');
     setIssueAt(-1);
@@ -384,7 +396,19 @@ export default function App() {
   }, [analyzed, docsById, pictures]);
 
   /** Pages that are pictures of paper, and not yet read, so no number came from them. */
-  const scannedPages = useMemo(() => scansToRead(analyzed, pictures), [analyzed, pictures]);
+  const boxedPages = useMemo(
+    () =>
+      new Set(
+        groups
+          .filter((group) => group.provenance?.source === 'zone')
+          .flatMap((group) => group.pages.map((page) => page.index))
+      ),
+    [groups]
+  );
+  const scannedPages = useMemo(
+    () => scansToRead(analyzed, pictures, boxedPages),
+    [analyzed, pictures, boxedPages]
+  );
   const scannedIndexes = useMemo(
     () => new Set(scannedPages.map((page) => page.index)),
     [scannedPages]
@@ -413,7 +437,11 @@ export default function App() {
       let toRead = scannedPages;
       if (measuringRef.current) {
         const measured = await measuringRef.current;
-        toRead = scansToRead(analyzedRef.current, new Map([...picturesRef.current, ...measured]));
+        toRead = scansToRead(
+          analyzedRef.current,
+          new Map([...picturesRef.current, ...measured]),
+          boxedPages
+        );
         setReading({ done: 0, total: toRead.length, pageIndex: toRead[0]?.index ?? 0 });
       }
 
@@ -447,7 +475,7 @@ export default function App() {
       setReading(null);
       await stopOcr();
     }
-  }, [scannedPages, docsById, judge]);
+  }, [scannedPages, docsById, judge, boxedPages]);
 
   /* ------------------------------------------------------------------ boxes */
 
@@ -739,11 +767,9 @@ export default function App() {
   const needingReview = groups.filter((group) => group.flags.length > 0).length;
   const pageCount = pages.length;
 
-  // A scan not read yet is left out: until it is, a box on it would find nothing.
-  const pointable = useMemo(
-    () => analyzed.filter((page) => page.layout?.length && !scannedIndexes.has(page.index)),
-    [analyzed, scannedIndexes]
-  );
+  // Any page with text a box could be read from: a scanner's own reading of a
+  // page is as good a place to draw one as a typed page.
+  const pointable = useMemo(() => analyzed.filter((page) => page.layout?.length), [analyzed]);
 
   /**
    * Pages a box could be drawn on that no saved spot covers yet, in page order.
@@ -932,7 +958,7 @@ export default function App() {
               </div>
             </div>
 
-            {(scannedPages.length > 0 || reading) && (
+            {((scannedPages.length > 0 && !scanDismissed) || reading) && (
               <div className="scanned" data-testid="scanned-notice">
                 {reading ? (
                   <>
@@ -969,6 +995,16 @@ export default function App() {
                       onClick={readScanned}
                     >
                       Read scanned pages (slower)
+                    </button>
+                    {/* A scan whose own text was good enough to draw a box on
+                        needs no reading, so the offer can be waved off. */}
+                    <button
+                      type="button"
+                      className="link-button"
+                      data-testid="scanned-dismiss"
+                      onClick={() => setScanDismissed(true)}
+                    >
+                      Not now
                     </button>
                   </>
                 )}

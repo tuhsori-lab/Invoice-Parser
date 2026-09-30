@@ -116,9 +116,10 @@ export default function PreviewModal({
     dragRef.current = null;
   }, [page.index]);
 
-  // A scan that has not been read yet has nothing a box could be read from,
-  // whatever few words may sit on top of the picture.
-  const canPoint = Boolean(page.layout?.length && page.pageWidth && page.pageHeight && !unreadScan);
+  // A box is read from the page's text, so a page with no text at all has
+  // nothing a box could find. A scan often does have text - the scanner's own
+  // reading of it, or a few words typed on top - and a box is worth a try there.
+  const canPoint = Boolean(page.layout?.length && page.pageWidth && page.pageHeight);
 
   /* ------------------------------------------------ drawing a box, like a snip */
 
@@ -343,7 +344,7 @@ export default function PreviewModal({
                 </>
               ) : (
                 <>
-                  This page is a scan that has not been read yet, so a box would find nothing. Close
+                  This page is a scan with no text on it yet, so a box would find nothing. Close
                   this, choose &ldquo;Read scanned pages&rdquo;, and point to the number after.
                 </>
               )}
@@ -369,7 +370,15 @@ export default function PreviewModal({
               </>
             ) : (
               <span data-testid="spot-empty">
-                There is no invoice number inside that box. Drag again, around just the number.
+                {unreadScan ? (
+                  <>
+                    There is no text inside that box to read. This page is a scan, and its words
+                    have not been read yet: close this, choose &ldquo;Read scanned pages&rdquo;, and
+                    draw the box again after.
+                  </>
+                ) : (
+                  'There is no invoice number inside that box. Drag again, around just the number.'
+                )}
               </span>
             )}
             <button

@@ -582,6 +582,26 @@ describe('the shape of a number', () => {
     expect(fitsShape('KLMN2231', 'A4 D4 _ D1')).toBe(false);
   });
 
+  it('lets each part of a number in parts be up to half as long again, or half as short', () => {
+    // One client's customers number their orders in different lengths.
+    expect(fitsShape('9902114705-0031', 'D7 - D4')).toBe(true);
+    expect(fitsShape('4418200-1107', 'D10 - D4')).toBe(true);
+    expect(fitsShape('2031/TB/412', 'D4 / A2 / D5')).toBe(true);
+  });
+
+  it('still tells a number in parts from something else in the spot', () => {
+    // A phone number, a size code, a date-like run: different parts or marks.
+    expect(fitsShape('555-1234', 'D7 - D4')).toBe(false);
+    expect(fitsShape('TW5512-XL', 'D7 - D4')).toBe(false);
+    expect(fitsShape('4418200/1107', 'D7 - D4')).toBe(false);
+    expect(fitsShape('99021147051-0031', 'D7 - D4')).toBe(false);
+  });
+
+  it('keeps a plain number to a digit either way, so a subtotal is never taken for one', () => {
+    expect(fitsShape('472', 'D5')).toBe(false);
+    expect(fitsShape('50698', 'D5')).toBe(true);
+  });
+
   it('accepts anything when no shape was kept', () => {
     expect(fitsShape('472', '')).toBe(true);
     expect(fitsShape('472', undefined)).toBe(true);

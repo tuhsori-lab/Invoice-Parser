@@ -201,3 +201,44 @@ test('forgets every box at once, after asking', async ({ page }) => {
   );
   await expect(page.getByTestId('point-prompt')).toBeVisible();
 });
+
+test("draws a box on a scan that carries the scanner's own text, without reading it first", async ({
+  page,
+}) => {
+  await loadFixtures(page, ['24-scanned-with-own-text.pdf']);
+
+  // Every page is a picture, so reading it is offered - but not needed.
+  await expect(page.getByTestId('scanned-notice')).toContainText('5 pages look like scans');
+
+  await page.getByTestId('point-prompt-go').click();
+  const number = page.locator('.textLayer span', { hasText: /^7730051-1107$/ });
+  await number.waitFor();
+  const at = await number.boundingBox();
+  await page.mouse.move(at.x - 5, at.y - 4);
+  await page.mouse.down();
+  await page.mouse.move(at.x + at.width + 5, at.y + at.height + 4, { steps: 6 });
+  await page.mouse.up();
+
+  await expect(page.getByTestId('spot-value')).toHaveText('7730051-1107');
+  // Not the first line, which is the time the page was printed.
+  await expect(page.getByTestId('spot-client')).toHaveText('Paid Fulfilled Notes');
+  await page.getByTestId('spot-save').click();
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  // Every order, the longer numbers too, and each second page with its order.
+  await expect(page.getByTestId('summary')).toHaveText('5 pages split into 3 invoices.');
+  const table = page.getByTestId('invoice-table');
+  await expect(table).toContainText('7730051-1107.pdf');
+  await expect(table).toContainText('9902114705-0031.pdf');
+  await expect(table).toContainText('7730051-1103.pdf');
+  // The box read them from the scanner's text, so there is nothing left to offer.
+  await expect(page.getByTestId('scanned-notice')).toHaveCount(0);
+});
+
+test('lets the offer to read scanned pages be waved off', async ({ page }) => {
+  await loadFixtures(page, ['24-scanned-with-own-text.pdf']);
+  await expect(page.getByTestId('scanned-notice')).toBeVisible();
+
+  await page.getByTestId('scanned-dismiss').click();
+  await expect(page.getByTestId('scanned-notice')).toHaveCount(0);
+});

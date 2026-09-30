@@ -11,7 +11,7 @@ import { analyzePages } from '../../src/core/analyze.js';
 import { groupPages } from '../../src/core/group.js';
 import { assignFileNames } from '../../src/core/naming.js';
 import { classifyError } from '../../src/core/errors.js';
-import { createProfile } from '../../src/core/profiles.js';
+import { createProfile, identifyingLinesFor } from '../../src/core/profiles.js';
 import { buildRecognisedText } from '../../src/core/extractText.js';
 import { describePicture, isPicture } from '../../src/core/scans.js';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -206,6 +206,72 @@ describe('scanned pages with a few words typed on top', () => {
     expect(groups.map((group) => [group.invoice, group.provenance?.source])).toEqual([
       ['2031/TB/00412', 'zone'],
       ['2031/TB/00587', 'zone'],
+    ]);
+  });
+});
+
+describe("scanned printouts that carry the scanner's own text", () => {
+  const file = '24-scanned-with-own-text.pdf';
+
+  /** The box somebody draws around the PO number on page 1. */
+  function boxOnFirstPage(pages) {
+    const [first] = pages;
+    const span = first.layout.find(
+      (part) => first.text.slice(part.start, part.end) === '7730051-1107' && part.x > 300
+    );
+    return createProfile({
+      name: 'drawn on page 1',
+      identifyingText: identifyingLinesFor(first, pages),
+      zone: {
+        x0: span.x / first.pageWidth,
+        x1: span.endX / first.pageWidth,
+        y0: span.y / first.pageHeight,
+        y1: (span.y + span.fontSize) / first.pageHeight,
+      },
+      zoneShape: 'D7 - D4',
+    });
+  }
+
+  it('case 24: every page is a picture, with text of its own, and no invoice number in it', async () => {
+    const pages = await loadFixturePages(file);
+    const document = await openFixture(file);
+
+    expect(pages).toHaveLength(5);
+    for (const [position, page] of pages.entries()) {
+      expect(page.hasText).toBe(true);
+      const pdfPage = await document.getPage(position + 1);
+      const { width, height } = pdfPage.getViewport({ scale: 1 });
+      expect(
+        isPicture(describePicture(await pdfPage.getOperatorList(), pdfjs.OPS, width, height))
+      ).toBe(true);
+    }
+    expect(groupPages(analyzePages(pages, {}), {})[0].invoice).toBeNull();
+  });
+
+  it('knows the client by what its pages share, not by a first line that changes every time', async () => {
+    const pages = await loadFixturePages(file);
+    const lines = identifyingLinesFor(pages[0], pages);
+
+    expect(lines[0]).toBe('Paid Fulfilled Notes');
+    expect(lines.join(' ')).not.toContain('10:12');
+  });
+
+  it('reads every order from a box drawn on the first, whatever the length of its number', async () => {
+    const pages = await loadFixturePages(file);
+    const groups = assignFileNames(
+      groupPages(analyzePages(pages, { profiles: [boxOnFirstPage(pages)] }), {})
+    );
+
+    expect(
+      groups.map((group) => ({
+        invoice: group.invoice,
+        pages: group.pages.map((page) => page.index),
+        source: group.provenance?.source,
+      }))
+    ).toEqual([
+      { invoice: '7730051-1107', pages: [1, 2], source: 'zone' },
+      { invoice: '9902114705-0031', pages: [3], source: 'zone' },
+      { invoice: '7730051-1103', pages: [4, 5], source: 'zone' },
     ]);
   });
 });

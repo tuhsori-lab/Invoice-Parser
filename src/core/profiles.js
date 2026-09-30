@@ -13,14 +13,18 @@
  * Storing them is the app's job. This module only describes them and matches
  * them against page text.
  *
- * Text read from a scan is never quite the same twice: the same letterhead can
- * come out as "HARBOR & PINE" on one page, "HARB0R & PINE" on the next, and run
- * into the line beside it on a third - or go missing altogether. So a client
- * seen on a scan is known by up to three lines from the top of their page. On a
- * page read by text recognition, a line counts as there when most of its words
- * are, each allowed a letter wrong, and the client counts as there when most of
- * their lines are: one line alone - an address shared with a neighbour, say -
- * is not enough.
+ * A client is known by up to three lines from the top of their page that turn
+ * up on their other pages too, and a page is theirs when most of those lines are
+ * on it: one line alone - an address shared with a neighbour, say - is not
+ * enough. Not simply the first line, because the first line is not always the
+ * same twice: a page printed from a browser starts with the time it was printed,
+ * and a scan's first line is as likely to be its logo read as nonsense.
+ *
+ * A line counts as there when it is, word for word, or when all of its words
+ * are, whatever stray marks a scanner put between them. Text read by this app's
+ * own text recognition is never quite the same twice - "HARBOR & PINE" on one
+ * page, "HARB0R & PINE" on the next, run into the line beside it on a third - so
+ * there most of a line's words are enough, each allowed a letter wrong.
  */
 
 /**
@@ -201,25 +205,24 @@ function mostlyOn(haystack, line) {
  *
  * @param {string} haystack - the flattened page text.
  * @param {string} line - a client's identifying line.
- * @param {boolean} tolerant - the page was read from a scan.
+ * @param {boolean} tolerant - the page was read by this app's text recognition.
  * @returns {boolean}
  */
 function appearsOn(haystack, line, tolerant) {
   if (haystack.includes(flatten(line))) return true;
-  return tolerant && mostlyOn(haystack, line);
+  if (tolerant) return mostlyOn(haystack, line);
+  const words = wordsOf(line);
+  return words.length > 0 && words.every((word) => haystack.includes(word));
 }
 
 /**
- * Is this page one of this client's?
- *
- * Any of their lines, word for word, is enough. On a page read from a scan,
- * most of their lines turning up, give or take, is enough as well.
+ * Is this page one of this client's? Most of their lines have to be on it -
+ * every one, for a client known by one line or two.
  */
 function claims(profile, haystack, tolerant) {
   const lines = profile?.identifyingText ?? [];
-  if (lines.some((line) => haystack.includes(flatten(line)))) return true;
-  if (!tolerant || lines.length === 0) return false;
-  const seen = lines.filter((line) => mostlyOn(haystack, line)).length;
+  if (lines.length === 0) return false;
+  const seen = lines.filter((line) => appearsOn(haystack, line, tolerant)).length;
   return seen > lines.length / 2;
 }
 
@@ -240,16 +243,19 @@ export function matchProfiles(text, profiles = [], options = {}) {
   return profiles.filter((profile) => claims(profile, haystack, tolerant));
 }
 
-/** How far down a scanned page to look for the lines that name the client. */
+/** How far down a page to look for the lines that name the client. */
 const LETTERHEAD_LINES = 8;
 
-/** How many lines a client seen on a scan is known by. */
+/** How many lines a client is known by. */
 const IDENTIFYING_LINES = 3;
 
-/** How many other pages to compare against when choosing them. */
+/** How many of the nearest other pages to compare against when choosing them. */
 const LETTERHEAD_SAMPLE = 40;
 
-/** Could this line be a name or an address, rather than a logo read as letters? */
+/**
+ * Could this line be a name or an address - rather than a logo read as letters,
+ * or a line that is mostly a date, a time and an order number?
+ */
 function looksLikeWords(line) {
   const letters = (line.match(/[A-Za-z]/g) ?? []).length;
   const words = line.split(/\s+/).filter((word) => /^[A-Za-z&'.,:-]{2,}$/.test(word));
@@ -259,14 +265,12 @@ function looksLikeWords(line) {
 /**
  * The lines that say whose page this is, for knowing their pages again.
  *
- * On an ordinary page that is the first line, nearly always the letterhead. On
- * a page read from a scan the first line is as likely to be a logo, read as a
- * string of nonsense that will never come out the same way twice, and any one
- * line can be missing from the next page's reading. So there it is the lines
- * near the top, made of real-looking words, that turn up on at least half of
- * the batch's other scanned pages - a client's name and address are on every
- * one of their pages, and a delivery address or an order number is not - up to
- * three of them, most often seen first.
+ * The lines near the top of the page, made of real-looking words, that turn up
+ * on at least one other page of the batch - up to three, top first. A client's
+ * name, address and the headings their software prints are on every one of
+ * their pages; the time a page was printed, an order number, or a logo read as
+ * nonsense is on none of the others. With nothing to compare against, the
+ * first line that looks like words stands alone.
  *
  * @param {object} page - the page the box was drawn on.
  * @param {Array<object>} [batch] - every page of the batch.
@@ -277,28 +281,23 @@ export function identifyingLinesFor(page, batch = []) {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
-  const first = lines.length ? [lines[0]] : [];
-  if (!page?.ocr) return first;
-
   const candidates = lines.slice(0, LETTERHEAD_LINES).filter(looksLikeWords);
-  if (candidates.length === 0) return first;
+  if (candidates.length === 0) return lines.length ? [lines[0]] : [];
 
+  // The nearest pages first: a client's pages usually sit together in a batch.
   const others = batch
-    .filter((other) => other?.ocr && other.index !== page.index)
+    .filter((other) => other && other.index !== page.index && other.text)
+    .sort((a, b) => Math.abs(a.index - page.index) - Math.abs(b.index - page.index))
     .slice(0, LETTERHEAD_SAMPLE)
-    .map((other) => flatten(other.text));
+    .map((other) => ({ haystack: flatten(other.text), tolerant: Boolean(page.ocr || other.ocr) }));
 
-  const counted = candidates
-    .map((line, position) => ({
-      line,
-      position,
-      count: others.filter((haystack) => appearsOn(haystack, line, true)).length,
-    }))
-    .sort((a, b) => b.count - a.count || a.position - b.position);
-
-  const enough = Math.max(1, Math.ceil(others.length / 2));
-  const chosen = counted.filter((entry) => entry.count >= enough).slice(0, IDENTIFYING_LINES);
-  return (chosen.length ? chosen : counted.slice(0, 1)).map((entry) => entry.line);
+  const recurring = candidates.filter((line) =>
+    others.some(({ haystack, tolerant }) => appearsOn(haystack, line, tolerant))
+  );
+  return (recurring.length ? recurring : candidates).slice(
+    0,
+    recurring.length ? IDENTIFYING_LINES : 1
+  );
 }
 
 /**

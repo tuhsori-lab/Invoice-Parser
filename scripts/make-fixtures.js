@@ -205,6 +205,52 @@ const SCANNED_SHEETS = [
   },
 ];
 
+/**
+ * The sheets of fixture 24: order pages printed from a web shop's admin screen
+ * and scanned, with the scanner's own reading of them laid over the picture as
+ * invisible text. Every name and number is invented.
+ */
+const PRINTOUT_SHEETS = [
+  { order: '7730051-1107', time: '10:12', day: 19, sheet: '1/2' },
+  { order: '7730051-1107', time: '10:12', sheet: '2/2' },
+  { order: '9902114705-0031', time: '10:05', day: 16, sheet: '1/1' },
+  { order: '7730051-1103', time: '10:09', day: 19, sheet: '1/2' },
+  { order: '7730051-1103', time: '10:09', sheet: '2/2' },
+];
+
+/** Where the PO number sits on a printout's first page, in points from the bottom left. */
+export const PRINTOUT_PO_AT = { x: 400, y: 606 };
+
+/** The lines of one printout page, as [text, x, y] in points. */
+function printoutLines({ order, time, day, sheet }) {
+  const header = [`9/12/31, ${time} AM Tidewater Goods - Orders - ${order} - Storefront`, 30, 770];
+  const footer = [`https://admin.example.com/store/tidewater/orders ${sheet}`, 30, 30];
+  if (!day) {
+    return [
+      header,
+      ['Pink / M TW5530-M', 60, 740],
+      ['Paid', 40, 720],
+      ['Subtotal 9 items $604.80', 40, 700],
+      ['Metafields', 40, 680],
+      footer,
+    ];
+  }
+  return [
+    header,
+    ['Paid Fulfilled', 100, 740],
+    ['Notes', 400, 740],
+    [`${order.slice(0, 9)}... Archived`, 40, 720],
+    ['No notes from customer', 400, 700],
+    [`March ${day}, 2031 at 9:14 am from Linkline: Wholesale EDI for`, 40, 680],
+    ['retailers (by feed)', 40, 666],
+    ['Additional details', 400, 640],
+    ['PO Number', 400, 620],
+    [order, PRINTOUT_PO_AT.x, PRINTOUT_PO_AT.y],
+    ['Linen Overshirt $44.00 x 1 $44.00', 40, 580],
+    footer,
+  ];
+}
+
 /** Draw one scanned sheet: letterhead, customer, the number in its box, a line or two. */
 function drawScannedSheet(canvas, { label, number, sheet, body }) {
   const write = (text, x, y) => drawBitmapText(canvas, text, { x, y, scale: SCAN_DOT, gray: 25 });
@@ -604,6 +650,46 @@ const FIXTURES = [
         font,
         color: rgb(0.1, 0.2, 0.7),
       });
+    }
+    await writeFile(join(FIXTURE_DIR, name), await pdf.save());
+    return name;
+  },
+
+  /**
+   * 24. Order printouts, scanned, with the scanner's own reading laid over them.
+   *
+   * Each page is a picture of paper with invisible text on top, as a scanner
+   * that makes searchable PDFs leaves it - so a box can be drawn on the text
+   * that is there, with no reading needed. The first line is the time the page
+   * was printed and its order number, so it is never the same twice; the order
+   * numbers come in two lengths; and every order's second page has nothing where
+   * the PO number goes.
+   */
+  async () => {
+    const name = '24-scanned-with-own-text.pdf';
+    const pdf = await PDFDocument.create();
+    pdf.setTitle('Scanned order printouts with a text layer (synthetic)');
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const [width, height] = [PAGE_WIDTH, PAGE_HEIGHT];
+    const pixels = 1275 / width;
+    for (const sheet of PRINTOUT_SHEETS) {
+      const lines = printoutLines(sheet);
+      const canvas = createCanvas(1275, 1650);
+      for (const [text, x, y] of lines) {
+        drawBitmapText(canvas, text, {
+          x: Math.round(x * pixels),
+          y: Math.round((height - y - 9) * pixels),
+          scale: 2,
+          gray: 30,
+        });
+      }
+      soften(canvas);
+      const image = await pdf.embedPng(encodeGrayPng(canvas));
+      const page = pdf.addPage([width, height]);
+      page.drawImage(image, { x: 0, y: 0, width, height });
+      for (const [text, x, y] of lines) {
+        page.drawText(text, { x, y, size: 9, font, opacity: 0 });
+      }
     }
     await writeFile(join(FIXTURE_DIR, name), await pdf.save());
     return name;
