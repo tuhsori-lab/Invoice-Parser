@@ -146,8 +146,10 @@ pages that came out with no number. Either way it says so and offers to read the
 > 3 pages look like scans, so their invoice numbers could not be read. **[Read scanned pages (slower)]**
 
 It is offered rather than done automatically because it is slow, and it can be stopped part way
-without losing what has already been read. Anything read this way carries an `ocr` flag, because
-recognition is never certain — and where it gets the number wrong, you type over it.
+without losing what has already been read. Checking which pages are pictures takes a moment on a
+long scan; clicked before that has finished, the button waits for it, so one click reads every
+scanned page. Anything read this way carries an `ocr` flag, because recognition is never certain —
+and where it gets the number wrong, you type over it.
 
 Recognition is also not steady, and the app is built around that:
 

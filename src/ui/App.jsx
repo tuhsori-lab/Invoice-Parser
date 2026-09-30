@@ -81,6 +81,27 @@ function scannedNotice(scanned, pageCount) {
     : `${scanned.length} pages look like scans, so their invoice numbers could not be read.`;
 }
 
+/**
+ * The pages to offer for text recognition: pictures of paper not read yet.
+ *
+ * A page with no text at all is one. So is a page with no invoice number whose
+ * surface is mostly an image, whatever few words sit on top of it. Each carries
+ * how finely it was scanned, which decides the size it is read at.
+ *
+ * @param {Array<object>} analyzed - the batch's pages, after detection.
+ * @param {Map<string, { share: number, pixelsAcross: number }>} pictures - by pictureKey.
+ * @returns {Array<object>}
+ */
+function scansToRead(analyzed, pictures) {
+  return analyzed
+    .filter(
+      (page) =>
+        !page.ocr &&
+        (!page.hasText || (!page.detection && isPicture(pictures.get(pictureKey(page)))))
+    )
+    .map((page) => ({ ...page, pixelsAcross: pictures.get(pictureKey(page))?.pixelsAcross ?? 0 }));
+}
+
 const EXAMPLE_GROUP = {
   invoice: '104233',
   extra: { value: 'PO-9921' },
@@ -117,6 +138,10 @@ export default function App() {
   // How much of each page is a picture, and how finely it was scanned, for the
   // pages that were asked about.
   const [pictures, setPictures] = useState(() => new Map());
+  const picturesRef = useRef(pictures);
+  picturesRef.current = pictures;
+  // The check of which pages are pictures, while one is under way.
+  const measuringRef = useRef(null);
   // Showing the app where the invoice number is: whether the preview was opened
   // to draw a box, and whether the ask was waved off for this batch.
   const [pointing, setPointing] = useState(false);
@@ -346,30 +371,20 @@ export default function App() {
     );
     if (unmeasured.length === 0) return undefined;
     const signal = { aborted: false };
-    measurePictures(unmeasured, docsById, signal).then((found) => {
+    const measuring = measurePictures(unmeasured, docsById, signal).then((found) => {
       // What was measured stays true of that page, even if the batch moved on.
       if (found.size > 0) setPictures((current) => new Map([...current, ...found]));
+      if (measuringRef.current === measuring) measuringRef.current = null;
+      return found;
     });
+    measuringRef.current = measuring;
     return () => {
       signal.aborted = true;
     };
   }, [analyzed, docsById, pictures]);
 
   /** Pages that are pictures of paper, and not yet read, so no number came from them. */
-  const scannedPages = useMemo(
-    () =>
-      analyzed
-        .filter(
-          (page) =>
-            !page.ocr &&
-            (!page.hasText || (!page.detection && isPicture(pictures.get(pictureKey(page)))))
-        )
-        .map((page) => ({
-          ...page,
-          pixelsAcross: pictures.get(pictureKey(page))?.pixelsAcross ?? 0,
-        })),
-    [analyzed, pictures]
-  );
+  const scannedPages = useMemo(() => scansToRead(analyzed, pictures), [analyzed, pictures]);
   const scannedIndexes = useMemo(
     () => new Set(scannedPages.map((page) => page.index)),
     [scannedPages]
@@ -392,7 +407,17 @@ export default function App() {
     setReading({ done: 0, total: scannedPages.length, pageIndex: scannedPages[0]?.index ?? 0 });
 
     try {
-      const found = await readScannedPages(scannedPages, docsById, {
+      // The pages with a few words on them take a moment to be recognised as
+      // scans. Asked to read before that is done, wait for it, so that one
+      // click reads every scanned page rather than only the ones known so far.
+      let toRead = scannedPages;
+      if (measuringRef.current) {
+        const measured = await measuringRef.current;
+        toRead = scansToRead(analyzedRef.current, new Map([...picturesRef.current, ...measured]));
+        setReading({ done: 0, total: toRead.length, pageIndex: toRead[0]?.index ?? 0 });
+      }
+
+      const found = await readScannedPages(toRead, docsById, {
         signal,
         onProgress: setReading,
         judge,
