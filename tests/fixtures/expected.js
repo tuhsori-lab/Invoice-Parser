@@ -382,4 +382,25 @@ export const SPECIAL_CASES = {
     file: '16-image-only.pdf',
     what: 'A page that is only a picture, so it has to go through text recognition',
   },
+  scannedWithNotes: {
+    case: 23,
+    file: '23-scanned-with-notes.pdf',
+    what: 'Scanned pages with a note typed on top: text, but not the number, until they are read',
+    // What text recognition makes of each page, near enough: the words, and
+    // where they sit, in points from the top left of an A4 page.
+    read: [
+      { number: '2031/TB/00412', label: 'INVOICE NR.', sheet: 1 },
+      { number: '2031/TB/00412', label: 'INVOICE NR.', sheet: 2 },
+      {
+        number: '2031/TB/00587',
+        label: 'CRED. NOTE NR.',
+        sheet: 1,
+        note: 'REF. INVOICE 2031/TB/00412',
+      },
+    ],
+    groups: [
+      { invoice: '2031/TB/00412', pages: [1, 2], fileName: '2031-TB-00412.pdf' },
+      { invoice: '2031/TB/00587', pages: [3], fileName: '2031-TB-00587.pdf' },
+    ],
+  },
 };

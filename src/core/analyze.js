@@ -10,7 +10,13 @@
  * changes a setting without re-reading a single byte.
  */
 
-import { detectCandidates, detectFieldValue, detectPurchaseOrder, hasConflict } from './detect.js';
+import {
+  detectCandidates,
+  detectFieldValue,
+  detectPurchaseOrder,
+  hasConflict,
+  valueConfidence,
+} from './detect.js';
 import { labelsForPage, zonesForPage } from './profiles.js';
 
 /**
@@ -62,16 +68,20 @@ export function analyzePages(pages = [], settings = {}) {
   return pages.map((page) => {
     const text = page.text ?? '';
     // Where each run sat on the page, so a value can be told from a coincidence
-    // standing at the same height. Pages read by text recognition have none.
+    // standing at the same height. Pages read by text recognition have one too.
     const layout = page.layout ?? null;
-    const { labels, matched, client } = labelsForPage(text, profiles);
+    // Text read from a scan is a little different every time, so a client's
+    // letterhead is allowed a misread letter or two there.
+    const matching = { tolerant: Boolean(page.ocr) };
+    const { labels, matched, client } = labelsForPage(text, profiles, matching);
     const candidates = detectCandidates(text, {
       profileLabels: labels,
       useCommonLabels,
       useBareInvoice,
       customPattern,
       layout,
-      zones: zonesForPage(text, profiles),
+      scanned: Boolean(page.ocr),
+      zones: zonesForPage(text, profiles, matching),
       pageSize:
         page.pageWidth && page.pageHeight
           ? { width: page.pageWidth, height: page.pageHeight }
@@ -95,4 +105,23 @@ export function analyzePages(pages = [], settings = {}) {
       matchedProfiles: matched,
     };
   });
+}
+
+/**
+ * What one reading of a scanned page gives: the invoice number the usual rules
+ * find in it, and how sure text recognition was of that number.
+ *
+ * Used to choose between two readings of the same page, so it goes through
+ * exactly the detection every other page does - a box drawn for the client, the
+ * everyday labels, the user's own pattern.
+ *
+ * @param {ExtractedPage} page - the page as it was before it was read.
+ * @param {{ text: string, layout: Array<object>|null }} reading - what was read.
+ * @param {object} [settings] - as for analyzePages.
+ * @returns {{ value: string|null, confidence: number|null }}
+ */
+export function judgeReading(page, reading, settings = {}) {
+  const [read] = analyzePages([{ ...page, ...reading, ocr: true }], settings);
+  const value = read.detection?.value ?? null;
+  return { value, confidence: value ? valueConfidence(read.text, read.layout, value) : null };
 }

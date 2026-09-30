@@ -28,6 +28,9 @@ const MIN_VALUE_LENGTH = 3;
 const COMMON_FIRST_WORDS = [
   'credit\\s+memo',
   'debit\\s+memo',
+  // "Credit Note No.", and the "Cred.Note N." of a European ledger.
+  'cred(?:it)?\\.?\\s*note',
+  'deb(?:it)?\\.?\\s*note',
   'invoice',
   'inv',
   'billing',
@@ -37,7 +40,13 @@ const COMMON_FIRST_WORDS = [
 ];
 
 /** Second half of a common label: "#", or a word that means "number". */
-const COMMON_SECOND_WORDS = ['number', 'num', 'nbr', 'no', 'id', 'ref'];
+const COMMON_SECOND_WORDS = ['number', 'num', 'nbr', 'nr', 'no', 'id', 'ref'];
+
+/**
+ * "N°", "Nº" and "N." mean "number" too, on invoices printed in Europe. A bare
+ * "N" does not count: it is too often just a letter.
+ */
+const SHORT_NUMBER_MARK = 'n(?:[°º]|\\.)';
 
 /**
  * Spaces, or a single line break, between the words of a label.
@@ -61,9 +70,13 @@ const NOT_AFTER_LETTER = '(?<![A-Za-z])';
  * Hyphens and underscores are part of a number rather than a break in it:
  * plenty of accounting software prints a revision or print count as a suffix,
  * and "40017822_2" is the whole number, not "40017822" with something after it.
- * A value still has to start with a letter or a digit.
+ * A slash between two characters is part of it as well, because a great deal of
+ * European invoicing numbers by year and ledger: "2031/TB/00412" is one number.
+ * A slash at either end is not. A value still has to start with a letter or a
+ * digit.
  */
-const TOKEN_PATTERN = /[A-Za-z0-9][A-Za-z0-9_-]*/g;
+const TOKEN_SOURCE = '[A-Za-z0-9](?:[A-Za-z0-9_-]|/(?=[A-Za-z0-9]))*';
+const TOKEN_PATTERN = new RegExp(TOKEN_SOURCE, 'g');
 
 const MONTH_NAMES = 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
 
@@ -88,7 +101,7 @@ function labelPattern(label) {
 /** The one flexible pattern that covers everyday invoice number labels. */
 export function commonLabelPattern() {
   const first = `(?:${COMMON_FIRST_WORDS.join('|')})`;
-  const second = `(?:#|(?:${COMMON_SECOND_WORDS.join('|')})\\b)`;
+  const second = `(?:#|${SHORT_NUMBER_MARK}|(?:${COMMON_SECOND_WORDS.join('|')})\\b)`;
   return `${NOT_AFTER_LETTER}${first}\\.?${LABEL_GAP}${second}${LABEL_TAIL}`;
 }
 
@@ -116,11 +129,11 @@ function maskDates(window) {
     );
 }
 
-/** Tidy a raw value: upper case, no hyphen or underscore left dangling. */
+/** Tidy a raw value: upper case, no hyphen, underscore or slash left dangling. */
 export function normalizeValue(token) {
   return String(token)
     .toUpperCase()
-    .replace(/[-_]+$/, '');
+    .replace(/[-_/]+$/, '');
 }
 
 /**
@@ -136,7 +149,9 @@ export function normalizeValue(token) {
 export function looksLikeValue(token) {
   if (!/\d/.test(token)) return false;
   if (isDateShaped(token)) return false;
-  return normalizeValue(token).length >= MIN_VALUE_LENGTH;
+  // Only letters and digits count towards the length, so "1/2" - a page count -
+  // is not long enough to be anybody's invoice number.
+  return normalizeValue(token).replace(/[^A-Z0-9]/g, '').length >= MIN_VALUE_LENGTH;
 }
 
 /**
@@ -269,7 +284,7 @@ function hitsForPattern(text, pattern, source, options = {}) {
       // The bare "Invoice" tier trusts only the very next run of characters, so
       // that a street address printed under an "INVOICE" title is never read as
       // the invoice number.
-      const next = /^[A-Za-z0-9][A-Za-z0-9_-]*/.exec(
+      const next = new RegExp(`^${TOKEN_SOURCE}`).exec(
         text.slice(after, after + VALUE_SEARCH_WINDOW)
       );
       if (next && looksLikeValue(next[0])) {
@@ -461,6 +476,48 @@ function customHits(text, pattern) {
   return hits;
 }
 
+/**
+ * Words a label is made of that text recognition is known to get a letter
+ * wrong in. Only words of five letters or more: in a shorter word one letter is
+ * too much of the word to guess at.
+ */
+const LABEL_WORDS = ['invoice', 'credit', 'debit', 'document', 'number'];
+
+/** Is `word` the same length as `target` and different in one letter at most? */
+function oneLetterOff(word, target) {
+  if (word.length !== target.length) return false;
+  let differences = 0;
+  for (let position = 0; position < word.length; position += 1) {
+    if (word[position] !== target[position]) differences += 1;
+    if (differences > 1) return false;
+  }
+  return true;
+}
+
+/**
+ * Put right a label word that text recognition misread by one letter.
+ *
+ * A scan read as "Inveice Nr." or "lnvoice No" still says "Invoice", and a
+ * person reading it would not hesitate. Each word of letters one letter away
+ * from a label word is swapped for that word, letter for letter, so the text
+ * keeps its length and everything found in it keeps its place. Numbers are
+ * never touched: only words made entirely of letters are looked at.
+ *
+ * @param {string} text - text read from a scan.
+ * @returns {string}
+ */
+export function mendMisreadLabels(text) {
+  return String(text ?? '').replace(/[A-Za-z]{5,}/g, (word) => {
+    const lower = word.toLowerCase();
+    if (LABEL_WORDS.includes(lower)) return word;
+    const meant = LABEL_WORDS.find((target) => oneLetterOff(lower, target));
+    if (!meant) return word;
+    return word === word.toUpperCase()
+      ? meant.toUpperCase()
+      : meant[0].toUpperCase() + meant.slice(1);
+  });
+}
+
 /** Drop repeats of the same value found after the same label. */
 function dedupe(hits) {
   const seen = new Set();
@@ -484,6 +541,8 @@ function dedupe(hits) {
  *   the clients that recognised this page. A spot that finds something is the
  *   answer, and the label tiers are not tried.
  * @property {{ width: number, height: number }} [pageSize] the page's own size.
+ * @property {boolean} [scanned] the text was read from a scan, so a label word
+ *   misread by one letter is read as the word it was meant to be.
  */
 
 /**
@@ -494,9 +553,6 @@ function dedupe(hits) {
  * @returns {Array<{ value: string, label: string, source: string }>}
  */
 export function detectCandidates(text, settings = {}) {
-  const page = String(text ?? '');
-  if (!page.trim()) return [];
-
   const {
     profileLabels = [],
     useCommonLabels = true,
@@ -505,7 +561,11 @@ export function detectCandidates(text, settings = {}) {
     layout = null,
     zones = [],
     pageSize = null,
+    scanned = false,
   } = settings;
+
+  const page = scanned ? mendMisreadLabels(text) : String(text ?? '');
+  if (!page.trim()) return [];
 
   if (customPattern && String(customPattern).trim()) {
     return dedupe(customHits(page, customPattern));
@@ -548,6 +608,33 @@ export function detectCandidates(text, settings = {}) {
 export function detectInvoiceNumber(text, settings = {}) {
   const [best] = detectCandidates(text, settings);
   return best ?? null;
+}
+
+/**
+ * How sure text recognition was of a value, from 0 to 100.
+ *
+ * The least sure of the words the value was read from, where it first appears
+ * on the page. Null when the page says nothing about how sure it was, which is
+ * every page that was not read from a scan.
+ *
+ * @param {string} text - the page text.
+ * @param {Array<object>|null} layout - where each run sat, with its confidence.
+ * @param {string} value - a value found on the page.
+ * @returns {number|null}
+ */
+export function valueConfidence(text, layout, value) {
+  if (!value || !layout?.length) return null;
+  const at = String(text ?? '')
+    .toUpperCase()
+    .indexOf(String(value).toUpperCase());
+  if (at < 0) return null;
+  const end = at + String(value).length;
+  let least = null;
+  for (const span of layout) {
+    if (span.end <= at || span.start >= end || typeof span.confidence !== 'number') continue;
+    least = least === null ? span.confidence : Math.min(least, span.confidence);
+  }
+  return least;
 }
 
 /**

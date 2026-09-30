@@ -33,6 +33,8 @@ export default function PreviewModal({
   onTeachZone,
   onForgetBox,
   pointing = false,
+  unreadScan = false,
+  newClientName = '',
   spotInvoices = 0,
   busy,
 }) {
@@ -114,8 +116,9 @@ export default function PreviewModal({
     dragRef.current = null;
   }, [page.index]);
 
-  // A page with no text layer - a scan - has nothing a box could be read from.
-  const canPoint = Boolean(page.layout?.length && page.pageWidth && page.pageHeight);
+  // A scan that has not been read yet has nothing a box could be read from,
+  // whatever few words may sit on top of the picture.
+  const canPoint = Boolean(page.layout?.length && page.pageWidth && page.pageHeight && !unreadScan);
 
   /* ------------------------------------------------ drawing a box, like a snip */
 
@@ -213,7 +216,10 @@ export default function PreviewModal({
   // before; otherwise the box is kept for a new one named after that letterhead.
   const client = page.matchedProfiles?.[0] ?? null;
   const clientName =
-    client?.name || (page.text ?? '').split('\n')[0].trim().slice(0, 60) || 'this client';
+    client?.name ||
+    newClientName ||
+    (page.text ?? '').split('\n')[0].trim().slice(0, 60) ||
+    'this client';
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -337,8 +343,8 @@ export default function PreviewModal({
                 </>
               ) : (
                 <>
-                  This page has no text on it to read, so a box would find nothing. Step to a page
-                  that is not a scan.
+                  This page is a scan that has not been read yet, so a box would find nothing. Close
+                  this, choose &ldquo;Read scanned pages&rdquo;, and point to the number after.
                 </>
               )}
             </span>

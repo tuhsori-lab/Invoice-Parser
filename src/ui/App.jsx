@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { analyzePages } from '../core/analyze.js';
+import { analyzePages, judgeReading } from '../core/analyze.js';
 import { groupPages } from '../core/group.js';
 import { assignFileNames, buildFileName, DEFAULT_TEMPLATE } from '../core/naming.js';
 import { explain } from '../core/errors.js';
 import { exportWarning, reviewQueue } from '../core/review.js';
-import { createProfile, zonesForPage } from '../core/profiles.js';
+import { createProfile, identifyingLinesFor, zonesForPage } from '../core/profiles.js';
+import { isPicture } from '../core/scans.js';
 import { closeBatch, loadBatch } from '../lib/loadBatch.js';
 import { clearThumbnails } from '../lib/thumbnails.js';
 import { saveFile } from '../lib/download.js';
@@ -19,6 +20,7 @@ import { useUndoable } from '../lib/useUndoable.js';
 import { loadBoxes, saveBoxes } from '../lib/boxStore.js';
 import { applyTheme, loadTheme, watchSystemTheme } from '../lib/theme.js';
 import { readScannedPages, stopOcr } from '../lib/ocr.js';
+import { measurePictures, pictureKey } from '../lib/pictures.js';
 import DropZone from './components/DropZone.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import PageStrip from './components/PageStrip.jsx';
@@ -55,6 +57,51 @@ function without(record, key) {
 }
 
 /** An invoice made up purely to show what the name pattern produces. */
+/**
+ * What to say about the scanned pages still to be read.
+ *
+ * Some scans have no text at all. Others have a few words on top of the
+ * picture, and saying they have no text would be untrue; what they lack is the
+ * words printed on the paper, the invoice number among them.
+ *
+ * @param {Array<object>} scanned
+ * @param {number} pageCount - pages in the whole batch.
+ * @returns {string}
+ */
+function scannedNotice(scanned, pageCount) {
+  const textless = scanned.every((page) => !page.hasText);
+  if (textless && scanned.length === pageCount) return explain('no-text').text;
+  if (textless) {
+    return scanned.length === 1
+      ? 'One page has no readable text on it. It looks like a scan.'
+      : `${scanned.length} pages have no readable text on them. They look like scans.`;
+  }
+  return scanned.length === 1
+    ? 'One page looks like a scan, so its invoice number could not be read.'
+    : `${scanned.length} pages look like scans, so their invoice numbers could not be read.`;
+}
+
+/**
+ * The pages to offer for text recognition: pictures of paper not read yet.
+ *
+ * A page with no text at all is one. So is a page with no invoice number whose
+ * surface is mostly an image, whatever few words sit on top of it. Each carries
+ * how finely it was scanned, which decides the size it is read at.
+ *
+ * @param {Array<object>} analyzed - the batch's pages, after detection.
+ * @param {Map<string, { share: number, pixelsAcross: number }>} pictures - by pictureKey.
+ * @returns {Array<object>}
+ */
+function scansToRead(analyzed, pictures) {
+  return analyzed
+    .filter(
+      (page) =>
+        !page.ocr &&
+        (!page.hasText || (!page.detection && isPicture(pictures.get(pictureKey(page)))))
+    )
+    .map((page) => ({ ...page, pixelsAcross: pictures.get(pictureKey(page))?.pixelsAcross ?? 0 }));
+}
+
 const EXAMPLE_GROUP = {
   invoice: '104233',
   extra: { value: 'PO-9921' },
@@ -88,6 +135,13 @@ export default function App() {
   const fixes = useUndoable({ boundaries: {}, numbers: {}, moves: {} });
 
   const [reading, setReading] = useState(null);
+  // How much of each page is a picture, and how finely it was scanned, for the
+  // pages that were asked about.
+  const [pictures, setPictures] = useState(() => new Map());
+  const picturesRef = useRef(pictures);
+  picturesRef.current = pictures;
+  // The check of which pages are pictures, while one is under way.
+  const measuringRef = useRef(null);
   // Showing the app where the invoice number is: whether the preview was opened
   // to draw a box, and whether the ask was waved off for this batch.
   const [pointing, setPointing] = useState(false);
@@ -159,6 +213,7 @@ export default function App() {
     sourcesRef.current.clear();
     setFiles([]);
     setPages([]);
+    setPictures(new Map());
     setProblems([]);
     setPreviewIndex(null);
     setPointing(false);
@@ -171,17 +226,15 @@ export default function App() {
 
   /* --------------------------------------------------------------- the work */
 
-  const analyzed = useMemo(
-    () =>
-      analyzePages(pages, {
-        profiles: boxes,
-        useCommonLabels: settled.useCommonLabels,
-        useBareInvoice: settled.useBareInvoice,
-        customPattern: settled.customPattern,
-        extraLabel: settled.extraLabel,
-      }),
+  const analysis = useMemo(
+    () => ({
+      profiles: boxes,
+      useCommonLabels: settled.useCommonLabels,
+      useBareInvoice: settled.useBareInvoice,
+      customPattern: settled.customPattern,
+      extraLabel: settled.extraLabel,
+    }),
     [
-      pages,
       boxes,
       settled.useCommonLabels,
       settled.useBareInvoice,
@@ -189,6 +242,11 @@ export default function App() {
       settled.extraLabel,
     ]
   );
+
+  const analyzed = useMemo(() => analyzePages(pages, analysis), [pages, analysis]);
+  // For the handlers that need the latest pages without being rebuilt for them.
+  const analyzedRef = useRef(analyzed);
+  analyzedRef.current = analyzed;
 
   const groups = useMemo(
     () =>
@@ -300,8 +358,43 @@ export default function App() {
 
   /* ------------------------------------------------------- scanned pages */
 
-  /** Pages that are only a picture, so nothing could be read from them. */
-  const scannedPages = useMemo(() => pages.filter((page) => !page.hasText && !page.ocr), [pages]);
+  /*
+   * A page with a number in its text is read, whatever else is on it. A page
+   * without one may be a scan with a few words on top of the picture - a stamp,
+   * a table pasted in - but not the words printed on the paper. Those are told
+   * apart by how much of the page is an image, which is only asked about pages
+   * that came out with no number, so an ordinary batch hardly pays for it.
+   */
+  useEffect(() => {
+    const unmeasured = analyzed.filter(
+      (page) => !page.ocr && !page.detection && !pictures.has(pictureKey(page))
+    );
+    if (unmeasured.length === 0) return undefined;
+    const signal = { aborted: false };
+    const measuring = measurePictures(unmeasured, docsById, signal).then((found) => {
+      // What was measured stays true of that page, even if the batch moved on.
+      if (found.size > 0) setPictures((current) => new Map([...current, ...found]));
+      if (measuringRef.current === measuring) measuringRef.current = null;
+      return found;
+    });
+    measuringRef.current = measuring;
+    return () => {
+      signal.aborted = true;
+    };
+  }, [analyzed, docsById, pictures]);
+
+  /** Pages that are pictures of paper, and not yet read, so no number came from them. */
+  const scannedPages = useMemo(() => scansToRead(analyzed, pictures), [analyzed, pictures]);
+  const scannedIndexes = useMemo(
+    () => new Set(scannedPages.map((page) => page.index)),
+    [scannedPages]
+  );
+
+  /**
+   * What a reading of a scanned page gives, by the same rules as every other
+   * page, so that an unsure one can be read again and the better one kept.
+   */
+  const judge = useCallback((page, reading) => judgeReading(page, reading, analysis), [analysis]);
 
   /**
    * Read the scanned pages, one at a time, and put what was found back into
@@ -314,17 +407,29 @@ export default function App() {
     setReading({ done: 0, total: scannedPages.length, pageIndex: scannedPages[0]?.index ?? 0 });
 
     try {
-      const found = await readScannedPages(scannedPages, docsById, {
+      // The pages with a few words on them take a moment to be recognised as
+      // scans. Asked to read before that is done, wait for it, so that one
+      // click reads every scanned page rather than only the ones known so far.
+      let toRead = scannedPages;
+      if (measuringRef.current) {
+        const measured = await measuringRef.current;
+        toRead = scansToRead(analyzedRef.current, new Map([...picturesRef.current, ...measured]));
+        setReading({ done: 0, total: toRead.length, pageIndex: toRead[0]?.index ?? 0 });
+      }
+
+      const found = await readScannedPages(toRead, docsById, {
         signal,
         onProgress: setReading,
+        judge,
       });
       if (found.size > 0) {
         setPages((current) =>
           current.map((page) =>
             found.has(page.index)
-              ? // The old layout described the page's empty text layer, so it
-                // says nothing about where recognised words sit. Drop it.
-                { ...page, text: found.get(page.index), layout: null, ocr: true }
+              ? // What was read replaces whatever words sat on top of the picture,
+                // and where each word sat replaces where they did: a scan is read
+                // for everything printed on it, those words included.
+                { ...page, ...found.get(page.index), ocr: true }
               : page
           )
         );
@@ -342,7 +447,7 @@ export default function App() {
       setReading(null);
       await stopOcr();
     }
-  }, [scannedPages, docsById]);
+  }, [scannedPages, docsById, judge]);
 
   /* ------------------------------------------------------------------ boxes */
 
@@ -353,7 +458,9 @@ export default function App() {
    * remembered; drawing again is how somebody corrects a box that was off. A
    * page from a client not seen before starts a new one, recognised from then
    * on by the first line of their page - on an invoice, nearly always the
-   * letterhead - so their next batch is read without being asked.
+   * letterhead - so their next batch is read without being asked. A client seen
+   * on a scan is recognised by the lines at the top of the page that recur
+   * across the batch instead (see identifyingLinesFor).
    *
    * @param {object} zone - fractions of the page, y from the bottom.
    * @param {object} page - the page it was drawn on.
@@ -361,14 +468,14 @@ export default function App() {
    */
   const rememberBox = useCallback((zone, page, zoneShape = '') => {
     const known = page.matchedProfiles?.[0];
-    const [letterhead = ''] = (page.text ?? '').split('\n');
+    const lines = identifyingLinesFor(page, analyzedRef.current);
     // Through createProfile, the one place that knows what a box may hold.
     const box = createProfile(
       known
         ? { ...known, zone, zoneShape }
         : {
-            name: letterhead.trim().slice(0, 60) || 'Untitled client',
-            identifyingText: letterhead.trim() ? [letterhead.trim()] : [],
+            name: (lines[0] ?? '').slice(0, 60) || 'Untitled client',
+            identifyingText: lines,
             zone,
             zoneShape,
           }
@@ -620,8 +727,23 @@ export default function App() {
   /* ------------------------------------------------------------------- view */
 
   const previewPage = previewIndex === null ? null : analyzed[previewIndex - 1];
+  // What a box drawn on the page in the preview would be saved under, worked
+  // out the same way rememberBox does it, so the two never disagree.
+  const previewClientName = useMemo(
+    () =>
+      previewPage && !previewPage.matchedProfiles?.length
+        ? (identifyingLinesFor(previewPage, analyzed)[0] ?? '').slice(0, 60)
+        : '',
+    [previewPage, analyzed]
+  );
   const needingReview = groups.filter((group) => group.flags.length > 0).length;
   const pageCount = pages.length;
+
+  // A scan not read yet is left out: until it is, a box on it would find nothing.
+  const pointable = useMemo(
+    () => analyzed.filter((page) => page.layout?.length && !scannedIndexes.has(page.index)),
+    [analyzed, scannedIndexes]
+  );
 
   /**
    * Pages a box could be drawn on that no saved spot covers yet, in page order.
@@ -630,10 +752,12 @@ export default function App() {
    */
   const unpointed = useMemo(
     () =>
-      analyzed.filter((page) => page.layout?.length && zonesForPage(page.text, boxes).length === 0),
-    [analyzed, boxes]
+      pointable.filter(
+        (page) => zonesForPage(page.text, boxes, { tolerant: Boolean(page.ocr) }).length === 0
+      ),
+    [pointable, boxes]
   );
-  const anyPointed = unpointed.length < analyzed.filter((page) => page.layout?.length).length;
+  const anyPointed = unpointed.length < pointable.length;
   const spotInvoices = groups.filter((group) => group.provenance?.source === 'zone').length;
 
   const pointAt = useCallback((pageIndex) => {
@@ -808,15 +932,6 @@ export default function App() {
               </div>
             </div>
 
-            {!pointDismissed && unpointed.length > 0 && (
-              <PointPrompt
-                page={unpointed[0].index}
-                anyPointed={anyPointed}
-                onPoint={pointAt}
-                onDismiss={() => setPointDismissed(true)}
-              />
-            )}
-
             {(scannedPages.length > 0 || reading) && (
               <div className="scanned" data-testid="scanned-notice">
                 {reading ? (
@@ -846,13 +961,7 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    <p>
-                      {scannedPages.length === pageCount
-                        ? explain('no-text').text
-                        : scannedPages.length === 1
-                          ? 'One page has no readable text on it. It looks like a scan.'
-                          : `${scannedPages.length} pages have no readable text on them. They look like scans.`}
-                    </p>
+                    <p>{scannedNotice(scannedPages, pageCount)}</p>
                     <button
                       type="button"
                       className="button"
@@ -864,6 +973,16 @@ export default function App() {
                   </>
                 )}
               </div>
+            )}
+
+            {/* Scans are read first: a box on a scan finds nothing until then. */}
+            {!reading && !pointDismissed && unpointed.length > 0 && (
+              <PointPrompt
+                page={unpointed[0].index}
+                anyPointed={anyPointed}
+                onPoint={pointAt}
+                onDismiss={() => setPointDismissed(true)}
+              />
             )}
 
             <PageStrip
@@ -926,6 +1045,8 @@ export default function App() {
           onTeachZone={rememberBox}
           onForgetBox={forgetBox}
           pointing={pointing}
+          unreadScan={scannedIndexes.has(previewPage.index)}
+          newClientName={previewClientName}
           spotInvoices={spotInvoices}
           onMoveToNeighbour={(direction) => {
             const anchor = previewPage.index + direction;

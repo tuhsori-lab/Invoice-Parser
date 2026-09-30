@@ -75,7 +75,10 @@ function bandsOf(items) {
   for (const item of items || []) {
     if (!item || typeof item.str !== 'string' || item.str === '') continue;
     const geometry = geometryOf(item);
-    pieces.push({ str: item.str, ...geometry });
+    const piece = { str: item.str, ...geometry };
+    // Words read from a scan say how sure recognition was of them.
+    if (typeof item.confidence === 'number') piece.confidence = item.confidence;
+    pieces.push(piece);
   }
 
   // Down the page first, then across it. Sorting up front means every piece of
@@ -150,6 +153,7 @@ export function buildPageText(items) {
         endX: piece.x + piece.width,
         y: piece.y,
         fontSize: piece.fontSize,
+        confidence: piece.confidence,
       });
       line += str;
     }
@@ -160,7 +164,7 @@ export function buildPageText(items) {
     const bandIndex = lines.length;
     for (const span of spans) {
       if (span.start >= trimmed.length) continue;
-      layout.push({
+      const placed = {
         start: offset + span.start,
         end: offset + Math.min(span.end, trimmed.length),
         x: span.x,
@@ -168,7 +172,9 @@ export function buildPageText(items) {
         y: span.y,
         fontSize: span.fontSize,
         band: bandIndex,
-      });
+      };
+      if (span.confidence !== undefined) placed.confidence = span.confidence;
+      layout.push(placed);
     }
 
     lines.push(trimmed);
@@ -177,6 +183,50 @@ export function buildPageText(items) {
 
   const text = lines.join('\n');
   return { text, hasText: countReadableCharacters(text) >= MIN_TEXT_CHARS, lines, layout };
+}
+
+/**
+ * Rebuild the text of a page that was read by text recognition, keeping where
+ * every word sat.
+ *
+ * Recognition reports lines of words, each word with a box in pixels of the
+ * picture it was given, measured down from the top. Those are turned into the
+ * same kind of runs a PDF gives - in the page's own units, measured up from the
+ * bottom - and read exactly as a PDF's are. So a scanned page gets a layout like
+ * any other: a label that is a column heading, or a box somebody drew around the
+ * number, works on a scan as well.
+ *
+ * Every word stands on the bottom of its line's box and is as tall as the line,
+ * so the words recognition put on one line always stay on one line here. How
+ * sure recognition was of each word, from 0 to 100, is kept alongside it.
+ *
+ * @param {Array<{ bbox: object, words: Array<{ text: string, bbox: object, confidence?: number }> }>} lines
+ *   boxes are { x0, y0, x1, y1 } in pixels, y measured down from the top.
+ * @param {{ scale: number, pageHeight: number }} size - pixels per unit of the
+ *   page, and the page's own height.
+ * @returns {{ text: string, hasText: boolean, lines: string[], layout: Array<object> }}
+ */
+export function buildRecognisedText(lines = [], { scale = 1, pageHeight = 0 } = {}) {
+  const items = [];
+  for (const line of lines ?? []) {
+    const box = line?.bbox;
+    if (!box || !scale) continue;
+    const bottom = pageHeight - box.y1 / scale;
+    const tall = Math.max((box.y1 - box.y0) / scale, 1);
+    for (const word of line.words ?? []) {
+      const str = String(word?.text ?? '').trim();
+      if (!str || !word.bbox) continue;
+      const item = {
+        str,
+        transform: [tall, 0, 0, tall, word.bbox.x0 / scale, bottom],
+        width: (word.bbox.x1 - word.bbox.x0) / scale,
+        height: tall,
+      };
+      if (typeof word.confidence === 'number') item.confidence = word.confidence;
+      items.push(item);
+    }
+  }
+  return buildPageText(items);
 }
 
 /**

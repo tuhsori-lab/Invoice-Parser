@@ -118,3 +118,52 @@ test('a number typed by hand settles a scan that could not be read', async ({ pa
   // Still flagged: the text came from a scan, whatever was typed over it.
   await expect(page.getByTestId('review-queue')).toContainText('was read from a scan');
 });
+
+test('reads scanned pages that have a note typed on top, and a box drawn on one of them', async ({
+  page,
+}) => {
+  // Three pages of text recognition, some of them read twice.
+  test.setTimeout(300_000);
+  await loadFixtures(page, ['23-scanned-with-notes.pdf']);
+
+  // Each page has words on it - the typed note - but they are not the ones on
+  // the paper. The app sees the pages are pictures and offers to read them.
+  const notice = page.getByTestId('scanned-notice');
+  await expect(notice).toContainText(
+    '3 pages look like scans, so their invoice numbers could not be read.'
+  );
+  // Until then a box on them would find nothing, so the app does not ask for one.
+  await expect(page.getByTestId('point-prompt')).toHaveCount(0);
+
+  await page.getByTestId('read-scanned').click();
+  await expect(notice).toHaveCount(0, { timeout: 240_000 });
+
+  // Numbered by year and ledger, slashes and all, and the credit note is read by
+  // its own number rather than the invoice it mentions.
+  await expect(page.getByTestId('summary')).toContainText('3 pages split into 2 invoices');
+  const table = page.getByTestId('invoice-table');
+  await expect(table).toContainText('2031-TB-00412.pdf');
+  await expect(table).toContainText('2031-TB-00587.pdf');
+  await expect(table).toContainText('1 to 2');
+
+  // Now a box can be drawn on a scan: around the number, by where it sits.
+  await page.getByTestId('point-prompt-go').click();
+  const sheet = await page.getByTestId('spot-picker').boundingBox();
+  await page.mouse.move(sheet.x + sheet.width * 0.725, sheet.y + sheet.height * 0.192);
+  await page.mouse.down();
+  await page.mouse.move(sheet.x + sheet.width * 0.885, sheet.y + sheet.height * 0.214, {
+    steps: 6,
+  });
+  await page.mouse.up();
+  await expect(page.getByTestId('spot-value')).toHaveText('2031/TB/00412');
+  // Named after the supplier's letterhead as it recurs across the batch, not a
+  // logo or whatever recognition made of the first line.
+  await expect(page.getByTestId('spot-client')).toHaveText('VALLOMBROSA TESSUTI SPA');
+  await page.getByTestId('spot-save').click();
+  await expect(page.getByTestId('teach-result')).toContainText('2 invoices in this batch');
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  await expect(table).toContainText('2031-TB-00412.pdf');
+  await expect(table).toContainText('2031-TB-00587.pdf');
+  await expect(table.getByText('the spot you chose')).toHaveCount(2);
+});

@@ -9,9 +9,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildPageText,
+  buildRecognisedText,
   countReadableCharacters,
   MIN_TEXT_CHARS,
 } from '../../src/core/extractText.js';
+import { detectInZone } from '../../src/core/detect.js';
 
 /** One piece of drawn text, the shape pdf.js hands over. */
 function item(str, { x = 0, y = 700, width = null, size = 10, hasEOL = false } = {}) {
@@ -165,5 +167,72 @@ describe('remembering where the text sat', () => {
 
     const second = layout[1];
     expect(text.slice(second.start, second.end)).toBe('SR-40881');
+  });
+});
+
+describe('text read from a scan', () => {
+  // A page drawn 2480 pixels wide for reading: about 4.17 pixels to a point.
+  const scale = 2480 / 595;
+  const size = { scale, pageHeight: 841 };
+  const px = (points) => Math.round(points * scale);
+
+  /** A line of recognised words, each [text, left, right] in points, `top` in points from the top. */
+  const line = (top, words, confidence = 91) => ({
+    bbox: { x0: px(words[0][1]), y0: px(top), x1: px(words.at(-1)[2]), y1: px(top + 8) },
+    words: words.map(([text, left, right]) => ({
+      text,
+      bbox: { x0: px(left), y0: px(top), x1: px(right), y1: px(top + 8) },
+      confidence,
+    })),
+  });
+
+  const header = [
+    line(130, [
+      ['N°', 408, 418],
+      ['Document', 420, 462],
+    ]),
+    line(145, [
+      ['(00871)', 330, 366],
+      ['Invoice', 372, 404],
+      ['Nr.', 408, 420],
+      ['2031/VT/00412', 427, 488],
+      ['11/06/31', 504, 541],
+    ]),
+  ];
+
+  it('reads the words back in lines, top to bottom', () => {
+    const { text, hasText } = buildRecognisedText(header, size);
+
+    expect(text).toBe('N° Document\n(00871) Invoice Nr. 2031/VT/00412 11/06/31');
+    expect(hasText).toBe(true);
+  });
+
+  it('puts each word where it sat on the page, measured up from the bottom', () => {
+    const { text, layout } = buildRecognisedText(header, size);
+    const number = layout.find((span) => text.slice(span.start, span.end) === '2031/VT/00412');
+
+    expect(number.x).toBeCloseTo(427, 0);
+    expect(number.endX).toBeCloseTo(488, 0);
+    expect(number.y).toBeCloseTo(841 - 153, 0);
+  });
+
+  it('keeps how sure recognition was of every word', () => {
+    const { layout } = buildRecognisedText([line(145, [['2031/VT/00412', 427, 488]], 38)], size);
+
+    expect(layout[0].confidence).toBe(38);
+  });
+
+  it('lets a box drawn on the scan be read like one on any other page', () => {
+    const { text, layout } = buildRecognisedText(header, size);
+    const spot = { x0: 425 / 595, x1: 490 / 595, y0: (841 - 154) / 841, y1: (841 - 144) / 841 };
+
+    expect(detectInZone(text, layout, spot, { width: 595, height: 841 }, 'D4 / A2 / D5')).toBe(
+      '2031/VT/00412'
+    );
+  });
+
+  it('gives an empty page for an empty reading', () => {
+    expect(buildRecognisedText([], size)).toMatchObject({ text: '', hasText: false, layout: [] });
+    expect(buildRecognisedText(undefined, size).text).toBe('');
   });
 });
