@@ -59,12 +59,24 @@ test('the preview passes an accessibility audit', async ({ page }) => {
   expect(violations.map((entry) => `${entry.id}: ${entry.help}`)).toEqual([]);
 });
 
-test('the profile editor passes an accessibility audit', async ({ page }) => {
-  await loadFixtures(page, ['12-unusual-label.pdf']);
-  await page.getByTestId('profile-add').click();
-  await expect(page.getByTestId('profile-editor')).toBeVisible();
+test('drawing a box around the number passes an accessibility audit', async ({ page }) => {
+  await loadFixtures(page, ['21-column-heading.pdf']);
+  await page.getByTestId('point-prompt-go').click();
+  await expect(page.getByTestId('point-banner')).toBeVisible();
 
-  const { violations } = await audit(page).analyze();
+  const words = page.locator('.textLayer span', { hasText: 'SR-40881_2' }).first();
+  await words.waitFor();
+  const at = await words.boundingBox();
+  await page.mouse.move(at.x - 5, at.y - 4);
+  await page.mouse.down();
+  await page.mouse.move(at.x + at.width + 5, at.y + at.height + 4, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.getByTestId('spot-bar')).toBeVisible();
+
+  const { violations } = await audit(page)
+    // Same as the preview audit above: the text layer is for selecting, not reading.
+    .exclude('.textLayer')
+    .analyze();
   expect(violations.map((entry) => `${entry.id}: ${entry.help}`)).toEqual([]);
 });
 

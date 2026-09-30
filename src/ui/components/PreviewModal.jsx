@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { TextLayer } from '../../lib/pdfjs.js';
-import { labelFromSelection } from '../../core/profiles.js';
 import { detectInZone, valueShape } from '../../core/detect.js';
 import { useDialog } from '../../lib/useDialog.js';
 
@@ -17,10 +16,9 @@ const clamp = (value) => Math.min(1, Math.max(0, value));
  * One page, big enough to read, with the text pdf.js found sitting invisibly on
  * top of it.
  *
- * Two ways to teach the app from here. Highlighting words with the text cursor
- * offers them as a label. And "Point to the invoice number" turns the page into
- * something like a screenshot tool: drag a box around the number, and every page
- * from that client is read from inside that box from then on.
+ * "Point to the invoice number" turns the page into something like a screenshot
+ * tool: drag a box around the number, and every page from that client is read
+ * from inside that box from then on, in this batch and their next one.
  */
 export default function PreviewModal({
   page,
@@ -32,9 +30,8 @@ export default function PreviewModal({
   onMoveToNeighbour,
   canMoveBack,
   canMoveOn,
-  profiles,
-  onTeachLabel,
   onTeachZone,
+  onForgetBox,
   pointing = false,
   spotInvoices = 0,
   busy,
@@ -45,7 +42,6 @@ export default function PreviewModal({
   const dialogRef = useDialog({ onClose });
   const [drawing, setDrawing] = useState(true);
   const [taught, setTaught] = useState(null);
-  const [teaching, setTeaching] = useState(null);
   const [picking, setPicking] = useState(pointing);
   const [box, setBox] = useState(null);
   const [spot, setSpot] = useState(null);
@@ -112,7 +108,6 @@ export default function PreviewModal({
   // object is rebuilt every time detection re-runs, and teaching something is
   // exactly what makes detection re-run.
   useEffect(() => {
-    setTeaching(null);
     setTaught(null);
     setSpot(null);
     setBox(null);
@@ -121,17 +116,6 @@ export default function PreviewModal({
 
   // A page with no text layer - a scan - has nothing a box could be read from.
   const canPoint = Boolean(page.layout?.length && page.pageWidth && page.pageHeight);
-
-  /**
-   * Somebody dragged across the words on the page with the text cursor. What
-   * they highlighted is usually the label and the number together, so the
-   * number is dropped and the words in front of it are offered as a label.
-   */
-  const readSelection = () => {
-    if (picking) return;
-    const label = labelFromSelection(window.getSelection?.()?.toString() ?? '');
-    if (label) setTeaching({ label, profileId: profiles?.[0]?.id ?? 'new' });
-  };
 
   /* ------------------------------------------------ drawing a box, like a snip */
 
@@ -189,13 +173,7 @@ export default function PreviewModal({
       width: page.pageWidth,
       height: page.pageHeight,
     });
-    setSpot({
-      zone,
-      value,
-      // The client this page already belongs to, if any; otherwise a new one,
-      // so a spot is never put on some other client's profile by default.
-      profileId: page.matchedProfiles?.[0]?.id ?? 'new',
-    });
+    setSpot({ zone, value });
   };
 
   const cancelBox = () => {
@@ -210,7 +188,7 @@ export default function PreviewModal({
   };
 
   const saveSpot = () => {
-    onTeachZone(spot.zone, spot.profileId, page, valueShape(spot.value));
+    onTeachZone(spot.zone, page, valueShape(spot.value));
     setTaught({ kind: 'zone', text: spot.value });
     stopPicking();
   };
@@ -231,24 +209,11 @@ export default function PreviewModal({
 
   if (!page) return null;
 
-  /** Which client to teach: the same choice for a label and for a spot. */
-  const profileChoice = (value, onChange) => (
-    <label>
-      <span className="visually-hidden">Client profile</span>
-      <select
-        value={value}
-        data-testid="teach-profile"
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {(profiles ?? []).map((profile) => (
-          <option key={profile.id} value={profile.id}>
-            {profile.name}
-          </option>
-        ))}
-        <option value="new">A new profile&hellip;</option>
-      </select>
-    </label>
-  );
+  // The client this page is remembered as, if its letterhead has been seen
+  // before; otherwise the box is kept for a new one named after that letterhead.
+  const client = page.matchedProfiles?.[0] ?? null;
+  const clientName =
+    client?.name || (page.text ?? '').split('\n')[0].trim().slice(0, 60) || 'this client';
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -270,7 +235,7 @@ export default function PreviewModal({
                 <>
                   Invoice <strong>{group.invoice}</strong>
                   {group.provenance?.source === 'zone' ? (
-                    <>, read from the spot you chose</>
+                    <>, read from the box drawn for {group.provenance.label}</>
                   ) : (
                     group.provenance?.label && (
                       <>
@@ -282,6 +247,19 @@ export default function PreviewModal({
               ) : (
                 'No invoice number was found on this page.'
               )}
+              {client && !picking && (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className="link-button"
+                    data-testid="forget-box"
+                    onClick={() => onForgetBox(client.id)}
+                  >
+                    Forget this client&rsquo;s box
+                  </button>
+                </>
+              )}
             </p>
           </div>
           <div className="modal-tools">
@@ -291,12 +269,11 @@ export default function PreviewModal({
                 className="button quiet"
                 data-testid="point-start"
                 onClick={() => {
-                  setTeaching(null);
                   setTaught(null);
                   setPicking(true);
                 }}
               >
-                Point to the invoice number
+                {client ? 'Draw the box again' : 'Point to the invoice number'}
               </button>
             )}
             <button type="button" className="button quiet" onClick={() => onStep(-1)}>
@@ -377,11 +354,9 @@ export default function PreviewModal({
               <>
                 <span>
                   Inside the box: <strong data-testid="spot-value">{spot.value}</strong>. Read the
-                  invoice number from here for
+                  invoice number from here on every page from{' '}
+                  <strong data-testid="spot-client">{clientName}</strong>.
                 </span>
-                {profileChoice(spot.profileId, (profileId) =>
-                  setSpot((current) => ({ ...current, profileId }))
-                )}
                 <button type="button" className="button" data-testid="spot-save" onClick={saveSpot}>
                   Save this spot
                 </button>
@@ -407,74 +382,35 @@ export default function PreviewModal({
           </div>
         )}
 
-        {teaching && (
-          <div className="teach" data-testid="teach-bar">
-            <span>
-              Teach <strong data-testid="teach-label">{teaching.label}</strong> to
-            </span>
-            {profileChoice(teaching.profileId, (profileId) =>
-              setTeaching((current) => ({ ...current, profileId }))
-            )}
-            <button
-              type="button"
-              className="button"
-              data-testid="teach-add"
-              onClick={() => {
-                onTeachLabel(teaching.label, teaching.profileId, page);
-                setTaught({ kind: 'label', text: teaching.label });
-                setTeaching(null);
-                window.getSelection?.()?.removeAllRanges();
-              }}
-            >
-              Add as label
-            </button>
-            <button type="button" className="link-button" onClick={() => setTeaching(null)}>
-              Not now
-            </button>
-          </div>
-        )}
-
         {taught && (
           <div className="teach teach-done" role="status" data-testid="teach-result">
-            {taught.kind === 'zone' ? (
-              <>
-                <span>
-                  {group?.provenance?.source === 'zone' ? (
-                    <>
-                      Found <strong>{group.invoice}</strong> in that spot.{' '}
-                      {spotInvoices === 1
-                        ? 'One invoice in this batch takes its number from a saved spot.'
-                        : `${spotInvoices} invoices in this batch take their number from a saved spot.`}{' '}
-                      Pages with nothing there stay with the invoice before them.
-                    </>
-                  ) : (
-                    <>
-                      That spot was saved, but nothing was read from it on this page. Check the box,
-                      or correct the number in the table.
-                    </>
-                  )}
-                </span>
-                <button type="button" className="button quiet" onClick={onClose}>
-                  Done
-                </button>
-              </>
-            ) : group?.invoice && group.provenance?.source === 'profile' ? (
+            <>
               <span>
-                Found <strong>{group.invoice}</strong> after <code>{group.provenance.label}</code>.
-                Every page with that label is read the same way now.
+                {group?.provenance?.source === 'zone' ? (
+                  <>
+                    Found <strong>{group.invoice}</strong> in that spot.{' '}
+                    {spotInvoices === 1
+                      ? 'One invoice in this batch takes its number from a saved spot.'
+                      : `${spotInvoices} invoices in this batch take their number from a saved spot.`}{' '}
+                    Pages with nothing there stay with the invoice before them.
+                  </>
+                ) : (
+                  <>
+                    That spot was saved, but nothing was read from it on this page. Check the box,
+                    or correct the number in the table.
+                  </>
+                )}
               </span>
-            ) : (
-              <span>
-                <code>{taught.text}</code> was added, but no number was found after it on this page.
-                Check the highlight, or correct the number in the table.
-              </span>
-            )}
+              <button type="button" className="button quiet" onClick={onClose}>
+                Done
+              </button>
+            </>
           </div>
         )}
 
         <div className="modal-body">
           <div className="page-view">
-            <div className="page-sheet" onMouseUp={readSelection} onTouchEnd={readSelection}>
+            <div className="page-sheet">
               <canvas ref={canvasRef} className="page-canvas" />
               <div ref={textRef} className="textLayer" />
               {picking && canPoint && (

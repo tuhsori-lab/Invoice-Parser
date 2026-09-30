@@ -73,64 +73,70 @@ function findFfmpeg() {
 }
 
 /**
+ * Drag the mouse from one corner of a box to the other slowly enough to be seen:
+ * the recording takes a handful of frames a second, and a drag done at machine
+ * speed would land in one of them.
+ */
+async function drawBoxAround(page, text) {
+  const words = page.locator('.textLayer span', { hasText: text }).first();
+  await words.waitFor();
+  const at = await words.boundingBox();
+  const from = { x: at.x - 10, y: at.y - 7 };
+  const to = { x: at.x + at.width + 10, y: at.y + at.height + 7 };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  const steps = 12;
+  for (let step = 1; step <= steps; step += 1) {
+    await page.mouse.move(
+      from.x + ((to.x - from.x) * step) / steps,
+      from.y + ((to.y - from.y) * step) / steps
+    );
+    await page.waitForTimeout(70);
+  }
+  await page.mouse.up();
+}
+
+/**
  * Walk through the app, in the order somebody actually would.
  *
- * The story is the one that matters: three files go in, one invoice comes out
- * wrong because nothing recognises that client's label, and showing the app the
- * label once puts it right.
+ * The story is the one that matters: a batch from a client whose invoice number
+ * sits under a heading nothing recognises, so all four pages run together as
+ * one. The app asks to be shown the number, a box is drawn around it once, and
+ * the batch splits into its two invoices - continuation pages and all - which
+ * are then saved straight into a folder.
  */
 async function walkthrough(page) {
   await page.goto(APP);
   await beat(page, 800);
 
-  // Drop a batch in.
-  await page
-    .getByTestId('file-input')
-    .setInputFiles(
-      ['01-same-line.pdf', '04-remittance-slip.pdf', '12-unusual-label.pdf'].map((name) =>
-        join(FIXTURES, name)
-      )
-    );
+  await page.getByTestId('file-input').setInputFiles([join(FIXTURES, '22-boxed-number.pdf')]);
   await page.getByTestId('page-strip').waitFor();
+  await beat(page, 1500);
+
+  // Four pages, one invoice, no number - and the app asks to be shown it.
+  await page.getByTestId('tile-1').hover();
+  await beat(page, 900);
+  await page.getByTestId('tile-3').hover();
+  await beat(page, 900);
+  await page.getByTestId('point-prompt-go').hover();
+  await beat(page, 700);
+  await page.getByTestId('point-prompt-go').click();
   await beat(page, 1300);
 
-  // The strip shows what is in the batch, a page at a time.
-  await page.getByTestId('tile-2').hover();
-  await beat(page, 1000);
-  await page.getByTestId('tile-4').hover();
-  await beat(page, 700);
-
-  // The last page belongs to a different client, but nothing recognised its
-  // label, so it was swept in with the invoice before it.
-  await page.getByTestId('tile-5').hover();
-  await beat(page, 1000);
-  await page.getByTestId('tile-5').click();
-  await page.locator('.textLayer span', { hasText: 'Our Ref' }).first().waitFor();
-  await beat(page, 800);
-
-  // Show the app the words the number comes after.
-  await page.evaluate(() => {
-    const span = [...document.querySelectorAll('.textLayer span')].find((entry) =>
-      entry.textContent.includes('Our Ref')
-    );
-    const range = document.createRange();
-    range.selectNodeContents(span);
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
-    span.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-  });
-  await beat(page, 1000);
-  await page.getByTestId('teach-add').click();
+  // A box around the number, like taking a screenshot.
+  await drawBoxAround(page, '50621');
+  await beat(page, 1500);
+  await page.getByTestId('spot-save').click();
+  await beat(page, 2000);
+  await page.getByRole('button', { name: 'Done' }).click();
   await beat(page, 1600);
-  await page.keyboard.press('Escape');
-  await beat(page, 1400);
 
-  // And take the invoices away.
-  await page.getByTestId('download-zip').hover();
+  // Two invoices now. Save them straight into a folder, one PDF each.
+  await page.getByTestId('save-folder').hover();
   await beat(page, 700);
-  await page.getByTestId('download-zip').click();
-  await beat(page, 1800);
+  await page.getByTestId('save-folder').click();
+  await page.getByTestId('saved-to').waitFor();
+  await beat(page, 2200);
 }
 
 await rm(WORK, { recursive: true, force: true });
@@ -143,10 +149,17 @@ const context = await browser.newContext({
   recordVideo: { dir: WORK, size: SIZE },
   colorScheme: 'light',
 });
-const page = await context.newPage();
 
-// Downloads are accepted so the export at the end behaves normally.
-page.on('download', (download) => download.saveAs(join(WORK, download.suggestedFilename())));
+// The folder picker is a window of the operating system's, which a recording
+// cannot click through, so it is answered with a folder in the browser's own
+// private storage. The app writes into it exactly as it would onto a disk.
+await context.addInitScript(() => {
+  window.showDirectoryPicker = async () => {
+    const root = await navigator.storage.getDirectory();
+    return root.getDirectoryHandle('Harbor & Pine, March', { create: true });
+  };
+});
+const page = await context.newPage();
 
 await walkthrough(page);
 await context.close();

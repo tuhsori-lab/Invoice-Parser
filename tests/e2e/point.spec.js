@@ -147,25 +147,57 @@ test('can be pointed from any page, not only when asked', async ({ page }) => {
   const table = page.getByTestId('invoice-table');
   await expect(table).toContainText('the spot you chose');
   await expect(table).toContainText('SR-40997_1.pdf');
-  await expect(page.getByTestId('profiles-panel')).toContainText('a spot on the page');
+  await expect(page.getByTestId('remembered-boxes')).toContainText(
+    'One client is remembered in this browser'
+  );
 });
 
-test('a spot can be forgotten again from the profile', async ({ page }) => {
+test('remembers a box after the page is closed and opened again', async ({ page }) => {
+  await loadFixtures(page, ['22-boxed-number.pdf']);
+  await page.getByTestId('point-prompt-go').click();
+  await drawBoxAround(page, '50621');
+  await page.getByTestId('spot-save').click();
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  await page.reload();
+  await page.getByTestId('file-input').setInputFiles([fixture('22-boxed-number.pdf')]);
+
+  await expect(page.getByTestId('summary')).toHaveText('4 pages split into 2 invoices.');
+  await expect(page.getByTestId('point-prompt')).toHaveCount(0);
+});
+
+test('forgets one client box from their page', async ({ page }) => {
   await loadFixtures(page, ['21-column-heading.pdf']);
   await page.getByTestId('point-prompt-go').click();
   await drawBoxAround(page, 'SR-40881_2');
   await page.getByTestId('spot-save').click();
   await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByTestId('invoice-table')).toContainText('the spot you chose');
 
-  const panel = page.getByTestId('profiles-panel');
-  await expect(panel).toContainText('a spot on the page');
-  await panel.getByRole('button', { name: 'Edit' }).first().click();
+  await page.getByTestId('tile-1').click();
+  await expect(page.getByTestId('point-start')).toHaveText('Draw the box again');
+  await page.getByTestId('forget-box').click();
+  await expect(page.getByTestId('point-start')).toHaveText('Point to the invoice number');
+  await page.keyboard.press('Escape');
 
-  await expect(page.getByTestId('profile-zone')).toContainText('A box you drew is saved');
-  await page.getByTestId('profile-zone-clear').click();
-  await page.getByTestId('profile-save').click();
-
-  await expect(panel).not.toContainText('a spot on the page');
-  // Without the spot the everyday label answers instead, and still gets it right.
+  // Without the box the everyday label answers instead, and still gets it right.
   await expect(page.getByTestId('invoice-table')).toContainText('an everyday label');
+  await expect(page.getByTestId('remembered-boxes')).toContainText('None yet');
+});
+
+test('forgets every box at once, after asking', async ({ page }) => {
+  await loadFixtures(page, ['22-boxed-number.pdf']);
+  await page.getByTestId('point-prompt-go').click();
+  await drawBoxAround(page, '50621');
+  await page.getByTestId('spot-save').click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByTestId('summary')).toHaveText('4 pages split into 2 invoices.');
+
+  await page.getByTestId('forget-boxes').click();
+  await page.getByRole('button', { name: 'Yes, forget them' }).click();
+
+  await expect(page.getByTestId('summary')).toHaveText(
+    '4 pages split into 1 invoice, 1 worth a look.'
+  );
+  await expect(page.getByTestId('point-prompt')).toBeVisible();
 });
