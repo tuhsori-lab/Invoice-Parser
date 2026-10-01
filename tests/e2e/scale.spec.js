@@ -132,8 +132,20 @@ test('reads scanned pages that have a note typed on top, and a box drawn on one 
   await expect(notice).toContainText(
     '3 pages look like scans, so their invoice numbers could not be read.'
   );
-  // Until then a box on them would find nothing, so the app does not ask for one.
-  await expect(page.getByTestId('point-prompt')).toHaveCount(0);
+  // A box can be drawn straight away - on a scan with the scanner's own text it
+  // would work - but here the words under it have not been read, and it says so.
+  await page.getByTestId('point-prompt-go').click();
+  const picker = await page.getByTestId('spot-picker').boundingBox();
+  await page.mouse.move(picker.x + picker.width * 0.725, picker.y + picker.height * 0.192);
+  await page.mouse.down();
+  await page.mouse.move(picker.x + picker.width * 0.885, picker.y + picker.height * 0.214, {
+    steps: 6,
+  });
+  await page.mouse.up();
+  await expect(page.getByTestId('spot-empty')).toContainText(
+    'This page is a scan, and its words have not been read yet'
+  );
+  await page.keyboard.press('Escape');
 
   await page.getByTestId('read-scanned').click();
   await expect(notice).toHaveCount(0, { timeout: 240_000 });

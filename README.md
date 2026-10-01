@@ -148,8 +148,8 @@ pages that came out with no number. Either way it says so and offers to read the
 It is offered rather than done automatically because it is slow, and it can be stopped part way
 without losing what has already been read. Checking which pages are pictures takes a moment on a
 long scan; clicked before that has finished, the button waits for it, so one click reads every
-scanned page. Anything read this way carries an `ocr` flag, because recognition is never certain —
-and where it gets the number wrong, you type over it.
+scanned page. **Not now** puts the offer away for the batch. Anything read this way carries an `ocr`
+flag, because recognition is never certain — and where it gets the number wrong, you type over it.
 
 Recognition is also not steady, and the app is built around that:
 
@@ -167,8 +167,11 @@ Recognition is also not steady, and the app is built around that:
   never anything with a digit in it.
 - **A box works on a scan.** What recognition reads comes with where each word sat, in the same form
   as a PDF's own text, so a box drawn on a scanned page reads the number from that spot on every
-  page of the client — which sidesteps the label altogether. Until a scan has been read the app does
-  not ask for a box, since there would be nothing inside it to read.
+  page of the client — which sidesteps the label altogether. Many scanners already lay their own
+  reading over the picture as invisible text (a "searchable PDF"); a box can be drawn on that
+  straight away, with nothing to read first, and the pages it reads drop out of the offer to read
+  scans. On a scan with no such text under the box, the app says so and points to **Read scanned
+  pages**.
 
 The recognition engine, its WebAssembly and the English language data are all served by this app
 (copied out of `node_modules` by `npm run assets`, about 14 MB). They are fetched the first time
@@ -203,16 +206,17 @@ shown that place once.
 When a batch has pages no saved spot covers, a card above the page strip says so and names the first
 of them. **Point to it on page 1** opens that page with the page dimmed, and you drag a box around
 the invoice number — like taking a screenshot. The bar above the page shows what is inside the box
-before anything is saved; **Save this spot** remembers the box for that client, recognised from
-then on by the first line of their page — nearly always the letterhead. The same **Point to the
-invoice number** button is on every page's preview, for pointing at any time.
+before anything is saved; **Save this spot** remembers the box for that client. The same **Point to
+the invoice number** button is on every page's preview, for pointing at any time.
 
-On a scan the first line is as likely to be a logo read as nonsense, and any one line can be run
-together with the next or missing from another page's reading. So a client first seen on a scan is
-known by up to three lines near the top of the page that turn up on at least half of the batch's
-other scanned pages — their name and address, not the customer's. On a scanned page, a line counts
-as there when most of its words are, each allowed a letter wrong, and the client counts as there when
-most of their lines are: an address shared with a neighbour in the same town is not enough.
+A client is recognised from then on by up to three lines near the top of the page the box was drawn
+on that turn up on their other pages too — their name, their address, the headings their software
+prints. Not simply the first line, which is not always the same twice: a page printed from a
+browser starts with the time it was printed and the order number, and a scan's first line is as
+likely to be its logo read as nonsense. A page is theirs when most of those lines are on it — an
+address shared with a neighbour in the same town is not enough. A line counts as there when all of
+its words are, whatever stray marks a scanner put between them; on a page this app read itself, when
+most of its words are, each allowed a letter wrong.
 
 Every page matched to that client is then read from inside the box, in this batch and in their next
 one, which is not asked about again. In a batch from several clients the card moves on to the first
@@ -228,8 +232,11 @@ next page with a number in the box starts the next one.
 where the number goes on the first page. Read blindly, that would start an invoice of its own. So
 along with the box the app keeps the _shape_ of the number that was boxed — `50621` is five
 digits, `KLMN2231_4` is four letters, four digits, an underscore and a digit — and only a number of
-that shape counts, give or take one character in each run because numbering grows. Anything else in
-the box is ignored and the page is treated as a continuation. Only the shape is kept, never the
+that shape counts, give or take one character in each run because numbering grows. A number in parts
+— `7730051-1107`, `2031/TB/00412` — may have each part up to half as long again or half as short, so
+one client's orders numbered `7730051-1107` and `9902114705-0031` are both read from the same box;
+the parts and the marks between them still have to match. Anything else in the box is ignored and
+the page is treated as a continuation. Only the shape is kept, never the
 number: what is remembered describes what a client's invoices look like, not what is on one.
 
 The box is kept as fractions of the page — `x0`/`x1` across, `y0`/`y1` up from the bottom — so it

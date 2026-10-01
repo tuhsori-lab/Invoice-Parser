@@ -353,8 +353,13 @@ export function valueShape(value) {
  * Could this value be another number of the kind that has this shape?
  *
  * The same runs in the same order with the same separators, each run within a
- * character of the example's length. A spot saved with no shape accepts
- * anything value-shaped, as spots saved before shapes existed always did.
+ * character of the example's length. A number made of parts - "4418200-1107",
+ * "2031/TB/00412" - is allowed more: each part may be up to half as long again,
+ * or half as short, because one client's customers number their orders in
+ * different lengths ("4418200-1107" beside "9902114705-0031") and the parts and
+ * the marks between them already say plenty about what kind of number it is. A
+ * spot saved with no shape accepts anything value-shaped, as spots saved before
+ * shapes existed always did.
  *
  * @param {string} value
  * @param {string} [shape]
@@ -365,11 +370,14 @@ export function fitsShape(value, shape) {
   const want = String(shape).split(' ');
   const have = valueShape(value).split(' ');
   if (want.length !== have.length) return false;
+  const inParts = want.length > 1;
   return want.every((part, position) => {
     const wanted = /^([AD])(\d+)$/.exec(part);
     const found = /^([AD])(\d+)$/.exec(have[position]);
     if (!wanted || !found) return part === have[position];
-    return wanted[1] === found[1] && Math.abs(Number(wanted[2]) - Number(found[2])) <= SHAPE_SLACK;
+    const length = Number(wanted[2]);
+    const slack = inParts ? Math.max(SHAPE_SLACK, Math.floor(length / 2)) : SHAPE_SLACK;
+    return wanted[1] === found[1] && Math.abs(length - Number(found[2])) <= slack;
   });
 }
 

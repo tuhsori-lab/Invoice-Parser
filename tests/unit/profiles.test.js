@@ -230,10 +230,8 @@ describe('a client seen on a scan', () => {
     expect(matchProfiles('VALL0MBROSA TESSUTI SPA', [vallombrosa], { tolerant: true })).toEqual([]);
   });
 
-  it('is content with one line printed exactly', () => {
-    expect(matchProfiles('VALLOMBROSA TESSUTI SPA', [vallombrosa], { tolerant: true })).toEqual([
-      vallombrosa,
-    ]);
+  it('needs most of the lines even when one of them is printed exactly', () => {
+    expect(matchProfiles('VALLOMBROSA TESSUTI SPA', [vallombrosa], { tolerant: true })).toEqual([]);
   });
 
   it('reads the box on a scanned page of that client', () => {
@@ -275,18 +273,95 @@ describe('choosing the lines a new client is known by', () => {
     );
   });
 
-  it('on a scan, takes the lines that turn up across the batch, not a logo read as letters', () => {
+  it('on a scan, takes the lines near the top that turn up again, not a logo read as letters', () => {
     expect(identifyingLinesFor(batch[0], batch)).toEqual([
+      'Spett. TIDEWATER BOUTIQUE LLC',
       'VALLOMBROSA TESSUTI SPA',
       'VIA DEI TELAI 14 50066 REGGELLO (FI) - Italy',
     ]);
   });
 
-  it('leaves out the customer the page was addressed to', () => {
-    expect(identifyingLinesFor(batch[0], batch)).not.toContain('Spett. TIDEWATER BOUTIQUE LLC');
+  it('still knows the client on a page addressed to another customer', () => {
+    const client = createProfile({
+      name: 'x',
+      identifyingText: identifyingLinesFor(batch[0], batch),
+    });
+
+    expect(matchProfiles(batch[2].text, [client], { tolerant: true })).toEqual([client]);
   });
 
   it('falls back to its best guess when the batch has nothing to compare with', () => {
     expect(identifyingLinesFor(batch[0], [batch[0]])).toEqual(['Spett. TIDEWATER BOUTIQUE LLC']);
+  });
+});
+
+describe('a client whose first line is never the same twice', () => {
+  // Order pages printed from a web browser and scanned: the first line is the
+  // time they were printed and the order number, and the scanner's own reading
+  // puts stray marks where the page had icons. Everything here is invented.
+  const printout = (index, { time, order, day, first = true }) => ({
+    index,
+    ocr: false,
+    text: [
+      `9/12/31, ${time} Tidewater Goods - Orders - ${order} - Storefront`,
+      ...(first
+        ? [
+            '® Paid @ Fulfilled Notes',
+            `${order.slice(0, 9)}... Archived`,
+            'No notes from customer',
+            `March ${day}, 2031 at 9:14 am from Linkline: Wholesale EDI for`,
+            'retailers (by feed)',
+            'Additional details',
+            `PO Number ${order}`,
+          ]
+        : ['Pink / M TW5530-M', 'Paid', 'Subtotal 9 items $604.80', 'Metafields']),
+    ].join('\n'),
+  });
+  const batch = [
+    printout(1, { time: '10:12 AM', order: '7730051-1107', day: 19 }),
+    printout(2, { time: '10:09 AM', order: '7730051-1103', day: 19 }),
+    printout(3, { time: '10:05 AM', order: '4418200-0031', day: 16 }),
+    printout(4, { time: '10:03 AM', order: '7729944-1107', day: 14 }),
+    printout(5, { time: '10:03 AM', order: '7729944-1107', day: 14, first: false }),
+  ];
+
+  it('is not known by a line that is mostly a date, a time and an order number', () => {
+    expect(identifyingLinesFor(batch[0], batch)).not.toContain(batch[0].text.split('\n')[0]);
+  });
+
+  it('is known by the lines its pages have in common', () => {
+    expect(identifyingLinesFor(batch[0], batch)).toEqual([
+      '® Paid @ Fulfilled Notes',
+      'No notes from customer',
+      'March 19, 2031 at 9:14 am from Linkline: Wholesale EDI for',
+    ]);
+  });
+
+  it('knows every order of theirs from a box drawn on the first', () => {
+    const client = createProfile({
+      name: 'x',
+      identifyingText: identifyingLinesFor(batch[0], batch),
+    });
+
+    expect(batch.map((page) => matchProfiles(page.text, [client]).length)).toEqual([1, 1, 1, 1, 0]);
+  });
+
+  it('counts a line as there when all its words are, whatever marks sit between them', () => {
+    const client = createProfile({ name: 'x', identifyingText: ['® Paid @ Fulfilled Notes'] });
+
+    expect(matchProfiles('@ Paid ® Fulfilled | Notes', [client])).toEqual([client]);
+    expect(matchProfiles('Paid in full. Notes:', [client])).toEqual([]);
+  });
+
+  it('keeps the first line that looks like words when there is nothing to compare with', () => {
+    expect(identifyingLinesFor(batch[0], [batch[0]])).toEqual(['® Paid @ Fulfilled Notes']);
+  });
+
+  it('still takes a letterhead as the first line, as it always has', () => {
+    const typed = (index) => ({ index, text: `Lakeshore Office Supply\nInvoice No: 10${index}` });
+
+    expect(identifyingLinesFor(typed(1), [typed(1), typed(2)])).toEqual([
+      'Lakeshore Office Supply',
+    ]);
   });
 });
