@@ -93,6 +93,15 @@ Anything the engine is unsure about is flagged for review rather than quietly gu
 `no-number`, `fallback` (the bare tier answered), `conflict` (two labels, two different numbers),
 `duplicate-name` (two invoices want the same file name), and `ocr` (the text came from a scan).
 
+## Advanced controls
+
+Most batches split correctly as they are, so every setting — how pages are split, what happens to
+pages with no number, how the number is found, and what the files are called — sits behind one
+**Advanced controls** button above the results, closed to begin with. Closed, the invoices get the
+whole width. A setting changed and then put away is never out of mind: the button says how many are
+not as they started ("2 settings changed"). Leave the controls open and they are open the next time
+too; that one yes or no is the only thing remembered about them, in this browser.
+
 ## The page strip
 
 The strip along the top of the results is the one place this app uses colour to say something. One
@@ -245,8 +254,8 @@ slightly differently is still found while the column beside it is not swept in. 
 before any label does; when it finds nothing, the label tiers are tried as usual.
 
 One box per client: **Draw the box again** on any of their pages replaces it, **Forget this
-client's box** on the same page removes it, and **Forget them all** under _Finding the number_
-clears every one. Boxes are kept in this browser's storage and nowhere else.
+client's box** on the same page removes it, and **Forget them all** under _Advanced
+controls → Finding the number_ clears every one. Boxes are kept in this browser's storage and nowhere else.
 
 ## PO numbers
 
@@ -255,7 +264,7 @@ files by their own order number, so that is what a remittance or a dispute refer
 invoice's PO is listed in its own section under the table, with the label it was found after, and
 **Copy list** puts it on the clipboard as two tab-separated columns with a heading row, so it pastes
 straight into a spreadsheet as `Invoice` and `PO`. The list follows the search box, and copies
-exactly what it shows. It can be switched off under _Finding the number_.
+exactly what it shows. It can be switched off under _Advanced controls → Finding the number_.
 
 A PO is found the way an invoice number is — after a label, and in its column when the label is a
 heading — using `PO #`, `P.O. No.`, `PO Number`, `Purchase Order`, and `Customer PO` or `Your PO`.

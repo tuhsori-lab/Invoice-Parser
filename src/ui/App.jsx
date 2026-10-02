@@ -19,10 +19,12 @@ import { useDebounced } from '../lib/useDebounced.js';
 import { useUndoable } from '../lib/useUndoable.js';
 import { loadBoxes, saveBoxes } from '../lib/boxStore.js';
 import { applyTheme, loadTheme, watchSystemTheme } from '../lib/theme.js';
+import { loadControlsOpen, saveControlsOpen } from '../lib/controlsStore.js';
 import { readScannedPages, stopOcr } from '../lib/ocr.js';
 import { measurePictures, pictureKey } from '../lib/pictures.js';
 import DropZone from './components/DropZone.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
+import ControlsToggle from './components/ControlsToggle.jsx';
 import PageStrip from './components/PageStrip.jsx';
 import InvoiceTable from './components/InvoiceTable.jsx';
 import PreviewModal from './components/PreviewModal.jsx';
@@ -124,6 +126,18 @@ export default function App() {
   const [loading, setLoading] = useState(null);
   const [problems, setProblems] = useState([]);
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
+  // The settings sidebar, closed until somebody asks for it.
+  const [controlsOpen, setControlsOpen] = useState(loadControlsOpen);
+  const toggleControls = useCallback(() => {
+    setControlsOpen((open) => {
+      saveControlsOpen(!open);
+      return !open;
+    });
+  }, []);
+  // Compared as text: a number typed into a box comes back as a string.
+  const changedSettings = Object.keys(INITIAL_SETTINGS).filter(
+    (key) => String(settings[key]) !== String(INITIAL_SETTINGS[key])
+  ).length;
   const [query, setQuery] = useState('');
   const [previewIndex, setPreviewIndex] = useState(null);
   const [exporting, setExporting] = useState(null);
@@ -864,8 +878,9 @@ export default function App() {
       )}
 
       {pageCount > 0 && (
-        <main className="workspace">
-          <div className="settings-column">
+        <main className={`workspace${controlsOpen ? ' controls-open' : ''}`}>
+          <ControlsToggle open={controlsOpen} onToggle={toggleControls} changed={changedSettings} />
+          <div className="settings-column" id="advanced-controls" hidden={!controlsOpen}>
             <SettingsPanel
               settings={settings}
               nameExample={nameExample}
