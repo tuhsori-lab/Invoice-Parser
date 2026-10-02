@@ -108,6 +108,7 @@ test('keeps a fix when a detection setting changes afterwards', async ({ page })
 
   // Changing how unnumbered pages are handled re-runs detection over the same
   // text. The number typed by hand has to survive that.
+  await page.getByTestId('advanced-toggle').click();
   await page.getByRole('radio', { name: /Set aside for me to look at/ }).check();
 
   await expect(page.getByTestId('summary')).toHaveText(

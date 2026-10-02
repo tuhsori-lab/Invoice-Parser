@@ -240,7 +240,7 @@ export default function SettingsPanel({
           aria-expanded={advancedOpen}
           onClick={() => setAdvancedOpen((open) => !open)}
         >
-          Advanced
+          For experts: my own pattern
         </button>
         {advancedOpen && (
           <label className="field">

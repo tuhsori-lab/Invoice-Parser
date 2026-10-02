@@ -62,6 +62,7 @@ test('can be switched off', async ({ page }) => {
   await loadFixtures(page, ['20-form-layout.pdf']);
   await expect(page.getByTestId('po-list')).toBeVisible();
 
+  await page.getByTestId('advanced-toggle').click();
   await page.getByTestId('list-pos').uncheck();
   await expect(page.getByTestId('po-list')).toHaveCount(0);
 

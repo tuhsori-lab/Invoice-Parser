@@ -56,6 +56,7 @@ test('splits a batch and says where every number came from', async ({ page }) =>
 test('shows the file name pattern working before anything is exported', async ({ page }) => {
   await loadFixtures(page, ['01-same-line.pdf']);
 
+  await page.getByTestId('advanced-toggle').click();
   await expect(page.getByTestId('name-example')).toContainText('104233_PO-9921.pdf');
 
   await page.getByLabel('Start every name with').fill('Northwind ');
@@ -135,6 +136,7 @@ test('changing a setting re-splits the batch without re-reading the file', async
 
   await expect(page.getByTestId('summary')).toHaveText('2 pages split into 1 invoice.');
 
+  await page.getByTestId('advanced-toggle').click();
   await page.getByRole('radio', { name: /Set aside for me to look at/ }).check();
 
   await expect(page.getByTestId('summary')).toHaveText(
@@ -222,4 +224,32 @@ test('an invoice with no number is bracketed and striped in yellow', async ({ pa
     page.getByTestId(testId).evaluate((tile) => getComputedStyle(tile).backgroundImage);
   expect(await background('tile-1')).toBe('none');
   expect(await background('tile-2')).toContain('repeating-linear-gradient');
+});
+
+test('keeps the settings behind "Advanced controls" until they are asked for', async ({ page }) => {
+  await loadFixtures(page, ['04-remittance-slip.pdf']);
+
+  // Closed to begin with: the invoices get the whole width.
+  const toggle = page.getByTestId('advanced-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('radio', { name: /Set aside for me to look at/ })).toBeHidden();
+  await expect(page.getByTestId('summary')).toHaveText('2 pages split into 1 invoice.');
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await page.getByRole('radio', { name: /Set aside for me to look at/ }).check();
+  await page.getByLabel('Start every name with').fill('March ');
+
+  // Put away again, a changed setting is still owned up to.
+  await toggle.click();
+  await expect(page.getByLabel('Start every name with')).toBeHidden();
+  await expect(page.getByTestId('controls-changed')).toHaveText('2 settings changed');
+
+  // Left open, they are open the next time.
+  await toggle.click();
+  await page.reload();
+  await page.getByTestId('file-input').setInputFiles([fixture('04-remittance-slip.pdf')]);
+  await expect(page.getByTestId('advanced-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByLabel('Start every name with')).toBeVisible();
+  await expect(page.getByTestId('controls-changed')).toHaveCount(0);
 });

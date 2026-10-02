@@ -382,14 +382,62 @@ input[aria-invalid='true'] {
 
 .workspace {
   display: grid;
-  grid-template-columns: 17rem minmax(0, 1fr);
-  gap: 2rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem 2rem;
   margin-top: 1.75rem;
   align-items: start;
 }
 
+/* With the advanced controls open, they take a column of their own. */
+.workspace.controls-open {
+  grid-template-columns: 17rem minmax(0, 1fr);
+}
+
+.controls-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.9rem;
+  font-size: 0.875rem;
+}
+
+.controls-toggle {
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+}
+
+.controls-toggle::before {
+  content: '▸ ';
+}
+
+.controls-toggle[aria-expanded='true']::before {
+  content: '▾ ';
+}
+
+.controls-toggle:hover {
+  border-color: var(--accent);
+}
+
+.controls-hint {
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+}
+
+.controls-changed {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 @media (max-width: 62rem) {
-  .workspace {
+  .workspace.controls-open {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -399,10 +447,14 @@ input[aria-invalid='true'] {
     order: 1;
   }
 
-  .settings-column {
+  .controls-bar {
     order: 2;
     border-top: 1px solid var(--rule);
     padding-top: 1.25rem;
+  }
+
+  .settings-column {
+    order: 3;
   }
 }
 
@@ -413,7 +465,9 @@ input[aria-invalid='true'] {
   min-width: 0;
 }
 
-/* The profiles on their own, before any batch has been loaded. */
+.settings-column[hidden] {
+  display: none;
+}
 
 .settings {
   display: flex;
@@ -462,6 +516,7 @@ input[aria-invalid='true'] {
 }
 
 .choice small,
+.toggle small,
 .field small {
   display: block;
   color: var(--ink-faint);
