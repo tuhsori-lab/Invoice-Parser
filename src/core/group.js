@@ -25,6 +25,17 @@ export const FLAG_LABELS = {
   conflict: 'Two different invoice numbers on one page',
   'duplicate-name': 'Two invoices would be saved under the same name',
   ocr: 'Text was read from a scan, so it may be wrong',
+  'near-list': 'Not in your invoice list, but close to one that is',
+  'not-in-list': 'Not in your invoice list',
+  'page-order': 'Pages look out of order',
+  'page-count': 'Page count does not match "Page X of Y"',
+  'blank-page': 'Has a blank page',
+  'no-client': 'Has a page from no client you have shown the app',
+  'odd-shape': "Does not look like this client's other numbers",
+  'cut-short': 'The number may be cut short',
+  'scan-not-read': 'Scanned pages not read yet',
+  'out-of-sequence': "Far from this client's other numbers",
+  'unread-number': 'A page may have a number that could not be read',
 };
 
 /**

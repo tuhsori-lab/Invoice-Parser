@@ -11,6 +11,7 @@ import {
   buildPageText,
   buildRecognisedText,
   countReadableCharacters,
+  joinSlashedWords,
   MIN_TEXT_CHARS,
 } from '../../src/core/extractText.js';
 import { detectInZone } from '../../src/core/detect.js';
@@ -229,6 +230,60 @@ describe('text read from a scan', () => {
     expect(detectInZone(text, layout, spot, { width: 595, height: 841 }, 'D4 / A2 / D5')).toBe(
       '2031/VT/00412'
     );
+  });
+
+  it('joins a number that recognition split at a slash', () => {
+    // Read as scattered text, a small gap before the slash made two words of one.
+    for (const words of [
+      [
+        ['2031', 427, 446],
+        ['/VT/00412', 449, 488],
+      ],
+      [
+        ['2031/', 427, 449],
+        ['VT/00412', 452, 488],
+      ],
+      [
+        ['2031', 427, 446],
+        ['/', 448, 450],
+        ['VT/00412', 452, 488],
+      ],
+    ]) {
+      const { text, layout } = buildRecognisedText(
+        [line(145, [['Invoice', 372, 404], ['Nr.', 408, 420], ...words], 90)],
+        size
+      );
+      expect(text).toBe('Invoice Nr. 2031/VT/00412');
+      const number = layout.find((span) => text.slice(span.start, span.end) === '2031/VT/00412');
+      expect(number.x).toBeCloseTo(427, 0);
+      expect(number.endX).toBeCloseTo(488, 0);
+    }
+  });
+
+  it('keeps words apart that only happen to have a slash between them far away', () => {
+    const { text } = buildRecognisedText(
+      [
+        line(145, [
+          ['Total', 300, 330],
+          ['/VT/00412', 480, 520],
+        ]),
+      ],
+      size
+    );
+    expect(text).toBe('Total /VT/00412');
+  });
+
+  it('takes the less sure of two joined words', () => {
+    const joined = joinSlashedWords(
+      [
+        { text: '2031', bbox: { x0: 0, x1: 40, y0: 0, y1: 20 }, confidence: 95 },
+        { text: '/VT/00412', bbox: { x0: 44, x1: 120, y0: 0, y1: 20 }, confidence: 61 },
+      ],
+      20
+    );
+    expect(joined).toEqual([
+      { text: '2031/VT/00412', bbox: { x0: 0, x1: 120, y0: 0, y1: 20 }, confidence: 61 },
+    ]);
   });
 
   it('gives an empty page for an empty reading', () => {

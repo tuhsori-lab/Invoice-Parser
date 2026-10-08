@@ -230,8 +230,14 @@ describe('a client seen on a scan', () => {
     expect(matchProfiles('VALL0MBROSA TESSUTI SPA', [vallombrosa], { tolerant: true })).toEqual([]);
   });
 
-  it('needs most of the lines even when one of them is printed exactly', () => {
-    expect(matchProfiles('VALLOMBROSA TESSUTI SPA', [vallombrosa], { tolerant: true })).toEqual([]);
+  it('is content with the most widespread line, printed word for word', () => {
+    expect(matchProfiles('VALLOMBROSA TESSUTI SPA', [vallombrosa], { tolerant: true })).toEqual([
+      vallombrosa,
+    ]);
+  });
+
+  it('needs most of the lines when the most widespread is only nearly there', () => {
+    expect(matchProfiles('VALL0MBROSA TESSUTI SPA', [vallombrosa], { tolerant: true })).toEqual([]);
   });
 
   it('reads the box on a scanned page of that client', () => {
@@ -273,12 +279,15 @@ describe('choosing the lines a new client is known by', () => {
     );
   });
 
-  it('on a scan, takes the lines near the top that turn up again, not a logo read as letters', () => {
+  it('on a scan, takes the lines that turn up across the batch, not a logo read as letters', () => {
     expect(identifyingLinesFor(batch[0], batch)).toEqual([
-      'Spett. TIDEWATER BOUTIQUE LLC',
       'VALLOMBROSA TESSUTI SPA',
       'VIA DEI TELAI 14 50066 REGGELLO (FI) - Italy',
     ]);
+  });
+
+  it('leaves out the customer, whose name only repeats on their own invoices', () => {
+    expect(identifyingLinesFor(batch[0], batch)).not.toContain('Spett. TIDEWATER BOUTIQUE LLC');
   });
 
   it('still knows the client on a page addressed to another customer', () => {
@@ -363,5 +372,77 @@ describe('a client whose first line is never the same twice', () => {
     expect(identifyingLinesFor(typed(1), [typed(1), typed(2)])).toEqual([
       'Lakeshore Office Supply',
     ]);
+  });
+});
+
+describe('a supplier who invoices many customers, with terms printed after every invoice', () => {
+  // Everything here is invented. Each invoice is followed by a page of terms;
+  // the bill-to block and the customer's order number change with the customer;
+  // and a few invoices print a different VAT number in the letterhead.
+  const invoice = (index, { number, customer, po, vat = 'IT00999888777' }) => ({
+    index,
+    ocr: false,
+    text: [
+      `MARLOWE ATELIER VAT #: ${vat} Invoice`,
+      `14 Quayside Walk ${number}`,
+      'Bristol, BS1 4QA',
+      'http://www.marlowe-atelier.example',
+      `Bill To Ship to Customer PO: ${po}`,
+      `${customer} ${customer}`,
+      'Department Selling Period Shipment Term Inv Date Order Date',
+    ].join('\n'),
+  });
+  const terms = (index) => ({
+    index,
+    ocr: false,
+    text: 'MARLOWE ATELIER LIMITED ("MAL")\nTERMS AND CONDITIONS OF SALE\nAll sales are subject to these terms.',
+  });
+  const customers = [
+    { customer: 'TIDEWATER BOUTIQUE LLC', po: 'TWB2201' },
+    { customer: 'TIDEWATER BOUTIQUE LLC', po: 'TWB2201' },
+    { customer: 'KESTREL AND FINCH INC', po: 'KF-8812' },
+    { customer: 'NORTHGATE STORES LTD', po: 'NG55107' },
+    { customer: 'NORTHGATE STORES LTD', po: 'NG55107', vat: 'GB123456789' },
+    { customer: 'HARBOR LANE GOODS', po: 'HL-3004', vat: 'GB123456789' },
+  ];
+  const batch = customers.flatMap((who, position) => [
+    invoice(position * 2 + 1, { number: `SI-77100${position}`, ...who }),
+    terms(position * 2 + 2),
+  ]);
+  const [first] = batch;
+
+  it('is known by its letterhead, not by the first customer it invoiced', () => {
+    const lines = identifyingLinesFor(first, batch, { leaveOut: 'SI-771000' });
+
+    expect(lines[0]).toBe('MARLOWE ATELIER VAT #: IT00999888777 Invoice');
+    expect(lines.join(' ')).not.toContain('TIDEWATER');
+  });
+
+  it('never keeps a line with the boxed invoice number in it', () => {
+    expect(identifyingLinesFor(first, batch, { leaveOut: 'SI-771000' }).join(' ')).not.toContain(
+      'SI-771000'
+    );
+  });
+
+  it('knows every one of its invoices, whoever they are to, and none of the terms pages', () => {
+    const client = createProfile({
+      name: 'x',
+      identifyingText: identifyingLinesFor(first, batch, { leaveOut: 'SI-771000' }),
+    });
+
+    expect(batch.map((page) => matchProfiles(page.text, [client]).length)).toEqual([
+      1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0,
+    ]);
+  });
+
+  it('lets one number in the letterhead change, but not the words around it', () => {
+    const client = createProfile({
+      name: 'x',
+      identifyingText: ['MARLOWE ATELIER VAT #: IT00999888777 Invoice'],
+    });
+
+    expect(matchProfiles('MARLOWE ATELIER VAT # :GB123456789 Invoice', [client])).toEqual([client]);
+    expect(matchProfiles('MARLOWE ATELIER VAT #: GB123456789 Credit', [client])).toEqual([]);
+    expect(matchProfiles('LANTERN APPAREL VAT #: GB123456789 Invoice', [client])).toEqual([]);
   });
 });

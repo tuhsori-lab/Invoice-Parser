@@ -152,3 +152,35 @@ export function encodeGrayPng({ width, height, pixels }) {
     chunk('IEND', Buffer.alloc(0)),
   ]);
 }
+
+/**
+ * Encode an 8-bit colour image.
+ *
+ * @param {{ width: number, height: number, rgb: Uint8Array }} image - three
+ *   bytes a pixel: red, green, blue.
+ * @returns {Buffer} the PNG file.
+ */
+export function encodeRgbPng({ width, height, rgb }) {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8; // bits per sample
+  header[9] = 2; // colour type: truecolour
+  header[10] = 0;
+  header[11] = 0;
+  header[12] = 0;
+
+  const stride = width * 3;
+  const raw = Buffer.alloc((stride + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    raw[y * (stride + 1)] = 0;
+    Buffer.from(rgb.buffer, rgb.byteOffset + y * stride, stride).copy(raw, y * (stride + 1) + 1);
+  }
+
+  return Buffer.concat([
+    SIGNATURE,
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(raw, { level: 6 })),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}

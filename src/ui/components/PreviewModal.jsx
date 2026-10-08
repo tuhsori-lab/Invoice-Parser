@@ -192,7 +192,7 @@ export default function PreviewModal({
   };
 
   const saveSpot = () => {
-    onTeachZone(spot.zone, page, valueShape(spot.value));
+    onTeachZone(spot.zone, page, valueShape(spot.value), spot.value);
     setTaught({ kind: 'zone', text: spot.value });
     stopPicking();
   };

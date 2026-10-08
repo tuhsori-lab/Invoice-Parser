@@ -7,7 +7,7 @@ import { tileClass } from '../colors.js';
  * opens the first of those pages. "Next issue" walks the list, so a batch can be
  * cleared without hunting through the table.
  */
-export default function ReviewQueue({ items, colourOf, current, onGo, onOpenPage }) {
+export default function ReviewQueue({ items, colourOf, current, onGo, onOpenPage, onAccept }) {
   if (items.length === 0) return null;
 
   return (
@@ -36,6 +36,16 @@ export default function ReviewQueue({ items, colourOf, current, onGo, onOpenPage
               {item.reasons.map((reason) => (
                 <p key={reason}>{reason}</p>
               ))}
+              {item.group.suggestion && (
+                <button
+                  type="button"
+                  className="button quiet"
+                  data-testid={`accept-${item.id}`}
+                  onClick={() => onAccept(item.id, item.group.suggestion.value)}
+                >
+                  Use {item.group.suggestion.value}
+                </button>
+              )}
             </div>
             <button
               type="button"

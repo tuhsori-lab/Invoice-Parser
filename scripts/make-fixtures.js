@@ -16,7 +16,18 @@ import { fileURLToPath } from 'node:url';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { buildEncryptedPdf } from './lib/encryptedPdf.js';
 import { createCanvas, drawText as drawBitmapText, soften } from './lib/bitmapFont.js';
-import { encodeGrayPng } from './lib/png.js';
+import { encodeGrayPng, encodeRgbPng } from './lib/png.js';
+import {
+  blur,
+  createSheet,
+  drawFrame,
+  drawRule,
+  speckle,
+  textWidth,
+  tilt,
+  writeText,
+} from './lib/scanImage.js';
+import { LAYOUT, SCAN_SUITE, SHEET } from './lib/scanSuite.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const FIXTURE_DIR = join(HERE, '..', 'tests', 'fixtures', 'pdf');
@@ -249,6 +260,52 @@ function printoutLines({ order, time, day, sheet }) {
     ['Linen Overshirt $44.00 x 1 $44.00', 40, 580],
     footer,
   ];
+}
+
+/**
+ * The invoices of fixture 25, each followed by the same page of terms. Every
+ * name and number is invented.
+ */
+const TERMS_SHEETS = [
+  { number: 'SI-7710001', customer: 'TIDEWATER BOUTIQUE LLC', po: 'TWB2201' },
+  { number: 'SI-7710002', customer: 'TIDEWATER BOUTIQUE LLC', po: 'TWB2201' },
+  { number: 'SI-7710015', customer: 'KESTREL AND FINCH INC', po: 'KF-8812' },
+  { number: 'SI-7710021', customer: 'NORTHGATE STORES LTD', po: 'NG55107', vat: 'GB123456789' },
+];
+
+/** One landscape invoice of fixture 25: the number under an "Invoice" title. */
+function drawTermsInvoice(page, fonts, { number, customer, po, vat = 'IT00999888777' }) {
+  const text = (value, x, y, size = 6, bold = false) =>
+    page.drawText(value, { x, y, size, font: bold ? fonts.bold : fonts.regular, color: INK });
+  text('MARLOWE ATELIER', 40, 531, 9, true);
+  text(`VAT #: ${vat}`, 420, 531, 7, true);
+  text('Invoice', 694, 531, 12, true);
+  text('14 Quayside Walk', 40, 521);
+  text(number, 695, 521);
+  text('Bristol, BS1 4QA', 40, 513);
+  text('http://www.marlowe-atelier.example', 40, 497);
+  text('Bill To', 60, 480, 6, true);
+  text('Ship to', 560, 480, 6, true);
+  text(`Customer PO: ${po}`, 640, 480);
+  text(customer, 40, 470);
+  text(customer, 560, 470);
+  text('Style Description Colour Quantity WSP TOTAL', 40, 420, 6, true);
+  text('MA-2201 LINEN OVERSHIRT NAVY 5 88.00 440.00', 40, 410);
+  text('USD 440.00', 760, 330, 7, true);
+}
+
+/** The page of terms printed after every invoice of fixture 25, word for word. */
+function drawTermsPage(page, fonts) {
+  const lines = [
+    'MARLOWE ATELIER LIMITED ("MAL")',
+    'TERMS AND CONDITIONS OF SALE',
+    'All sales are subject to these terms and those contained in any purchase order.',
+    'Title to products passes to the buyer once MAL receives payment in full.',
+    'The buyer shall pay interest on any sum overdue at 4% a year above base rate.',
+  ];
+  lines.forEach((value, row) =>
+    page.drawText(value, { x: 50, y: 780 - row * 16, size: 9, font: fonts.regular, color: INK })
+  );
 }
 
 /** Draw one scanned sheet: letterhead, customer, the number in its box, a line or two. */
@@ -695,6 +752,32 @@ const FIXTURES = [
     return name;
   },
 
+  /**
+   * 25. Landscape invoices to several customers, each followed by a page of terms.
+   *
+   * The number sits under a large "Invoice" title rather than after a label,
+   * so only a box reads it. The bill-to block and the customer's PO change from
+   * one customer to the next, the last invoice prints a different VAT number in
+   * the letterhead, and the terms page is the same every time - so the client
+   * has to be known by the letterhead alone, and the terms pages are pages to
+   * keep with their invoice, not pages to ask about.
+   */
+  async () => {
+    const name = '25-invoices-with-terms.pdf';
+    const pdf = await PDFDocument.create();
+    pdf.setTitle('Invoices with a page of terms after each (synthetic)');
+    const fonts = {
+      regular: await pdf.embedFont(StandardFonts.Helvetica),
+      bold: await pdf.embedFont(StandardFonts.HelveticaBold),
+    };
+    for (const sheet of TERMS_SHEETS) {
+      drawTermsInvoice(pdf.addPage([842, 595]), fonts, sheet);
+      drawTermsPage(pdf.addPage([595, 842]), fonts);
+    }
+    await writeFile(join(FIXTURE_DIR, name), await pdf.save());
+    return name;
+  },
+
   /** 16. A page that is only a picture, the way a scanner leaves it. */
   async () => {
     const name = '16-image-only.pdf';
@@ -718,6 +801,157 @@ const FIXTURES = [
     return name;
   },
 ];
+
+/* -------------------------------------------------------------------------- */
+/* The harder scanned fixtures (26 onwards)                                   */
+/* -------------------------------------------------------------------------- */
+
+/** Made-up customers and line items, picked by position so they never change. */
+const SCAN_CUSTOMERS = [
+  ['Tidewater Boutique LLC', '88 Harbor Road, Mystic CT 06355'],
+  ['Kestrel & Finch Inc.', '410 Grove Street, Albany NY 12207'],
+  ['Northgate Stores Ltd', '2 Market Square, Dunmore DN4 7AA'],
+];
+const SCAN_ITEMS = [
+  ['Linen overshirt, navy', '12', '1,264.00'],
+  ['Wool scarf, oat', '6', '540.00'],
+  ['Canvas tote, natural', '20', '380.00'],
+];
+
+/**
+ * Draw one page of a scanned invoice onto a sheet at `dpi`.
+ *
+ * @param {object} fixture - its SCAN_SUITE entry.
+ * @param {object} invoice - the invoice this page belongs to.
+ * @param {number} sheetOf - which page of the invoice this is, from 1.
+ * @param {number} position - which invoice of the fixture, from 0.
+ */
+function drawScanPage(fixture, invoice, sheetOf, position) {
+  const dpi = fixture.dpi ?? 300;
+  const scale = dpi / 72;
+  const sheet = createSheet(
+    Math.round(SHEET.width * scale),
+    Math.round(SHEET.height * scale),
+    fixture.paper
+  );
+  const ink = fixture.ink ?? [20, 20, 24];
+  const strength = fixture.strength ?? 1;
+  const put = (text, spot, extra = {}) =>
+    writeText(sheet, text, {
+      x: spot.x * scale,
+      y: spot.y * scale,
+      size: spot.size * scale,
+      bold: spot.bold,
+      colour: ink,
+      strength,
+      ...extra,
+    });
+
+  const first = sheetOf === 1;
+  const [customer, customerAddress] = SCAN_CUSTOMERS[position % SCAN_CUSTOMERS.length];
+  put(fixture.supplier, LAYOUT.supplier);
+  put(fixture.address, LAYOUT.address);
+  put(first ? 'INVOICE' : 'INVOICE (continued)', LAYOUT.title);
+  if (first || invoice.numberOnEvery) {
+    put('Invoice No:', LAYOUT.numberLabel);
+    const slash = invoice.number.indexOf('/');
+    if (fixture.numberGap && slash > 0) {
+      // The year, then the rest a little further on, as some printers set it.
+      const year = invoice.number.slice(0, slash);
+      put(year, LAYOUT.number);
+      put(invoice.number.slice(slash), {
+        ...LAYOUT.number,
+        x:
+          LAYOUT.number.x +
+          textWidth(year, LAYOUT.number.size) +
+          fixture.numberGap * LAYOUT.number.size,
+      });
+    } else {
+      put(invoice.number, LAYOUT.number);
+    }
+  }
+  if (first) {
+    put('Date:', LAYOUT.dateLabel);
+    put(`0${(position % 9) + 1}/03/2031`, LAYOUT.date);
+    put('Bill To:', LAYOUT.billTo);
+    put(customer, LAYOUT.customer);
+    put(customerAddress, LAYOUT.customerAddress);
+  }
+
+  const top = LAYOUT.tableTop;
+  put('Description', { x: 56, y: top, size: 9, bold: true });
+  put('Qty', { x: 330, y: top, size: 9, bold: true });
+  put('Amount', { x: 470, y: top, size: 9, bold: true });
+  drawRule(sheet, {
+    x: 56 * scale,
+    y: (top + 6) * scale,
+    width: 480 * scale,
+    weight: scale,
+    colour: ink,
+  });
+  const [item, qty, amount] = SCAN_ITEMS[(position + sheetOf) % SCAN_ITEMS.length];
+  put(item, { x: 56, y: top + 22, size: 10 });
+  put(qty, { x: 330, y: top + 22, size: 10 });
+  put(amount, { x: 470, y: top + 22, size: 10 });
+  if (sheetOf === invoice.pages) {
+    put('Total due', { x: 380, y: top + 100, size: 11, bold: true });
+    put(amount, { x: 470, y: top + 100, size: 11, bold: true });
+  }
+  if (fixture.pageOf) put(`Page ${sheetOf} of ${invoice.pages}`, LAYOUT.footer);
+
+  if (fixture.stamp && first) {
+    // A rubber stamp laid across the date and the end of the number.
+    const red = [196, 32, 44];
+    const at = { x: 425 * scale, y: 150 * scale };
+    const size = 26 * scale;
+    drawFrame(sheet, {
+      x: at.x - 8 * scale,
+      y: at.y - size,
+      width: textWidth('PAID', size, true) + 16 * scale,
+      height: size + 10 * scale,
+      weight: 3 * scale,
+      colour: red,
+      strength: 0.7,
+      angle: -12,
+    });
+    writeText(sheet, 'PAID', {
+      x: at.x,
+      y: at.y,
+      size,
+      bold: true,
+      colour: red,
+      strength: 0.7,
+      angle: -12,
+    });
+  }
+
+  blur(sheet);
+  return sheet;
+}
+
+/** Build one fixture of SCAN_SUITE: every page drawn, then made a picture in a PDF. */
+async function writeScanFixture(fixture) {
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(`${fixture.what} (synthetic)`);
+  let sheetNumber = 0;
+  for (const [position, invoice] of fixture.invoices.entries()) {
+    for (let sheetOf = 1; sheetOf <= invoice.pages; sheetOf += 1) {
+      const sheet = drawScanPage(fixture, invoice, sheetOf, position);
+      const angle = fixture.tilts?.[sheetNumber % fixture.tilts.length];
+      if (angle) tilt(sheet, angle);
+      if (fixture.specks)
+        speckle(sheet, { specks: fixture.specks, seed: fixture.case * 100 + sheetNumber });
+      const image = await pdf.embedPng(encodeRgbPng(sheet));
+      const page = pdf.addPage([SHEET.width, SHEET.height]);
+      page.drawImage(image, { x: 0, y: 0, width: SHEET.width, height: SHEET.height });
+      sheetNumber += 1;
+    }
+  }
+  await writeFile(join(FIXTURE_DIR, fixture.file), await pdf.save());
+  return fixture.file;
+}
+
+FIXTURES.push(...SCAN_SUITE.map((fixture) => () => writeScanFixture(fixture)));
 
 /**
  * Write every fixture. Safe to run again: it overwrites what is there.

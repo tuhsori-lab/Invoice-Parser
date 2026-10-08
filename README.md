@@ -89,9 +89,78 @@ A few rules do most of the work of not being confidently wrong:
   decides; on a later line only what stands in the label's column counts, so the postcode is passed
   over and the number below the heading is taken.
 
-Anything the engine is unsure about is flagged for review rather than quietly guessed:
-`no-number`, `fallback` (the bare tier answered), `conflict` (two labels, two different numbers),
-`duplicate-name` (two invoices want the same file name), and `ocr` (the text came from a scan).
+Anything the engine is unsure about is flagged for review rather than quietly guessed. The checks
+are listed under [Checking every invoice](#checking-every-invoice).
+
+## Checking every invoice
+
+The rule is simple: **an invoice goes out without a second look only when nothing gives any reason
+to doubt it.** When something does, it goes on the list of things to check, with a sentence saying
+what and on which pages — "S0-80155 on page 2 is not in your invoice list, but SO-80155 is - they
+differ only by letters and digits that look alike." Where there is an obvious right answer it is
+offered as a button (**Use SO-80155**), and never put in without that click.
+
+| Check                     | What it means                                                                                                                                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No number                 | No invoice number was found on these pages.                                                                                                                                                              |
+| Scans not read yet        | Some pages are scans that have not been read yet. Until they are, a number from words typed on top of them is not trusted — click **Read scanned pages**.                                                |
+| Number may be cut short   | The number found is followed straight on by more of one — `2031` then `/HM/00217` — so it may be only part of the invoice number.                                                                        |
+| Two different numbers     | The page gives two numbers — say the box you drew and the "Invoice No." label disagree — and both are shown.                                                                                             |
+| Not in your invoice list  | With a list loaded, the number is not in it (see below).                                                                                                                                                 |
+| Close to one in your list | Not in the list, but exactly one entry is one character away, or differs only by look-alikes (O/0, I/1, S/5, B/8, Z/2, G/6). That entry is offered.                                                      |
+| Doesn't look like theirs  | The number is not the shape of this client's other numbers — "2 letters, a hyphen, then 5 digits". If one look-alike swap would make it fit, that is offered.                                            |
+| Far out of sequence       | The number is far from this client's other numbers in the batch: 864127 among 664120 to 664133.                                                                                                          |
+| Pages out of order        | A page says "Page 1 of" in the middle of an invoice (two invoices may have been joined), or the marks run out of order.                                                                                  |
+| Page count doesn't match  | The pages say "of 3" but only two are here.                                                                                                                                                              |
+| Number on a page not read | A scanned page seems to have a number of its own — a label for one, or print in the client's box — but it could not be read, so it was kept with the invoice before. Check it is not a separate invoice. |
+| Blank page                | A page with nothing on it.                                                                                                                                                                               |
+| Page from no client       | In a batch where you have drawn a box, a page no client you have shown the app claims, that no label read and that does not name the invoice it sits in.                                                 |
+| Same file name            | Two invoices want the same file name; the second gets `(2)`.                                                                                                                                             |
+| "Invoice" on its own      | The number came from the bare word "Invoice" with no label after it.                                                                                                                                     |
+| Read from a scan          | The number came from text recognition and nothing backs it up (see below).                                                                                                                               |
+
+**A number read from a scan** goes out without review only when something double-checks it: your
+invoice list has it, or text recognition was at least 75% sure of it _and_ a second reading agrees —
+the box and a label on the same page read the same number, or the same number is read on two of the
+invoice's pages. A number you typed in yourself needs no check. Everything else read from a scan is
+flagged, saying how sure the reading was.
+
+**Two readings of one page.** When a box is saved for a client, the label rules still read the page
+alongside it. The box is always the answer; a label that reads the same number counts as a second
+opinion, and a label that reads a different one is shown next to it.
+
+**A client's own kind of number.** The shape of the number in a client's box is remembered when the
+box is saved. Numbers your invoice list confirms add to it, and so do numbers you type in or put
+right yourself — a correction is the clearest word there is on what a client's numbers look like —
+and so does a prefix they all share, such as `INV-`. Only the shape is kept — "6 digits" — never a number. Invoices found by a label rather than
+a box are grouped by the file they came in, and a shape is only worked out for a file once two of
+its numbers are confirmed. The one change the app makes by itself: when a number does not fit, a
+single look-alike swap makes it fit, **and** the result is in your invoice list, it is put right and
+the table says so ("Read as S0-80155; put right from your invoice list").
+
+### Your invoice list
+
+**Load invoice list**, above the page strip, takes a CSV or Excel (.xlsx) file of your invoice numbers.
+It is read in this browser tab, used for this session, and never saved or sent anywhere.
+
+To make one, export your open (or recent) invoices from your accounting system as CSV or Excel — most
+have an "Export" or "Download" button on their invoice or receivables list. One column must hold the
+invoice numbers; a column of client names is optional. Older `.xls` files need saving as `.xlsx` or
+`.csv` first.
+
+When the file is loaded, the app guesses which column is which from the headings and asks you to
+confirm. Your choice is remembered by heading, so the next list exported the same way is used
+straight away. Then:
+
+- a number in the list is marked **In your invoice list**;
+- a number one character from exactly one entry, or a look-alike of it, is flagged and the entry
+  offered;
+- a number not in the list is flagged **Not in your invoice list**;
+- entries in the list that no invoice in the batch carries are listed under **Expected but not
+  found**.
+
+**Only let invoices that are in the list go out without a second look** is on whenever a list is
+loaded. Turned off, a number missing from the list is only noted beside it.
 
 ## Advanced controls
 
@@ -101,6 +170,22 @@ pages with no number, how the number is found, and what the files are called —
 whole width. A setting changed and then put away is never out of mind: the button says how many are
 not as they started ("2 settings changed"). Leave the controls open and they are open the next time
 too; that one yes or no is the only thing remembered about them, in this browser.
+
+### How each client has gone
+
+At the bottom of Advanced controls is a short list, one line per client with a saved box, counting
+their invoices as they are saved — downloaded on their own, in the ZIP, or into a folder:
+
+| Count          | Invoices that                                                      |
+| -------------- | ------------------------------------------------------------------ |
+| Accepted       | went out with nothing flagged and nothing changed                  |
+| Corrected      | had their number typed in or put right — by you, or from your list |
+| Sent to review | went out with something still flagged                              |
+
+Each invoice counts once a batch, however many times it is saved. Invoices found by a label rather
+than a box are counted together on a last line. A client whose invoices keep needing a look stands
+out, and their box may want drawing again. Only the counts are kept, in this browser — never an
+invoice number or a file — and **Clear these counts** starts them again.
 
 ## The page strip
 
@@ -171,6 +256,9 @@ Recognition is also not steady, and the app is built around that:
   middle of an invoice number came out as a letter and a `%` on some pages at one size and as the
   wrong letter on others at another, each time with a low score, and the second look read every one
   of them correctly.
+- **A number split at a slash is joined back up.** Reading a page as scattered text, recognition
+  sometimes sees a small gap before a slash and makes `2026 /FX/00940` two words. A slash never
+  starts or ends a word on an invoice, so the two are joined again when they sit close together.
 - **A label misread by one letter still counts.** On text read from a scan, `Inveice Nr.` or
   `lnvoice No` is taken as the label it plainly is. Only label words of five letters or more, and
   never anything with a digit in it.
@@ -181,6 +269,42 @@ Recognition is also not steady, and the app is built around that:
   straight away, with nothing to read first, and the pages it reads drop out of the offer to read
   scans. On a scan with no such text under the box, the app says so and points to **Read scanned
   pages**.
+
+**Straightened, and read as scattered text.** A page scanned a little crooked is straightened before
+it is read, and a whole page is read as text scattered about the page rather than as one block — an
+invoice is a letterhead, some boxes and a table, not a paragraph. On the sample scans these two
+together read more invoice numbers right and none wrong; straightening costs some time, which the
+quicker reading below wins back.
+
+**The box is read close up, three ways.** On a page from a client with a saved box, the box is also
+cut out and read on its own: drawn large enough that capital letters are about 30 pixels tall,
+read as a single line using only the letters, digits and `- / _ .` an invoice number is made of,
+and cleaned up first — turned to pure black and white at the level that best separates that
+picture's ink from its paper, with coloured marks such as a red PAID stamp washed out. It is read
+at two sizes in black and white and once in plain grey. When those readings agree with each other
+and with the page, that counts as the second opinion a scanned number needs. When they disagree,
+every reading is shown and none is picked — unless your invoice list has exactly one of them, in
+which case that one is used and the table says it was put right. A box reading that recognition is less than 50% sure of is treated as not read at all: at that
+score it is guessing at specks, and a guess shown beside the real number only gets in the way. A
+box with nothing printed in it —
+a later page of an invoice — reads as empty paper, not as specks to be guessed at.
+
+### Reading scans faster
+
+- **Several pages at once.** Pages are read side by side, one on each of up to four copies of the
+  recognition engine — one for each of the computer's processors, less one so the app stays
+  responsive. While those are reading, the next page is being drawn.
+- **Ready before you click.** The engine starts loading the moment scanned pages turn up, while the
+  offer to read them is on screen.
+- **Only what matters, for a client with a box.** Once a client has a saved box, their scanned pages
+  are read in three parts instead of whole: the top quarter, to tell whose invoice it is; the box,
+  for the number; and the foot of the page, for "Page 2 of 3". If the top of a page does not say
+  which client it is, the whole page is read as before; if the number in the box is unsure, or two
+  readings of it disagree, the whole page gets a second look at another size. One thing is lost: a
+  PO number in the middle of such a page is not read, and the PO list says **not read (scan)** for
+  it rather than "none found".
+
+On the sample scans with a box saved, a page now takes well under a third of the time it did.
 
 The recognition engine, its WebAssembly and the English language data are all served by this app
 (copied out of `node_modules` by `npm run assets`, about 14 MB). They are fetched the first time
@@ -219,17 +343,32 @@ before anything is saved; **Save this spot** remembers the box for that client. 
 the invoice number** button is on every page's preview, for pointing at any time.
 
 A client is recognised from then on by up to three lines near the top of the page the box was drawn
-on that turn up on their other pages too — their name, their address, the headings their software
-prints. Not simply the first line, which is not always the same twice: a page printed from a
-browser starts with the time it was printed and the order number, and a scan's first line is as
-likely to be its logo read as nonsense. A page is theirs when most of those lines are on it — an
-address shared with a neighbour in the same town is not enough. A line counts as there when all of
-its words are, whatever stray marks a scanner put between them; on a page this app read itself, when
-most of its words are, each allowed a letter wrong.
+on that are also on at least half of their other invoices in the batch — the pages where the box
+finds a number of the same shape. That picks their name, their address and the headings their
+software prints, and leaves out what changes from invoice to invoice:
+
+- the time a page was printed, which a browser puts on the first line of every printout;
+- a scan's logo, read as nonsense that never comes out the same twice;
+- the customer the invoice is addressed to, and that customer's order number, which repeat only on
+  invoices to the same customer;
+- any line with the boxed invoice number in it, so what is remembered never holds one.
+
+Measuring against the client's own invoices, not the whole batch, matters in a batch from several
+clients: a table heading every supplier prints, like `Description Qty Amount`, is on more pages
+than any one client's letterhead, and would otherwise be taken for it.
+
+A page is theirs when the first of those lines is on it — nearly always the letterhead — or when
+most of them are. A line counts as there when all of its words are, whatever stray marks a scanner
+put between them, or all but one when the one that differs has a digit in it: a letterhead can carry
+a VAT or account number that changes from one invoice to another. On a page this app read itself,
+most of a line's words are enough, each allowed a letter wrong.
 
 Every page matched to that client is then read from inside the box, in this batch and in their next
 one, which is not asked about again. In a batch from several clients the card moves on to the first
-page of the next client nobody has pointed at, so they can be taught one after another.
+page of the next client nobody has pointed at, so they can be taught one after another. It never
+asks about a page printed word for word more than once in the batch — terms of sale after every
+invoice, the same remittance slip — since an invoice has a number of its own and is never the same
+twice.
 
 **Pages with nothing in the box.** On many invoices only the first page carries the number; the
 pages after it are continuations. A page with no number in the box has no number, and pages with no
@@ -264,7 +403,9 @@ files by their own order number, so that is what a remittance or a dispute refer
 invoice's PO is listed in its own section under the table, with the label it was found after, and
 **Copy list** puts it on the clipboard as two tab-separated columns with a heading row, so it pastes
 straight into a spreadsheet as `Invoice` and `PO`. The list follows the search box, and copies
-exactly what it shows. It can be switched off under _Advanced controls → Finding the number_.
+exactly what it shows. It can be switched off under _Advanced controls → Finding the number_. On a scan read the quick way
+(see _Reading scans faster_), the PO column says **not read (scan)**: only the top, the box and the
+foot of those pages were read.
 
 A PO is found the way an invoice number is — after a label, and in its column when the label is a
 heading — using `PO #`, `P.O. No.`, `PO Number`, `Purchase Order`, and `Customer PO` or `Your PO`.
@@ -318,6 +459,7 @@ npm run fixtures  # build the sample PDFs in tests/fixtures/pdf
 npm test          # unit tests (builds the fixtures first if they are missing)
 npm run test:e2e  # end-to-end tests in a real browser, including an accessibility audit
 npm run demo      # re-record the GIF above (needs the app built and served)
+npm run bench     # how often invoices come out wrong, and how fast scans are read
 npm run lint      # ESLint
 npm run build     # production build into dist/
 ```
@@ -328,10 +470,42 @@ Node 20 or newer. The end-to-end tests need a browser once: `npx playwright inst
 a CDN into `public/`. They are served from the app itself, so that opening a PDF — or reading a
 scan — makes no request to anybody else.
 
+## Measuring it: `npm run bench`
+
+The app's promise is that no invoice is exported with the wrong number or the wrong pages without
+something saying so. `npm run bench` checks that against every sample PDF, including nine harder
+scans made to go wrong in the ways real ones do:
+
+| Sample                    | What makes it hard                                                    |
+| ------------------------- | --------------------------------------------------------------------- |
+| `26-scan-tilted.pdf`      | fed into the scanner crooked: 1°, −2° and 3°                          |
+| `27-scan-150dpi.pdf`      | scanned at 150 dots per inch, half the usual detail                   |
+| `28-scan-faint.pdf`       | faint grey print, as from a printer low on toner                      |
+| `29-scan-colored.pdf`     | dark blue print on yellowed paper                                     |
+| `30-scan-speckled.pdf`    | dust and dropouts all over the page                                   |
+| `31-scan-stamp.pdf`       | a red PAID stamp across the invoice number                            |
+| `32-scan-lookalikes.pdf`  | numbers mixing letters and digits that look alike: S/5, O/0, I/1, B/8 |
+| `33-scan-page-x-of-y.pdf` | invoices of one, two and three pages, each marked "Page X of Y"       |
+| `34-scan-suffix.pdf`      | invoices told apart only by a suffix: `40017822`, `40017822_2`, `_3`  |
+
+Each scan is read twice: once by its labels, as a new client's would be, and once with a box saved
+for that client. The benchmark runs in a real browser with the app's own code — the same pdf.js, the
+same text recognition, the same detection — and reports, for each sample and overall: invoices that
+came out right, invoices that came out wrong, **wrong ones nothing flagged** (the number that has to
+be zero), invoices sent for review, page splits that came out right, and seconds per scanned page.
+It also fails if the browser asks for anything from anywhere but this machine.
+
+`npm run bench -- --only 26,31` runs just those samples; `--mode box` only the runs with a box.
+`bench/baseline.json` holds the run every change is compared against, and the report ends with the
+difference.
+
 ## No real invoice data, ever
 
 Nothing in this repository has ever contained a real invoice. Every sample PDF, screenshot and test
 fixture is generated by `scripts/make-fixtures.js` using invented companies and made-up numbers. The
+harder scans are drawn in DejaVu Sans, a freely licensed typeface, and then tilted, faded, speckled
+and stamped by the same script, with every random choice seeded so they come out the same each time.
+The
 generated PDFs are not committed — they are built on demand — so there is no way for a real document
 to arrive here by accident.
 
@@ -348,11 +522,17 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   review.js        what needs a person's eye, said in plain words
   profiles.js      what the app remembers about a client, and matching it to pages
   scans.js         telling a scan from a typed page, and how large to read it
+  verify.js        the checks every invoice goes through before it can go out unreviewed
+  knownList.js     reading your invoice list, and checking numbers against it
+  image.js         cleaning up the picture of a box before it is read
+  quickRead.js     which parts of a scanned page to read, and how many pages at once
+  tally.js         counting how each client's invoices have gone
   errors.js        plain-language messages for everything that can go wrong
 src/lib/           the browser side: pdf.js setup, reading a batch, text recognition,
                    thumbnails, downloads, saving to a folder, and where boxes are kept
 src/ui/            the interface (React) and its one stylesheet
-scripts/           the fixture generator and its small helpers
+scripts/           the fixture generator, the benchmark runner, and their small helpers
+bench/             the benchmark page and the baseline it is compared against
 tests/unit/        unit tests, including every layout in tests/fixtures/expected.js
 tests/e2e/         the whole flow in a real browser, from dropped file to saved file
 docs/              the walkthrough GIF, recorded from the app by scripts/make-demo.js

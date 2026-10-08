@@ -245,3 +245,33 @@ test('lets the offer to read scanned pages be waved off', async ({ page }) => {
   await page.getByTestId('scanned-dismiss').click();
   await expect(page.getByTestId('scanned-notice')).toHaveCount(0);
 });
+
+test('reads invoices to every customer from one box, and does not ask about the terms pages', async ({
+  page,
+}) => {
+  await loadFixtures(page, ['25-invoices-with-terms.pdf']);
+  await expect(page.getByTestId('summary')).toHaveText(
+    '8 pages split into 1 invoice, 1 worth a look.'
+  );
+
+  await page.getByTestId('point-prompt-go').click();
+  await drawBoxAround(page, 'SI-7710001');
+  await expect(page.getByTestId('spot-value')).toHaveText('SI-7710001');
+  // Named after the supplier's letterhead, not the customer the invoice is to.
+  await expect(page.getByTestId('spot-client')).toHaveText(
+    'MARLOWE ATELIER VAT #: IT00999888777 Invoice'
+  );
+  await page.getByTestId('spot-save').click();
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  // Every customer's invoice, the one with another VAT number too, each with
+  // the terms page after it.
+  await expect(page.getByTestId('summary')).toHaveText('8 pages split into 4 invoices.');
+  const table = page.getByTestId('invoice-table');
+  for (const number of ['SI-7710001', 'SI-7710002', 'SI-7710015', 'SI-7710021']) {
+    await expect(table).toContainText(`${number}.pdf`);
+  }
+  await expect(table).toContainText('7 to 8');
+  // The terms pages are the same every time, so there is nothing to point at.
+  await expect(page.getByTestId('point-prompt')).toHaveCount(0);
+});

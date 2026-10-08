@@ -5,6 +5,8 @@ import { assignFileNames, buildFileName, DEFAULT_TEMPLATE } from '../core/naming
 import { explain } from '../core/errors.js';
 import { exportWarning, reviewQueue } from '../core/review.js';
 import { createProfile, identifyingLinesFor, zonesForPage } from '../core/profiles.js';
+import { buildKnownList, guessColumns } from '../core/knownList.js';
+import { learnFromInvoices, verifyGroups } from '../core/verify.js';
 import { isPicture } from '../core/scans.js';
 import { closeBatch, loadBatch } from '../lib/loadBatch.js';
 import { clearThumbnails } from '../lib/thumbnails.js';
@@ -20,8 +22,18 @@ import { useUndoable } from '../lib/useUndoable.js';
 import { loadBoxes, saveBoxes } from '../lib/boxStore.js';
 import { applyTheme, loadTheme, watchSystemTheme } from '../lib/theme.js';
 import { loadControlsOpen, saveControlsOpen } from '../lib/controlsStore.js';
-import { readScannedPages, stopOcr } from '../lib/ocr.js';
-import { measurePictures, pictureKey } from '../lib/pictures.js';
+import { preloadOcr, readScannedPages, stopOcr } from '../lib/ocr.js';
+import { measurePictures, pictureKey, scansToRead } from '../lib/pictures.js';
+import { ListFileError, readListFile } from '../lib/knownListFile.js';
+import {
+  loadColumnChoice,
+  loadLearnedShapes,
+  loadTally,
+  saveColumnChoice,
+  saveLearnedShapes,
+  saveTally,
+} from '../lib/listStore.js';
+import { addToTally } from '../core/tally.js';
 import DropZone from './components/DropZone.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import ControlsToggle from './components/ControlsToggle.jsx';
@@ -31,6 +43,8 @@ import PreviewModal from './components/PreviewModal.jsx';
 import PointPrompt from './components/PointPrompt.jsx';
 import PurchaseOrders from './components/PurchaseOrders.jsx';
 import ReviewQueue from './components/ReviewQueue.jsx';
+import KnownList from './components/KnownList.jsx';
+import ClientTally from './components/ClientTally.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
 import ThemeChoice from './components/ThemeChoice.jsx';
 
@@ -81,35 +95,6 @@ function scannedNotice(scanned, pageCount) {
   return scanned.length === 1
     ? 'One page looks like a scan, so its invoice number could not be read.'
     : `${scanned.length} pages look like scans, so their invoice numbers could not be read.`;
-}
-
-/**
- * The pages to offer for text recognition: pictures of paper not read yet.
- *
- * A page with no text at all is one. So is a page with no invoice number whose
- * surface is mostly an image, whatever few words sit on top of it - unless a box
- * already reads its invoice. The box being read from the scan's own text means
- * that text was good enough, and a page with nothing in the box is one of the
- * pages after the first. Each page carries how finely it was scanned, which
- * decides the size it is read at.
- *
- * @param {Array<object>} analyzed - the batch's pages, after detection.
- * @param {Map<string, { share: number, pixelsAcross: number }>} pictures - by pictureKey.
- * @param {Set<number>} [boxed] - pages of invoices whose number came from a box.
- * @returns {Array<object>}
- */
-function scansToRead(analyzed, pictures, boxed = new Set()) {
-  return analyzed
-    .filter(
-      (page) =>
-        !page.ocr &&
-        (!page.hasText ||
-          (!page.detection &&
-            !boxed.has(page.index) &&
-            !page.matchedProfiles?.some((profile) => profile.zone) &&
-            isPicture(pictures.get(pictureKey(page)))))
-    )
-    .map((page) => ({ ...page, pixelsAcross: pictures.get(pictureKey(page))?.pixelsAcross ?? 0 }));
 }
 
 const EXAMPLE_GROUP = {
@@ -172,6 +157,20 @@ export default function App() {
   const [scanDismissed, setScanDismissed] = useState(false);
   // Where the last "Save to a folder" put this batch, to say so.
   const [savedTo, setSavedTo] = useState(null);
+  // The person's own list of invoice numbers: the file's rows, the columns
+  // chosen, and whether only invoices in it may go out without review. Kept in
+  // memory for this session and never saved.
+  const [listFile, setListFile] = useState(null);
+  const [listChoice, setListChoice] = useState(null);
+  const [listPending, setListPending] = useState(false);
+  const [listError, setListError] = useState('');
+  const [strict, setStrict] = useState(true);
+  // What each client's numbers look like, learned from numbers known to be right.
+  const [learned, setLearned] = useState(loadLearnedShapes);
+  // How each client's invoices have gone, counted as they are saved.
+  const [tally, setTally] = useState(loadTally);
+  // The invoices of this batch already counted, so saving twice counts once.
+  const talliedRef = useRef(new Set());
   const readCancelRef = useRef(null);
   const cancelRef = useRef(null);
   const sourcesRef = useRef(new Map());
@@ -205,6 +204,7 @@ export default function App() {
       setPointDismissed(false);
       setScanDismissed(false);
       setSavedTo(null);
+      talliedRef.current = new Set();
       setQuery('');
       setIssueAt(-1);
       fixes.reset({ boundaries: {}, numbers: {}, moves: {} });
@@ -274,21 +274,88 @@ export default function App() {
   const analyzedRef = useRef(analyzed);
   analyzedRef.current = analyzed;
 
-  const groups = useMemo(
+  const knownList = useMemo(
     () =>
-      assignFileNames(
-        groupPages(analyzed, {
-          mode: settled.mode,
-          unnumbered: settled.unnumbered,
-          combinePages: settled.combinePages,
-          markerText: settled.markerText,
-          pagesPerInvoice: Number(settled.pagesPerInvoice) || 1,
-          overrides: fixes.state,
-        }),
-        { template: settled.template, prefix: settled.prefix }
-      ),
+      listFile && listChoice ? buildKnownList(listFile.rows, listChoice, listFile.fileName) : null,
+    [listFile, listChoice]
+  );
+
+  /*
+   * Detection and grouping make a first guess; verification decides what can go
+   * out without a second look, and why the rest cannot. File names come last,
+   * so that a number put right by the invoice list is the one the file is named
+   * after.
+   */
+  const grouped = useMemo(
+    () =>
+      groupPages(analyzed, {
+        mode: settled.mode,
+        unnumbered: settled.unnumbered,
+        combinePages: settled.combinePages,
+        markerText: settled.markerText,
+        pagesPerInvoice: Number(settled.pagesPerInvoice) || 1,
+        overrides: fixes.state,
+      }),
     [analyzed, settled, fixes.state]
   );
+
+  /** Pages a saved box already reads from their own text: no need to read them as pictures. */
+  const boxedPages = useMemo(
+    () =>
+      new Set(
+        grouped
+          .filter((group) => group.provenance?.source === 'zone')
+          .flatMap((group) => group.pages.map((page) => page.index))
+      ),
+    [grouped]
+  );
+  /** Pages that are pictures of paper, and not yet read, so no number came from them. */
+  const scannedPages = useMemo(
+    () => scansToRead(analyzed, pictures, boxedPages),
+    [analyzed, pictures, boxedPages]
+  );
+  const scannedIndexes = useMemo(
+    () => new Set(scannedPages.map((page) => page.index)),
+    [scannedPages]
+  );
+
+  const verification = useMemo(
+    () =>
+      verifyGroups(grouped, {
+        knownList,
+        strict,
+        learned,
+        isPicture: (page) => {
+          const picture = pictures.get(pictureKey(page));
+          return picture ? isPicture(picture) : undefined;
+        },
+        // Scans not read yet: whatever their invoices say is not to be trusted.
+        unreadScans: scannedIndexes,
+      }),
+    [grouped, knownList, strict, learned, pictures, scannedIndexes]
+  );
+  const groups = useMemo(
+    () =>
+      assignFileNames(verification.groups, {
+        template: settled.template,
+        prefix: settled.prefix,
+      }),
+    [verification, settled.template, settled.prefix]
+  );
+
+  /*
+   * Learn what each boxed client's numbers look like from the ones the invoice
+   * list confirms and the ones a person typed in or put right, so their next
+   * batch is checked against it too. Only the shape is kept - "2 letters, a
+   * hyphen, then 5 digits" - never a number.
+   */
+  useEffect(() => {
+    setLearned((current) => {
+      const next = learnFromInvoices(current, groups);
+      if (next !== current) saveLearnedShapes(next);
+      return next;
+    });
+  }, [groups]);
 
   const groupOfPage = useMemo(() => {
     const byPage = new Map();
@@ -305,6 +372,60 @@ export default function App() {
   );
 
   const issues = useMemo(() => reviewQueue(groups), [groups]);
+
+  /* --------------------------------------------------------- invoice list */
+
+  /** Read a list file, and use it straight away if its columns were chosen before. */
+  const loadListFile = useCallback(async (file) => {
+    setListError('');
+    try {
+      const rows = await readListFile(file);
+      if (rows.length === 0) throw new ListFileError('No rows were found in this file.');
+      const guess = guessColumns(rows);
+      const remembered = loadColumnChoice();
+      const invoiceAt = remembered ? guess.headers.indexOf(remembered.invoice) : -1;
+      setListFile({ fileName: file.name, rows, guess });
+      if (guess.hasHeader && invoiceAt >= 0) {
+        const clientAt = remembered.client ? guess.headers.indexOf(remembered.client) : -1;
+        setListChoice({
+          invoiceColumn: invoiceAt,
+          clientColumn: clientAt >= 0 ? clientAt : null,
+          hasHeader: true,
+        });
+        setListPending(false);
+      } else {
+        setListChoice(null);
+        setListPending(true);
+      }
+    } catch (error) {
+      setListError(
+        error instanceof ListFileError
+          ? error.message
+          : 'This file could not be read as a list of invoices. Try saving it as .csv.'
+      );
+    }
+  }, []);
+
+  const chooseListColumns = useCallback(
+    (choice) => {
+      setListChoice(choice);
+      setListPending(false);
+      if (listFile?.guess.hasHeader) {
+        saveColumnChoice({
+          invoice: listFile.guess.headers[choice.invoiceColumn],
+          client: choice.clientColumn === null ? null : listFile.guess.headers[choice.clientColumn],
+        });
+      }
+    },
+    [listFile]
+  );
+
+  const removeList = useCallback(() => {
+    setListFile(null);
+    setListChoice(null);
+    setListPending(false);
+    setListError('');
+  }, []);
 
   /** Pages that match the search box, or null when nothing is being searched. */
   const matchedPages = useMemo(() => {
@@ -409,30 +530,24 @@ export default function App() {
     };
   }, [analyzed, docsById, pictures]);
 
-  /** Pages that are pictures of paper, and not yet read, so no number came from them. */
-  const boxedPages = useMemo(
-    () =>
-      new Set(
-        groups
-          .filter((group) => group.provenance?.source === 'zone')
-          .flatMap((group) => group.pages.map((page) => page.index))
-      ),
-    [groups]
-  );
-  const scannedPages = useMemo(
-    () => scansToRead(analyzed, pictures, boxedPages),
-    [analyzed, pictures, boxedPages]
-  );
-  const scannedIndexes = useMemo(
-    () => new Set(scannedPages.map((page) => page.index)),
-    [scannedPages]
-  );
+  // Scanned pages turned up: start the recognition engine now, from this app's
+  // own address, so it is ready by the time somebody asks for them to be read.
+  const offerScans = scannedPages.length > 0 && !scanDismissed;
+  useEffect(() => {
+    if (offerScans) preloadOcr();
+  }, [offerScans]);
 
   /**
    * What a reading of a scanned page gives, by the same rules as every other
    * page, so that an unsure one can be read again and the better one kept.
    */
   const judge = useCallback((page, reading) => judgeReading(page, reading, analysis), [analysis]);
+
+  /** The saved box for the client a scanned page turned out to belong to, if any. */
+  const boxFor = useCallback(
+    (page, reading) => zonesForPage(reading.text, boxes, { tolerant: true })[0] ?? null,
+    [boxes]
+  );
 
   /**
    * Read the scanned pages, one at a time, and put what was found back into
@@ -463,6 +578,10 @@ export default function App() {
         signal,
         onProgress: setReading,
         judge,
+        boxFor,
+        // With a box saved, read only the top, the box and the foot of a page
+        // whose top names that client.
+        quick: boxes.length > 0,
       });
       if (found.size > 0) {
         setPages((current) =>
@@ -489,7 +608,7 @@ export default function App() {
       setReading(null);
       await stopOcr();
     }
-  }, [scannedPages, docsById, judge, boxedPages]);
+  }, [scannedPages, docsById, judge, boxFor, boxedPages, boxes.length]);
 
   /* ------------------------------------------------------------------ boxes */
 
@@ -507,10 +626,16 @@ export default function App() {
    * @param {object} zone - fractions of the page, y from the bottom.
    * @param {object} page - the page it was drawn on.
    * @param {string} zoneShape - the shape of the number inside it.
+   * @param {string} [value] - the number itself: used to leave lines carrying it
+   *   out of what is remembered, and not kept.
    */
-  const rememberBox = useCallback((zone, page, zoneShape = '') => {
+  const rememberBox = useCallback((zone, page, zoneShape = '', value = '') => {
     const known = page.matchedProfiles?.[0];
-    const lines = identifyingLinesFor(page, analyzedRef.current);
+    const lines = identifyingLinesFor(page, analyzedRef.current, {
+      leaveOut: value,
+      zone,
+      shape: zoneShape,
+    });
     // Through createProfile, the one place that knows what a box may hold.
     const box = createProfile(
       known
@@ -575,6 +700,29 @@ export default function App() {
     [files]
   );
 
+  /**
+   * Count invoices just saved towards how each client has gone - each invoice
+   * of a batch once, however many times it is saved.
+   */
+  const countSaved = useCallback(
+    (saved) => {
+      const fresh = saved.filter((group) => !talliedRef.current.has(group.id));
+      if (fresh.length === 0) return;
+      for (const group of fresh) talliedRef.current.add(group.id);
+      setTally((current) => {
+        const next = addToTally(current, fresh, (key) => boxes.find((box) => box.id === key)?.name);
+        saveTally(next);
+        return next;
+      });
+    },
+    [boxes]
+  );
+
+  const clearTally = useCallback(() => {
+    setTally({});
+    saveTally({});
+  }, []);
+
   const downloadInvoice = useCallback(
     async (group) => {
       setExporting({ what: group.fileName });
@@ -582,6 +730,7 @@ export default function App() {
         const { buildInvoicePdf } = await exportTools();
         const sources = await sourcesFor([group]);
         saveFile(await buildInvoicePdf(group, sources), group.fileName, 'application/pdf');
+        countSaved([group]);
       } catch (error) {
         setProblems((current) => [
           ...current,
@@ -591,7 +740,7 @@ export default function App() {
         setExporting(null);
       }
     },
-    [sourcesFor, exportTools]
+    [sourcesFor, exportTools, countSaved]
   );
 
   const downloadZip = useCallback(async () => {
@@ -604,6 +753,7 @@ export default function App() {
       });
       const zip = await buildZip(built, { type: 'blob' });
       saveFile(zip, 'invoices.zip', 'application/zip');
+      countSaved(groups);
     } catch (error) {
       setProblems((current) => [
         ...current,
@@ -612,7 +762,7 @@ export default function App() {
     } finally {
       setExporting(null);
     }
-  }, [groups, sourcesFor, exportTools]);
+  }, [groups, sourcesFor, exportTools, countSaved]);
 
   const downloadCsv = useCallback(async () => {
     const { buildCsv } = await exportTools();
@@ -671,6 +821,7 @@ export default function App() {
           onProgress: (done) => setExporting({ what: 'folder', phase: 'Saving', done, total }),
         });
         setSavedTo({ folder: folder.name, count: built.length });
+        countSaved(groups);
       } catch (error) {
         setProblems((current) => [
           ...current,
@@ -705,7 +856,7 @@ export default function App() {
       cancelLabel: 'Cancel',
       act: write,
     });
-  }, [groups, sourcesFor, exportTools]);
+  }, [groups, sourcesFor, exportTools, countSaved]);
 
   /** The same warning as the ZIP, before anything with problems left is saved. */
   const askThenSaveIntoFolder = useCallback(() => {
@@ -782,8 +933,15 @@ export default function App() {
   const pageCount = pages.length;
 
   // Any page with text a box could be read from: a scanner's own reading of a
-  // page is as good a place to draw one as a typed page.
-  const pointable = useMemo(() => analyzed.filter((page) => page.layout?.length), [analyzed]);
+  // page is as good a place to draw one as a typed page. Not a page printed word
+  // for word more than once in the batch, though - terms of sale after every
+  // invoice, the same remittance slip - since an invoice carries a number of its
+  // own and is never the same twice, so there is nothing on it to point at.
+  const pointable = useMemo(() => {
+    const copies = new Map();
+    for (const page of analyzed) copies.set(page.text, (copies.get(page.text) ?? 0) + 1);
+    return analyzed.filter((page) => page.layout?.length && copies.get(page.text) === 1);
+  }, [analyzed]);
 
   /**
    * Pages a box could be drawn on that no saved spot covers yet, in page order.
@@ -888,6 +1046,7 @@ export default function App() {
               rememberedBoxes={boxes.length}
               onForgetBoxes={askThenForgetAll}
             />
+            <ClientTally tally={tally} onClear={clearTally} />
           </div>
 
           <section className="results" id="results" tabIndex={-1}>
@@ -978,8 +1137,8 @@ export default function App() {
                 {reading ? (
                   <>
                     <p>
-                      Reading page {reading.pageIndex} &mdash; {reading.done} of {reading.total}{' '}
-                      done. This is slow; you can stop at any point and keep what has been read.
+                      Reading scanned pages &mdash; {reading.done} of {reading.total} done. This is
+                      slow; you can stop at any point and keep what has been read.
                     </p>
                     <div className="progress-track">
                       <div
@@ -1036,6 +1195,22 @@ export default function App() {
               />
             )}
 
+            <KnownList
+              list={knownList}
+              pending={listPending && listFile ? listFile : null}
+              error={listError}
+              strict={strict}
+              verified={groups.filter((group) => group.verified).length}
+              total={groups.length}
+              missing={verification.missing}
+              onFile={loadListFile}
+              onChoose={chooseListColumns}
+              onCancel={() => setListPending(false)}
+              onChangeColumns={() => setListPending(true)}
+              onRemove={removeList}
+              onStrict={setStrict}
+            />
+
             <PageStrip
               groups={groups}
               docsById={docsById}
@@ -1053,6 +1228,7 @@ export default function App() {
               current={issueAt}
               onGo={goToNextIssue}
               onOpenPage={setPreviewIndex}
+              onAccept={renameInvoice}
             />
 
             {shownGroups.length === 0 ? (
@@ -1067,6 +1243,7 @@ export default function App() {
                 onPreview={setPreviewIndex}
                 onDownload={downloadInvoice}
                 onRename={renameInvoice}
+                onAccept={renameInvoice}
                 busy={Boolean(exporting)}
               />
             )}

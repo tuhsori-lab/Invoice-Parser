@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import JSZip from 'jszip';
 import { PDFDocument } from 'pdf-lib';
+import { workbook } from '../helpers/workbook.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, '..', 'fixtures', 'pdf');
@@ -175,6 +176,36 @@ test('never sends anything anywhere while a batch is being worked on', async ({ 
   await expect(page.getByTestId('page-text')).toBeVisible();
   await page.keyboard.press('Escape');
   await download(page, () => page.getByTestId('download-csv').click());
+
+  // Checking against an invoice list, from a CSV and from an Excel file, is
+  // done on this computer too.
+  await page.getByTestId('list-input').setInputFiles({
+    name: 'open-invoices.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('Invoice No,Customer\n104233,Lakeshore\n'),
+  });
+  await page.getByTestId('list-apply').click();
+  await expect(page.getByTestId('list-summary')).toContainText('1 of this batch');
+  await page.getByRole('button', { name: 'Load a different list' }).click();
+  await page.getByTestId('list-input').setInputFiles({
+    name: 'open-invoices.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: await workbook([
+      ['Invoice No', 'Customer'],
+      ['104233', 'Lakeshore'],
+    ]),
+  });
+  await expect(page.getByTestId('list-summary')).toContainText('1 of this batch');
+
+  // Saving counts towards how each client has gone - kept in this browser, and
+  // cleared from it.
+  await download(page, () => page.getByTestId('download-zip').click());
+  await page.getByTestId('advanced-toggle').click();
+  const tally = page.getByTestId('client-tally');
+  await expect(tally).toContainText('Invoices found without a box');
+  await expect(tally.locator('li')).toHaveCount(1);
+  await page.getByTestId('tally-clear').click();
+  await expect(page.getByTestId('tally-empty')).toBeVisible();
 
   // Everything the app asks for is its own code, from its own address. Parts of
   // it arrive only when they are needed - the code that builds PDFs is fetched

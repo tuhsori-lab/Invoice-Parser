@@ -8,7 +8,8 @@
  * the app can always see why a number was picked.
  *
  *   0. zone    - the spot on the page somebody pointed at for this client,
- *                which replaces the tiers below it when it finds anything
+ *                which is the answer whenever it finds anything; the label
+ *                tiers are still read alongside it, as a second opinion
  *   1. profile - a label from one of this client's saved profiles
  *   2. common  - an everyday label such as "Invoice No." or "Bill #"
  *   3. bare    - the word "Invoice" followed by a number on the same line
@@ -438,6 +439,30 @@ export function detectInZone(text, layout, zone, pageSize, shape = '') {
 }
 
 /**
+ * The value in a line of text read from a box on its own: the first run of
+ * characters shaped like a value - and like the box's number, when its shape
+ * is known. Dates are passed over, as everywhere else.
+ *
+ * @param {string} text
+ * @param {string} [shape]
+ * @returns {string|null}
+ */
+export function valueInBoxText(text, shape = '') {
+  const window = maskDates(String(text ?? ''));
+  TOKEN_PATTERN.lastIndex = 0;
+  let match;
+  while ((match = TOKEN_PATTERN.exec(window)) !== null) {
+    if (!looksLikeValue(match[0])) continue;
+    const value = normalizeValue(match[0]);
+    if (fitsShape(value, shape)) {
+      TOKEN_PATTERN.lastIndex = 0;
+      return value;
+    }
+  }
+  return null;
+}
+
+/**
  * Compile a user's own pattern, reporting a plain-language problem if it is broken.
  *
  * @param {string} pattern
@@ -580,7 +605,10 @@ export function detectCandidates(text, settings = {}) {
   }
 
   // Somebody pointed at where the number is on this client's invoices. That is
-  // a better answer than any guess from the wording, so it is the only one.
+  // a better answer than any guess from the wording, so it comes first. The
+  // labels are still read: when they say the same thing that is a second
+  // reading in agreement, and when they say something else a person should see
+  // both before anything is exported.
   const fromZones = [];
   for (const entry of zones) {
     const value = detectInZone(page, layout, entry?.zone, pageSize, entry?.shape);
@@ -588,9 +616,9 @@ export function detectCandidates(text, settings = {}) {
       fromZones.push({ value, label: entry.name || 'this client', source: 'zone' });
     }
   }
-  if (fromZones.length > 0) return dedupe(fromZones);
 
-  const hits = [];
+  const hits = [...fromZones];
+  const labelled = () => hits.length - fromZones.length;
   for (const label of profileLabels) {
     const pattern = labelPattern(label);
     if (pattern) hits.push(...hitsForPattern(page, pattern, 'profile', { layout }));
@@ -598,7 +626,7 @@ export function detectCandidates(text, settings = {}) {
   if (useCommonLabels) {
     hits.push(...hitsForPattern(page, commonLabelPattern(), 'common', { layout }));
   }
-  if (hits.length === 0 && useBareInvoice) {
+  if (labelled() === 0 && useBareInvoice) {
     hits.push(
       ...hitsForPattern(page, bareInvoicePattern(), 'bare', { onlyImmediate: true, layout })
     );
@@ -643,6 +671,38 @@ export function valueConfidence(text, layout, value) {
     least = least === null ? span.confidence : Math.min(least, span.confidence);
   }
   return least;
+}
+
+/**
+ * Did two different ways of reading the page find the same number?
+ *
+ * A box and a label agreeing is the best evidence a page can give that the
+ * number was read right - two readings, from different rules, of the same thing.
+ *
+ * @param {Array<{ value: string, source: string }>} candidates
+ * @returns {boolean}
+ */
+export function readingsAgree(candidates) {
+  if (!candidates || candidates.length < 2) return false;
+  const [first] = candidates;
+  return candidates.some((hit) => hit.value === first.value && hit.source !== first.source);
+}
+
+/**
+ * "Page 2 of 3", "Page 2/3", "Pg. 2 of 3", or a line that says only "2 of 3".
+ *
+ * @param {string} text
+ * @returns {{ page: number, of: number }|null}
+ */
+export function readPageMarker(text) {
+  const page = String(text ?? '');
+  const labelled = /\b(?:page|pg\.?)\s*(\d{1,3})\s*(?:of|\/)\s*(\d{1,3})\b/i.exec(page);
+  const alone = /^\s*(\d{1,3})\s+of\s+(\d{1,3})\s*$/im.exec(page);
+  const found = labelled ?? alone;
+  if (!found) return null;
+  const [at, of] = [Number(found[1]), Number(found[2])];
+  if (at < 1 || of < 1 || at > of) return null;
+  return { page: at, of };
 }
 
 /**

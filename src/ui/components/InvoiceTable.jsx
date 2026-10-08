@@ -10,6 +10,7 @@ const SOURCE_WORDS = {
   common: 'an everyday label',
   bare: 'the word "Invoice" alone',
   custom: 'your own pattern',
+  'box-crop': 'the box, read on its own',
 };
 
 /** Past this many invoices, only the rows on screen are drawn. */
@@ -38,7 +39,15 @@ const OVERSCAN = 6;
  * an empty row above and below, so the page stays the right height and
  * scrolling stays smooth.
  */
-export default function InvoiceTable({ groups, colourOf, onPreview, onDownload, onRename, busy }) {
+export default function InvoiceTable({
+  groups,
+  colourOf,
+  onPreview,
+  onDownload,
+  onRename,
+  onAccept,
+  busy,
+}) {
   const scroller = useRef(null);
   const [view, setView] = useState({ top: 0, height: 0 });
 
@@ -123,6 +132,26 @@ export default function InvoiceTable({ groups, colourOf, onPreview, onDownload, 
               </td>
               <th scope="row" className="column-invoice">
                 <InvoiceNumber group={group} onRename={onRename} />
+                {group.verified && (
+                  <span className="verified" data-testid={`verified-${group.id}`}>
+                    In your invoice list
+                  </span>
+                )}
+                {group.notInList && <span className="muted note">Not in your invoice list</span>}
+                {group.correctedFrom && (
+                  <span className="note" data-testid={`corrected-${group.id}`}>
+                    Read as {group.correctedFrom}; put right from your invoice list
+                  </span>
+                )}
+                {group.suggestion && (
+                  <button
+                    type="button"
+                    className="link-button note"
+                    onClick={() => onAccept(group.id, group.suggestion.value)}
+                  >
+                    Use {group.suggestion.value}
+                  </button>
+                )}
                 {group.flags.length > 0 && (
                   <span className="flag-list">
                     {group.flags.map((flag) => (
