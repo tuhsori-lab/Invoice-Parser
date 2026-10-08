@@ -12,3 +12,6 @@ playwright-report/
 # Copied from node_modules by `npm run assets`.
 public/pdfjs/
 public/tesseract/
+
+# Written by `npm run bench`; bench/baseline.json is kept.
+bench/results/

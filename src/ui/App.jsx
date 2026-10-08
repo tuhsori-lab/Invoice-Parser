@@ -5,7 +5,6 @@ import { assignFileNames, buildFileName, DEFAULT_TEMPLATE } from '../core/naming
 import { explain } from '../core/errors.js';
 import { exportWarning, reviewQueue } from '../core/review.js';
 import { createProfile, identifyingLinesFor, zonesForPage } from '../core/profiles.js';
-import { isPicture } from '../core/scans.js';
 import { closeBatch, loadBatch } from '../lib/loadBatch.js';
 import { clearThumbnails } from '../lib/thumbnails.js';
 import { saveFile } from '../lib/download.js';
@@ -21,7 +20,7 @@ import { loadBoxes, saveBoxes } from '../lib/boxStore.js';
 import { applyTheme, loadTheme, watchSystemTheme } from '../lib/theme.js';
 import { loadControlsOpen, saveControlsOpen } from '../lib/controlsStore.js';
 import { readScannedPages, stopOcr } from '../lib/ocr.js';
-import { measurePictures, pictureKey } from '../lib/pictures.js';
+import { measurePictures, pictureKey, scansToRead } from '../lib/pictures.js';
 import DropZone from './components/DropZone.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import ControlsToggle from './components/ControlsToggle.jsx';
@@ -81,35 +80,6 @@ function scannedNotice(scanned, pageCount) {
   return scanned.length === 1
     ? 'One page looks like a scan, so its invoice number could not be read.'
     : `${scanned.length} pages look like scans, so their invoice numbers could not be read.`;
-}
-
-/**
- * The pages to offer for text recognition: pictures of paper not read yet.
- *
- * A page with no text at all is one. So is a page with no invoice number whose
- * surface is mostly an image, whatever few words sit on top of it - unless a box
- * already reads its invoice. The box being read from the scan's own text means
- * that text was good enough, and a page with nothing in the box is one of the
- * pages after the first. Each page carries how finely it was scanned, which
- * decides the size it is read at.
- *
- * @param {Array<object>} analyzed - the batch's pages, after detection.
- * @param {Map<string, { share: number, pixelsAcross: number }>} pictures - by pictureKey.
- * @param {Set<number>} [boxed] - pages of invoices whose number came from a box.
- * @returns {Array<object>}
- */
-function scansToRead(analyzed, pictures, boxed = new Set()) {
-  return analyzed
-    .filter(
-      (page) =>
-        !page.ocr &&
-        (!page.hasText ||
-          (!page.detection &&
-            !boxed.has(page.index) &&
-            !page.matchedProfiles?.some((profile) => profile.zone) &&
-            isPicture(pictures.get(pictureKey(page)))))
-    )
-    .map((page) => ({ ...page, pixelsAcross: pictures.get(pictureKey(page))?.pixelsAcross ?? 0 }));
 }
 
 const EXAMPLE_GROUP = {

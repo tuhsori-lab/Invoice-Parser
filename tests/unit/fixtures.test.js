@@ -16,6 +16,7 @@ import { buildRecognisedText } from '../../src/core/extractText.js';
 import { describePicture, isPicture } from '../../src/core/scans.js';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { CASES, HARBOR_PINE, SPECIAL_CASES } from '../fixtures/expected.js';
+import { SCAN_SUITE, expectedGroups } from '../../scripts/lib/scanSuite.js';
 import { loadFixturePages, openFixture } from '../helpers/loadFixture.js';
 
 /** Run one sample PDF through the engine, exactly as the app does. */
@@ -399,4 +400,24 @@ describe('a saved spot on a client with continuation pages', () => {
     // shape is there to stop.
     expect(without.map((group) => group.invoice)).toContain('472');
   });
+});
+
+describe('the harder scanned samples the benchmark reads', () => {
+  for (const fixture of SCAN_SUITE) {
+    it(`case ${fixture.case}: ${fixture.what} - every page a picture, with no text to read`, async () => {
+      const pages = await loadFixturePages(fixture.file);
+      const document = await openFixture(fixture.file);
+      const expectedPages = expectedGroups(fixture).flatMap((group) => group.pages);
+
+      expect(pages).toHaveLength(expectedPages.length);
+      for (const [position, page] of pages.entries()) {
+        expect(page.hasText, 'nothing can be read without text recognition').toBe(false);
+        const pdfPage = await document.getPage(position + 1);
+        const { width, height } = pdfPage.getViewport({ scale: 1 });
+        const picture = describePicture(await pdfPage.getOperatorList(), pdfjs.OPS, width, height);
+        expect(isPicture(picture)).toBe(true);
+        expect(picture.pixelsAcross).toBe(fixture.dpi === 150 ? 1240 : 2479);
+      }
+    });
+  }
 });
