@@ -267,8 +267,10 @@ Recognition is also not steady, and the app is built around that:
   page of the client — which sidesteps the label altogether. Many scanners already lay their own
   reading over the picture as invisible text (a "searchable PDF"); a box can be drawn on that
   straight away, with nothing to read first, and the pages it reads drop out of the offer to read
-  scans. On a scan with no such text under the box, the app says so and points to **Read scanned
-  pages**.
+  scans. A scan with only a few words typed on top — a note or a stamp, not a reading of the whole
+  page — stays in the offer until it is read, even when it sits after an invoice a box has already
+  numbered: it may be the first page of the next invoice. On a scan with no such text under the
+  box, the app says so and points to **Read scanned pages**.
 
 **Straightened, and read as scattered text.** A page scanned a little crooked is straightened before
 it is read, and a whole page is read as text scattered about the page rather than as one block — an

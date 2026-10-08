@@ -15,6 +15,7 @@ import {
   readingWidths,
   secondIsBetter,
   SURE_READING,
+  textSpread,
 } from '../../src/core/scans.js';
 
 /** A stand-in for pdf.js's table of operation codes. */
@@ -179,5 +180,14 @@ describe('which of two readings to keep', () => {
     expect(
       secondIsBetter({ value: '88213', confidence: 80 }, { value: '88218', confidence: 80 })
     ).toBe(false);
+  });
+});
+
+describe('how much of a page its own text covers', () => {
+  it('is most of it for a reading of the whole page, and little for a note on top', () => {
+    expect(textSpread({ pageHeight: 842, layout: [{ y: 810 }, { y: 30 }] })).toBeCloseTo(0.93, 2);
+    expect(textSpread({ pageHeight: 842, layout: [{ y: 700 }, { y: 600 }] })).toBeCloseTo(0.12, 2);
+    expect(textSpread({ pageHeight: 842, layout: [] })).toBe(0);
+    expect(textSpread({ layout: [{ y: 1 }] })).toBe(0);
   });
 });

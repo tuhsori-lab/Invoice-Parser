@@ -6,7 +6,7 @@
  * in core/scans.js; this is the part that asks pdf.js what a page draws.
  */
 
-import { describePicture, isPicture } from '../core/scans.js';
+import { WHOLE_PAGE_SPREAD, describePicture, isPicture, textSpread } from '../core/scans.js';
 import { pdfjs } from './pdfjs.js';
 
 /** Where a page came from, which stays true however the batch is regrouped. */
@@ -48,11 +48,17 @@ export async function measurePictures(pages, docsById, signal) {
  * The pages to offer for text recognition: pictures of paper not read yet.
  *
  * A page with no text at all is one. So is a page with no invoice number whose
- * surface is mostly an image, whatever few words sit on top of it - unless a box
- * already reads its invoice. The box being read from the scan's own text means
- * that text was good enough, and a page with nothing in the box is one of the
- * pages after the first. Each page carries how finely it was scanned, which
- * decides the size it is read at.
+ * surface is mostly an image, whatever few words sit on top of it - unless its
+ * own text is already a good reading of the paper, and a page with nothing in
+ * the box is one of an invoice's pages after the first. That is so when the
+ * page's own text names a client with a saved box, or when the page sits in an
+ * invoice a box numbered and its own text covers the whole page, as a scanner's
+ * own reading does.
+ *
+ * Sitting in a boxed invoice is not enough on its own: a scan with a few words
+ * typed on top and no number is put with the invoice before it only until it
+ * is read, and may well be the start of another. Each page carries how finely
+ * it was scanned, which decides the size it is read at.
  *
  * @param {Array<object>} analyzed - the batch's pages, after detection.
  * @param {Map<string, { share: number, pixelsAcross: number }>} pictures - by pictureKey.
@@ -66,7 +72,7 @@ export function scansToRead(analyzed, pictures, boxed = new Set()) {
         !page.ocr &&
         (!page.hasText ||
           (!page.detection &&
-            !boxed.has(page.index) &&
+            !(boxed.has(page.index) && textSpread(page) >= WHOLE_PAGE_SPREAD) &&
             !page.matchedProfiles?.some((profile) => profile.zone) &&
             isPicture(pictures.get(pictureKey(page)))))
     )
