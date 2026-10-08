@@ -342,3 +342,29 @@ describe('the small pieces', () => {
     expect(describeShape('D8 _ D1')).toBe('8 digits, an underscore, then 1 digit');
   });
 });
+
+describe('a scanned page whose own number could not be read', () => {
+  it('is flagged rather than quietly joined to the invoice before', () => {
+    const unread = { ...page(2, null, { ocr: true }), unreadNumber: true };
+    const { groups } = verifyGroups(
+      groupPages([
+        page(1, '664120', { ocr: true, detection: { confidence: 95 }, agreement: true }),
+        unread,
+      ])
+    );
+    expect(groups[0].flags).toEqual(['unread-number']);
+    expect(reviewReason('unread-number', groups[0])).toBe(
+      'Page 2 seems to have an invoice number of its own, but it could not be read, so it was kept with 664120. Check it is not a separate invoice.'
+    );
+  });
+
+  it('leaves alone a continuation page with nothing where the number goes', () => {
+    const { groups } = verifyGroups(
+      groupPages([
+        page(1, '664120', { ocr: true, detection: { confidence: 95 }, agreement: true }),
+        page(2, null, { ocr: true }),
+      ])
+    );
+    expect(groups[0].flags).toEqual([]);
+  });
+});

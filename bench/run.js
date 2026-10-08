@@ -17,7 +17,7 @@ import { loadBatch, closeBatch } from '../src/lib/loadBatch.js';
 import { analyzePages, judgeReading } from '../src/core/analyze.js';
 import { groupPages } from '../src/core/group.js';
 import { assignFileNames } from '../src/core/naming.js';
-import { createProfile } from '../src/core/profiles.js';
+import { createProfile, zonesForPage } from '../src/core/profiles.js';
 import { valueShape } from '../src/core/detect.js';
 import { readScannedPages, stopOcr } from '../src/lib/ocr.js';
 import { measurePictures, pictureKey, scansToRead } from '../src/lib/pictures.js';
@@ -107,6 +107,15 @@ async function load(fileName) {
   return loadBatch([file]);
 }
 
+/** Reading settings under test, from the page address: ?psm=11&rotate=1. */
+const settings = (() => {
+  const params = new URLSearchParams(location.search);
+  return {
+    pageMode: params.get('psm') ? Number(params.get('psm')) : undefined,
+    rotateAuto: params.get('rotate') === '1' ? true : undefined,
+  };
+})();
+
 /** Run one scenario end to end, as the app would, and mark the result. */
 async function run(scenario) {
   const { files, pages: loaded } = await load(scenario.file);
@@ -138,6 +147,10 @@ async function run(scenario) {
     const started = performance.now();
     const found = await readScannedPages(toRead, docsById, {
       judge: (page, reading) => judgeReading(page, reading, analysis),
+      boxFor: (page, reading) =>
+        zonesForPage(reading.text, analysis.profiles ?? [], { tolerant: true })[0] ?? null,
+      pageMode: settings.pageMode,
+      rotateAuto: settings.rotateAuto,
     });
     ocrSeconds = (performance.now() - started) / 1000;
     pages = pages.map((page) =>

@@ -13,6 +13,8 @@
  *   npm run bench -- --only 26,31        just those samples (both modes)
  *   npm run bench -- --mode box          only runs with a saved box
  *   npm run bench -- --mode list         only runs checked against an invoice list
+ *   npm run bench -- --psm 11            read whole pages in another layout mode
+ *   npm run bench -- --rotate            straighten crooked pages before reading
  *   npm run bench -- --save-baseline     keep this run as the one to compare with
  *
  * Results go to bench/results/latest.json. When bench/baseline.json exists, the
@@ -196,6 +198,8 @@ async function main() {
   const query = new URLSearchParams();
   if (args.only) query.set('only', String(args.only));
   if (args.mode) query.set('mode', String(args.mode));
+  if (args.psm) query.set('psm', String(args.psm));
+  if (args.rotate) query.set('rotate', '1');
   console.log('Running the benchmark in a headless browser...');
   await page.goto(`http://127.0.0.1:${PORT}/bench/index.html?${query}`);
   await page.waitForFunction(() => window.__benchResults, null, { timeout: 0, polling: 1000 });
@@ -219,6 +223,9 @@ async function main() {
   };
   await mkdir(RESULTS, { recursive: true });
   await writeFile(join(RESULTS, 'latest.json'), `${JSON.stringify(saved, null, 2)}\n`);
+  if (args.name) {
+    await writeFile(join(RESULTS, `${args.name}.json`), `${JSON.stringify(saved, null, 2)}\n`);
+  }
   if (args['save-baseline']) {
     await writeFile(BASELINE, `${JSON.stringify(saved, null, 2)}\n`);
     console.log('\nSaved as the baseline: bench/baseline.json');

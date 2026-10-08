@@ -100,21 +100,22 @@ what and on which pages — "S0-80155 on page 2 is not in your invoice list, but
 differ only by letters and digits that look alike." Where there is an obvious right answer it is
 offered as a button (**Use SO-80155**), and never put in without that click.
 
-| Check                     | What it means                                                                                                                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No number                 | No invoice number was found on these pages.                                                                                                                   |
-| Two different numbers     | The page gives two numbers — say the box you drew and the "Invoice No." label disagree — and both are shown.                                                  |
-| Not in your invoice list  | With a list loaded, the number is not in it (see below).                                                                                                      |
-| Close to one in your list | Not in the list, but exactly one entry is one character away, or differs only by look-alikes (O/0, I/1, S/5, B/8, Z/2, G/6). That entry is offered.           |
-| Doesn't look like theirs  | The number is not the shape of this client's other numbers — "2 letters, a hyphen, then 5 digits". If one look-alike swap would make it fit, that is offered. |
-| Far out of sequence       | The number is far from this client's other numbers in the batch: 864127 among 664120 to 664133.                                                               |
-| Pages out of order        | A page says "Page 1 of" in the middle of an invoice (two invoices may have been joined), or the marks run out of order.                                       |
-| Page count doesn't match  | The pages say "of 3" but only two are here.                                                                                                                   |
-| Blank page                | A page with nothing on it.                                                                                                                                    |
-| Page from no client       | In a batch where you have drawn a box, a page no client you have shown the app claims, that no label read and that does not name the invoice it sits in.      |
-| Same file name            | Two invoices want the same file name; the second gets `(2)`.                                                                                                  |
-| "Invoice" on its own      | The number came from the bare word "Invoice" with no label after it.                                                                                          |
-| Read from a scan          | The number came from text recognition and nothing backs it up (see below).                                                                                    |
+| Check                     | What it means                                                                                                                                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No number                 | No invoice number was found on these pages.                                                                                                                                                              |
+| Two different numbers     | The page gives two numbers — say the box you drew and the "Invoice No." label disagree — and both are shown.                                                                                             |
+| Not in your invoice list  | With a list loaded, the number is not in it (see below).                                                                                                                                                 |
+| Close to one in your list | Not in the list, but exactly one entry is one character away, or differs only by look-alikes (O/0, I/1, S/5, B/8, Z/2, G/6). That entry is offered.                                                      |
+| Doesn't look like theirs  | The number is not the shape of this client's other numbers — "2 letters, a hyphen, then 5 digits". If one look-alike swap would make it fit, that is offered.                                            |
+| Far out of sequence       | The number is far from this client's other numbers in the batch: 864127 among 664120 to 664133.                                                                                                          |
+| Pages out of order        | A page says "Page 1 of" in the middle of an invoice (two invoices may have been joined), or the marks run out of order.                                                                                  |
+| Page count doesn't match  | The pages say "of 3" but only two are here.                                                                                                                                                              |
+| Number on a page not read | A scanned page seems to have a number of its own — a label for one, or print in the client's box — but it could not be read, so it was kept with the invoice before. Check it is not a separate invoice. |
+| Blank page                | A page with nothing on it.                                                                                                                                                                               |
+| Page from no client       | In a batch where you have drawn a box, a page no client you have shown the app claims, that no label read and that does not name the invoice it sits in.                                                 |
+| Same file name            | Two invoices want the same file name; the second gets `(2)`.                                                                                                                                             |
+| "Invoice" on its own      | The number came from the bare word "Invoice" with no label after it.                                                                                                                                     |
+| Read from a scan          | The number came from text recognition and nothing backs it up (see below).                                                                                                                               |
 
 **A number read from a scan** goes out without review only when something double-checks it: your
 invoice list has it, or text recognition was at least 75% sure of it _and_ a second reading agrees —
@@ -246,6 +247,16 @@ Recognition is also not steady, and the app is built around that:
   straight away, with nothing to read first, and the pages it reads drop out of the offer to read
   scans. On a scan with no such text under the box, the app says so and points to **Read scanned
   pages**.
+
+**The box is read close up, three ways.** On a page from a client with a saved box, the box is also
+cut out and read on its own: drawn large enough that capital letters are about 30 pixels tall,
+read as a single line using only the letters, digits and `- / _ .` an invoice number is made of,
+and cleaned up first — turned to pure black and white at the level that best separates that
+picture's ink from its paper, with coloured marks such as a red PAID stamp washed out. It is read
+at two sizes in black and white and once in plain grey. When those readings agree with each other
+and with the page, that counts as the second opinion a scanned number needs. When they disagree,
+every reading is shown and none is picked — unless your invoice list has exactly one of them, in
+which case that one is used and the table says it was put right.
 
 The recognition engine, its WebAssembly and the English language data are all served by this app
 (copied out of `node_modules` by `npm run assets`, about 14 MB). They are fetched the first time

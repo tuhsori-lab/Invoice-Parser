@@ -19,6 +19,7 @@ export const FLAG_ORDER = [
   'not-in-list',
   'odd-shape',
   'out-of-sequence',
+  'unread-number',
   'page-order',
   'page-count',
   'no-client',
@@ -43,6 +44,7 @@ function capitalise(text) {
 function readingFrom(hit) {
   if (hit.source === 'zone') return 'in the box you drew';
   if (hit.source === 'bare') return 'after the word "Invoice"';
+  if (hit.source === 'box-crop') return hit.label;
   return `after "${hit.label}"`;
 }
 
@@ -106,6 +108,15 @@ export function reviewReason(flag, group) {
       return `The pages say this invoice has ${note.says} ${note.says === 1 ? 'page' : 'pages'}, but ${note.has} ${
         note.has === 1 ? 'is' : 'are'
       } here (${where}). A page may be missing, or belong to another invoice.`;
+    case 'unread-number': {
+      const pages = note.pages?.length ? note.pages : group.pages.map((page) => page.index);
+      const one = pages.length === 1;
+      return `${capitalise(pageList(pages))} ${one ? 'seems' : 'seem'} to have an invoice number of ${
+        one ? 'its' : 'their'
+      } own, but it could not be read, so ${one ? 'it was' : 'they were'} kept with ${
+        group.invoice ?? 'the invoice before'
+      }. Check ${one ? 'it is' : 'they are'} not a separate invoice.`;
+    }
     case 'blank-page': {
       const pages = note.pages?.length ? note.pages : group.pages.map((page) => page.index);
       return `${capitalise(pageList(pages))} ${pages.length === 1 ? 'is' : 'are'} blank.`;

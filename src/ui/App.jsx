@@ -545,6 +545,12 @@ export default function App() {
    */
   const judge = useCallback((page, reading) => judgeReading(page, reading, analysis), [analysis]);
 
+  /** The saved box for the client a scanned page turned out to belong to, if any. */
+  const boxFor = useCallback(
+    (page, reading) => zonesForPage(reading.text, boxes, { tolerant: true })[0] ?? null,
+    [boxes]
+  );
+
   /**
    * Read the scanned pages, one at a time, and put what was found back into
    * the same pipeline as everything else. Those pages are marked as having come
@@ -574,6 +580,7 @@ export default function App() {
         signal,
         onProgress: setReading,
         judge,
+        boxFor,
       });
       if (found.size > 0) {
         setPages((current) =>
@@ -600,7 +607,7 @@ export default function App() {
       setReading(null);
       await stopOcr();
     }
-  }, [scannedPages, docsById, judge, boxedPages]);
+  }, [scannedPages, docsById, judge, boxFor, boxedPages]);
 
   /* ------------------------------------------------------------------ boxes */
 

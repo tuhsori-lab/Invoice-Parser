@@ -439,6 +439,30 @@ export function detectInZone(text, layout, zone, pageSize, shape = '') {
 }
 
 /**
+ * The value in a line of text read from a box on its own: the first run of
+ * characters shaped like a value - and like the box's number, when its shape
+ * is known. Dates are passed over, as everywhere else.
+ *
+ * @param {string} text
+ * @param {string} [shape]
+ * @returns {string|null}
+ */
+export function valueInBoxText(text, shape = '') {
+  const window = maskDates(String(text ?? ''));
+  TOKEN_PATTERN.lastIndex = 0;
+  let match;
+  while ((match = TOKEN_PATTERN.exec(window)) !== null) {
+    if (!looksLikeValue(match[0])) continue;
+    const value = normalizeValue(match[0]);
+    if (fitsShape(value, shape)) {
+      TOKEN_PATTERN.lastIndex = 0;
+      return value;
+    }
+  }
+  return null;
+}
+
+/**
  * Compile a user's own pattern, reporting a plain-language problem if it is broken.
  *
  * @param {string} pattern

@@ -213,6 +213,22 @@ export function verifyGroups(groups = [], context = {}) {
       }
     }
 
+    // Readings that disagree, one of which the person's own list confirms: the
+    // list settles it. The table still says what the number was read as.
+    if (knownList && group.flags.includes('conflict') && !typed) {
+      const offered = group.pages.find((page) => page.conflict)?.candidates ?? [];
+      const listed = [...new Set(offered.map((hit) => normalizeKnown(hit.value)))].filter((value) =>
+        knownList.byValue.has(value)
+      );
+      if (listed.length === 1) {
+        if (normalizeKnown(group.invoice) !== listed[0]) {
+          group.correctedFrom = group.invoice;
+          group.invoice = listed[0];
+        }
+        drop('conflict');
+      }
+    }
+
     // The person's own list of invoice numbers.
     if (knownList && group.invoice) {
       const result = checkNumber(group.invoice, knownList);
@@ -283,6 +299,13 @@ export function verifyGroups(groups = [], context = {}) {
         add('page-count', { says: total, has: group.pages.length });
       }
     }
+
+    // A scanned page that seems to carry a number of its own, unread - kept with
+    // this invoice, but it may be the start of another.
+    const unread = group.pages.filter(
+      (page) => page.unreadNumber && page.index !== group.pages[0].index
+    );
+    if (unread.length) add('unread-number', { pages: unread.map((page) => page.index) });
 
     // Blank pages, and pages no client the app has been shown claims.
     if (blank.length) add('blank-page', { pages: blank.map((page) => page.index) });

@@ -10,6 +10,7 @@ const SOURCE_WORDS = {
   common: 'an everyday label',
   bare: 'the word "Invoice" alone',
   custom: 'your own pattern',
+  'box-crop': 'the box, read on its own',
 };
 
 /** Past this many invoices, only the rows on screen are drawn. */
