@@ -125,6 +125,29 @@ export function isBlankPage(page, isPicture) {
 }
 
 /**
+ * What follows a number on a page, when it looks like more of the same number.
+ *
+ * "2031 /HM/00217" read by a label as "2031", or "40017822 _2" as "40017822":
+ * the part straight after - starting with a slash or an underscore, with at
+ * most a space before or after it - is very likely the rest of the number. A
+ * slash with spaces on both sides ("12345 / PO 678") is left alone.
+ *
+ * @param {string} text - the page's text.
+ * @param {string} value - the number that was found.
+ * @returns {string|null} the part that seems to carry on, or null.
+ */
+export function carriesOn(text, value) {
+  if (!text || !value) return null;
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(
+    `(?:^|[^A-Za-z0-9])${escaped}(?: ?([/_][A-Za-z0-9][^\\s]*)|(/) ([A-Za-z0-9][^\\s]*))`
+  );
+  const match = pattern.exec(text);
+  if (!match) return null;
+  return match[1] ?? `${match[2]}${match[3]}`;
+}
+
+/**
  * Check every invoice.
  *
  * @param {Array<object>} groups - from groupPages and assignFileNames.
@@ -133,10 +156,17 @@ export function isBlankPage(page, isPicture) {
  * @param {boolean} [context.strict] - only invoices in the list go out without review.
  * @param {Record<string, { shapes: string[], prefix: string }>} [context.learned] - by box id.
  * @param {(page: object) => boolean|undefined} [context.isPicture] - for telling blank pages.
+ * @param {Set<number>} [context.unreadScans] - pages that are scans not read yet.
  * @returns {{ groups: Array<object>, missing: Array<{ value: string, client: string }> }}
  */
 export function verifyGroups(groups = [], context = {}) {
-  const { knownList = null, strict = true, learned = {}, isPicture } = context;
+  const {
+    knownList = null,
+    strict = true,
+    learned = {},
+    isPicture,
+    unreadScans = new Set(),
+  } = context;
   const allPages = groups.flatMap((group) => group.pages);
   const copies = new Map();
   for (const page of allPages) copies.set(page.text, (copies.get(page.text) ?? 0) + 1);
@@ -186,6 +216,24 @@ export function verifyGroups(groups = [], context = {}) {
     const client = clientOf(group);
     group.clientKey = client.key;
     const typed = group.provenance?.source === 'manual';
+
+    // Scanned pages not read yet: the number, and where this invoice ends, may
+    // come from words typed on top of the picture rather than the paper itself.
+    const notRead = group.pages.filter((page) => unreadScans.has(page.index));
+    if (notRead.length) add('scan-not-read', { pages: notRead.map((page) => page.index) });
+
+    // The number may be only the start of one: "2031" where the page goes on
+    // "2031 /HM/00217". Unless typed in by hand, or confirmed by the list.
+    if (group.invoice && !typed && !knownList?.byValue.has(normalizeKnown(group.invoice))) {
+      for (const page of group.pages) {
+        if (page.detection?.value !== group.invoice) continue;
+        const rest = carriesOn(page.text, group.invoice);
+        if (rest) {
+          add('cut-short', { page: page.index, rest });
+          break;
+        }
+      }
+    }
 
     // A number that does not look like the client's own, put right only when a
     // single look-alike swap fits AND the list confirms the result. A number the

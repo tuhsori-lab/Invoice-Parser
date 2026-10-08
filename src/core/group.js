@@ -32,6 +32,8 @@ export const FLAG_LABELS = {
   'blank-page': 'Has a blank page',
   'no-client': 'Has a page from no client you have shown the app',
   'odd-shape': "Does not look like this client's other numbers",
+  'cut-short': 'The number may be cut short',
+  'scan-not-read': 'Scanned pages not read yet',
   'out-of-sequence': "Far from this client's other numbers",
   'unread-number': 'A page may have a number that could not be read',
 };

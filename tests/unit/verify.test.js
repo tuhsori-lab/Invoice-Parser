@@ -9,6 +9,7 @@ import { buildKnownList } from '../../src/core/knownList.js';
 import { reviewReason } from '../../src/core/review.js';
 import { createProfile } from '../../src/core/profiles.js';
 import {
+  carriesOn,
   describeShape,
   isBlankPage,
   learnShape,
@@ -366,5 +367,48 @@ describe('a scanned page whose own number could not be read', () => {
       ])
     );
     expect(groups[0].flags).toEqual([]);
+  });
+});
+
+describe('a number the page carries on past', () => {
+  it('is found when a slash or an underscore part follows it closely', () => {
+    expect(carriesOn('Invoice Nr. 2031 /HM/00217 11/06/31', '2031')).toBe('/HM/00217');
+    expect(carriesOn('Invoice Nr. 2031/ HM/00217', '2031')).toBe('/HM/00217');
+    expect(carriesOn('Invoice No: 40017822 _2', '40017822')).toBe('_2');
+  });
+
+  it('is not found for a whole number, or a slash set apart by spaces', () => {
+    expect(carriesOn('Invoice Nr. 2031/HM/00217 11/06/31', '2031/HM/00217')).toBeNull();
+    expect(carriesOn('Invoice No: 12345 / PO 678', '12345')).toBeNull();
+    expect(carriesOn('Order 92031/HM', '2031')).toBeNull();
+  });
+
+  it('sends the invoice for a look, naming the page and what follows', () => {
+    const cut = page(3, '2031', { ocr: true, detection: { confidence: 95 }, agreement: true });
+    cut.text = 'Invoice Nr. 2031 /HM/00217';
+    const { groups } = verifyGroups(groupPages([cut]));
+    expect(groups[0].flags).toContain('cut-short');
+    expect(reviewReason('cut-short', groups[0])).toBe(
+      'On page 3, 2031 is followed straight on by "/HM/00217", so it may be only part of the invoice number. Check the whole number.'
+    );
+  });
+});
+
+describe('scanned pages not read yet', () => {
+  it('send their invoice for a look, whatever number the words on top give', () => {
+    // A note typed on top of every page carries one number; the paper is unread.
+    const pages = [2, 3, 4, 5].map((index) => page(index, '2031/HM/00217'));
+    const { groups } = verifyGroups(groupPages(pages), { unreadScans: new Set([2, 3, 4, 5]) });
+    expect(groups[0].flags).toContain('scan-not-read');
+    expect(reviewReason('scan-not-read', groups[0])).toBe(
+      'Pages 2 to 5 are scans that have not been read yet, so the number and where this invoice ends may be wrong. Click "Read scanned pages" first.'
+    );
+  });
+
+  it('leave invoices with no unread pages alone', () => {
+    const { groups } = verifyGroups(groupPages([page(1, '664120')]), {
+      unreadScans: new Set([7]),
+    });
+    expect(groups[0].flags).not.toContain('scan-not-read');
   });
 });

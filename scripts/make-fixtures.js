@@ -854,7 +854,21 @@ function drawScanPage(fixture, invoice, sheetOf, position) {
   put(first ? 'INVOICE' : 'INVOICE (continued)', LAYOUT.title);
   if (first || invoice.numberOnEvery) {
     put('Invoice No:', LAYOUT.numberLabel);
-    put(invoice.number, LAYOUT.number);
+    const slash = invoice.number.indexOf('/');
+    if (fixture.numberGap && slash > 0) {
+      // The year, then the rest a little further on, as some printers set it.
+      const year = invoice.number.slice(0, slash);
+      put(year, LAYOUT.number);
+      put(invoice.number.slice(slash), {
+        ...LAYOUT.number,
+        x:
+          LAYOUT.number.x +
+          textWidth(year, LAYOUT.number.size) +
+          fixture.numberGap * LAYOUT.number.size,
+      });
+    } else {
+      put(invoice.number, LAYOUT.number);
+    }
   }
   if (first) {
     put('Date:', LAYOUT.dateLabel);

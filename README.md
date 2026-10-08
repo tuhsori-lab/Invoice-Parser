@@ -103,6 +103,8 @@ offered as a button (**Use SO-80155**), and never put in without that click.
 | Check                     | What it means                                                                                                                                                                                            |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No number                 | No invoice number was found on these pages.                                                                                                                                                              |
+| Scans not read yet        | Some pages are scans that have not been read yet. Until they are, a number from words typed on top of them is not trusted — click **Read scanned pages**.                                                |
+| Number may be cut short   | The number found is followed straight on by more of one — `2031` then `/HM/00217` — so it may be only part of the invoice number.                                                                        |
 | Two different numbers     | The page gives two numbers — say the box you drew and the "Invoice No." label disagree — and both are shown.                                                                                             |
 | Not in your invoice list  | With a list loaded, the number is not in it (see below).                                                                                                                                                 |
 | Close to one in your list | Not in the list, but exactly one entry is one character away, or differs only by look-alikes (O/0, I/1, S/5, B/8, Z/2, G/6). That entry is offered.                                                      |
@@ -237,6 +239,9 @@ Recognition is also not steady, and the app is built around that:
   middle of an invoice number came out as a letter and a `%` on some pages at one size and as the
   wrong letter on others at another, each time with a low score, and the second look read every one
   of them correctly.
+- **A number split at a slash is joined back up.** Reading a page as scattered text, recognition
+  sometimes sees a small gap before a slash and makes `2026 /FX/00940` two words. A slash never
+  starts or ends a word on an invoice, so the two are joined again when they sit close together.
 - **A label misread by one letter still counts.** On text read from a scan, `Inveice Nr.` or
   `lnvoice No` is taken as the label it plainly is. Only label words of five letters or more, and
   never anything with a digit in it.

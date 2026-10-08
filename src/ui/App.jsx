@@ -277,28 +277,53 @@ export default function App() {
    * so that a number put right by the invoice list is the one the file is named
    * after.
    */
+  const grouped = useMemo(
+    () =>
+      groupPages(analyzed, {
+        mode: settled.mode,
+        unnumbered: settled.unnumbered,
+        combinePages: settled.combinePages,
+        markerText: settled.markerText,
+        pagesPerInvoice: Number(settled.pagesPerInvoice) || 1,
+        overrides: fixes.state,
+      }),
+    [analyzed, settled, fixes.state]
+  );
+
+  /** Pages a saved box already reads from their own text: no need to read them as pictures. */
+  const boxedPages = useMemo(
+    () =>
+      new Set(
+        grouped
+          .filter((group) => group.provenance?.source === 'zone')
+          .flatMap((group) => group.pages.map((page) => page.index))
+      ),
+    [grouped]
+  );
+  /** Pages that are pictures of paper, and not yet read, so no number came from them. */
+  const scannedPages = useMemo(
+    () => scansToRead(analyzed, pictures, boxedPages),
+    [analyzed, pictures, boxedPages]
+  );
+  const scannedIndexes = useMemo(
+    () => new Set(scannedPages.map((page) => page.index)),
+    [scannedPages]
+  );
+
   const verification = useMemo(
     () =>
-      verifyGroups(
-        groupPages(analyzed, {
-          mode: settled.mode,
-          unnumbered: settled.unnumbered,
-          combinePages: settled.combinePages,
-          markerText: settled.markerText,
-          pagesPerInvoice: Number(settled.pagesPerInvoice) || 1,
-          overrides: fixes.state,
-        }),
-        {
-          knownList,
-          strict,
-          learned,
-          isPicture: (page) => {
-            const picture = pictures.get(pictureKey(page));
-            return picture ? isPicture(picture) : undefined;
-          },
-        }
-      ),
-    [analyzed, settled, fixes.state, knownList, strict, learned, pictures]
+      verifyGroups(grouped, {
+        knownList,
+        strict,
+        learned,
+        isPicture: (page) => {
+          const picture = pictures.get(pictureKey(page));
+          return picture ? isPicture(picture) : undefined;
+        },
+        // Scans not read yet: whatever their invoices say is not to be trusted.
+        unreadScans: scannedIndexes,
+      }),
+    [grouped, knownList, strict, learned, pictures, scannedIndexes]
   );
   const groups = useMemo(
     () =>
@@ -519,25 +544,6 @@ export default function App() {
       signal.aborted = true;
     };
   }, [analyzed, docsById, pictures]);
-
-  /** Pages that are pictures of paper, and not yet read, so no number came from them. */
-  const boxedPages = useMemo(
-    () =>
-      new Set(
-        groups
-          .filter((group) => group.provenance?.source === 'zone')
-          .flatMap((group) => group.pages.map((page) => page.index))
-      ),
-    [groups]
-  );
-  const scannedPages = useMemo(
-    () => scansToRead(analyzed, pictures, boxedPages),
-    [analyzed, pictures, boxedPages]
-  );
-  const scannedIndexes = useMemo(
-    () => new Set(scannedPages.map((page) => page.index)),
-    [scannedPages]
-  );
 
   // Scanned pages turned up: start the recognition engine now, from this app's
   // own address, so it is ready by the time somebody asks for them to be read.

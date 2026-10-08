@@ -14,6 +14,8 @@ import { pageRangeForCsv } from './naming.js';
  */
 export const FLAG_ORDER = [
   'no-number',
+  'scan-not-read',
+  'cut-short',
   'conflict',
   'near-list',
   'not-in-list',
@@ -36,6 +38,14 @@ function pageList(numbers = []) {
 }
 
 /** "Page 5" from "page 5". */
+/** "pages 2 to 24" for a run of pages, otherwise as pageList. */
+function pageSpan(numbers = []) {
+  const run = numbers.every((number, at) => at === 0 || number === numbers[at - 1] + 1);
+  return run && numbers.length > 2
+    ? `pages ${numbers[0]} to ${numbers[numbers.length - 1]}`
+    : pageList(numbers);
+}
+
 function capitalise(text) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
@@ -69,6 +79,17 @@ export function reviewReason(flag, group) {
   switch (flag) {
     case 'no-number':
       return `No invoice number was found on ${where}.`;
+    case 'scan-not-read': {
+      const pages = note.pages?.length ? note.pages : group.pages.map((page) => page.index);
+      const one = pages.length === 1;
+      return `${capitalise(pageSpan(pages))} ${one ? 'is a scan' : 'are scans'} that ${
+        one ? 'has' : 'have'
+      } not been read yet, so the number and where this invoice ends may be wrong. Click "Read scanned pages" first.`;
+    }
+    case 'cut-short':
+      return note.page
+        ? `On page ${note.page}, ${group.invoice} is followed straight on by "${note.rest}", so it may be only part of the invoice number. Check the whole number.`
+        : `${group.invoice} on ${where} may be only part of the invoice number. Check the whole number.`;
     case 'conflict': {
       const readings = note.readings ?? [];
       if (readings.length >= 2) {

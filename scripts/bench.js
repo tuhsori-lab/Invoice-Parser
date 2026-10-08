@@ -162,7 +162,7 @@ async function main() {
   const args = options(process.argv.slice(2));
 
   // The pages to read, and the engine files the app serves itself.
-  if (!existsSync(join(ROOT, 'tests', 'fixtures', 'pdf', '34-scan-suffix.pdf'))) {
+  if (!existsSync(join(ROOT, 'tests', 'fixtures', 'pdf', '35-scan-slash-gap.pdf'))) {
     execFileSync(process.execPath, [join(HERE, 'make-fixtures.js')], { stdio: 'inherit' });
   }
   execFileSync(process.execPath, [join(HERE, 'copy-assets.js')], { stdio: 'inherit' });

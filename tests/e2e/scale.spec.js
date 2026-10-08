@@ -132,6 +132,8 @@ test('reads scanned pages that have a note typed on top, and a box drawn on one 
   await expect(notice).toContainText(
     '3 pages look like scans, so their invoice numbers could not be read.'
   );
+  // Until they are read, whatever the typed words say is not trusted.
+  await expect(page.getByTestId('invoice-table')).toContainText('Scanned pages not read yet');
   // The app does not ask for a box yet: the one line of text on these pages is
   // the same on all three, so there is nothing on them to point at.
   await expect(page.getByTestId('point-prompt')).toHaveCount(0);

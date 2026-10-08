@@ -171,6 +171,20 @@ export const SCAN_SUITE = [
       { number: '40017822_3', pages: 1 },
     ],
   },
+  {
+    case: 35,
+    file: '35-scan-slash-gap.pdf',
+    what: 'Numbers with slashes, printed with a little space before the first slash: 2031 /HM/00217',
+    supplier: 'Halden Mercer Textiles',
+    address: '31 Weaver Row, Halden HD4 8MT',
+    // How far the part from the first slash on sits from the year, in ems.
+    numberGap: 0.45,
+    invoices: [
+      { number: '2031/HM/00217', pages: 2 },
+      { number: '2031/HM/00218', pages: 1 },
+      { number: '2031/HM/00226', pages: 2 },
+    ],
+  },
 ];
 
 /**

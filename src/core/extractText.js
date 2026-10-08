@@ -186,6 +186,55 @@ export function buildPageText(items) {
 }
 
 /**
+ * Put back together a word that recognition split at a slash.
+ *
+ * Reading a page as scattered text, recognition sometimes sees a little gap
+ * before or after a slash and makes two words of one: "2026 /FX/00940", or
+ * "2026/ FX/00940", or "2026 / FX/00940". A slash never starts or ends a word on
+ * an invoice, so a word that starts with one is joined to the word before it,
+ * and a word that ends with one to the word after - when they sit close, no
+ * more than a line's height apart.
+ *
+ * @param {Array<{ text: string, bbox: object, confidence?: number }>} words - one line's.
+ * @param {number} lineHeight - in the same pixels as the boxes.
+ * @returns {Array<{ text: string, bbox: object, confidence?: number }>}
+ */
+export function joinSlashedWords(words, lineHeight) {
+  const joined = [];
+  for (const word of words) {
+    const text = String(word?.text ?? '').trim();
+    const before = joined[joined.length - 1];
+    const close =
+      before?.bbox &&
+      word?.bbox &&
+      word.bbox.x0 - before.bbox.x1 <= Math.max(lineHeight, 1) &&
+      word.bbox.x0 >= before.bbox.x0;
+    const beforeText = String(before?.text ?? '');
+    const slashBetween =
+      (text.startsWith('/') && /[A-Za-z0-9]$/.test(beforeText)) ||
+      (beforeText.endsWith('/') && /^[A-Za-z0-9/]/.test(text) && beforeText.length > 0);
+    if (text && close && slashBetween) {
+      joined[joined.length - 1] = {
+        ...before,
+        text: `${beforeText}${text}`,
+        bbox: {
+          x0: before.bbox.x0,
+          y0: Math.min(before.bbox.y0, word.bbox.y0),
+          x1: word.bbox.x1,
+          y1: Math.max(before.bbox.y1, word.bbox.y1),
+        },
+        ...(typeof before.confidence === 'number' && typeof word.confidence === 'number'
+          ? { confidence: Math.min(before.confidence, word.confidence) }
+          : {}),
+      };
+    } else {
+      joined.push(word);
+    }
+  }
+  return joined;
+}
+
+/**
  * Rebuild the text of a page that was read by text recognition, keeping where
  * every word sat.
  *
@@ -213,7 +262,7 @@ export function buildRecognisedText(lines = [], { scale = 1, pageHeight = 0 } = 
     if (!box || !scale) continue;
     const bottom = pageHeight - box.y1 / scale;
     const tall = Math.max((box.y1 - box.y0) / scale, 1);
-    for (const word of line.words ?? []) {
+    for (const word of joinSlashedWords(line.words ?? [], box.y1 - box.y0)) {
       const str = String(word?.text ?? '').trim();
       if (!str || !word.bbox) continue;
       const item = {
