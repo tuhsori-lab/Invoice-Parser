@@ -1708,3 +1708,38 @@ select {
 .review-text .button {
   margin-top: 0.35rem;
 }
+
+/* How each client has gone: a small table of counts in Advanced controls. */
+.legend-like {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.tally-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.tally-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.tally-name {
+  font-weight: 550;
+  overflow-wrap: break-word;
+}
+
+.tally-counts {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}

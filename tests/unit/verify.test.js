@@ -10,6 +10,7 @@ import { reviewReason } from '../../src/core/review.js';
 import { createProfile } from '../../src/core/profiles.js';
 import {
   carriesOn,
+  learnFromInvoices,
   describeShape,
   isBlankPage,
   learnShape,
@@ -410,5 +411,50 @@ describe('scanned pages not read yet', () => {
       unreadScans: new Set([7]),
     });
     expect(groups[0].flags).not.toContain('scan-not-read');
+  });
+});
+
+describe("learning what a client's numbers look like", () => {
+  const checked = (invoice, extra = {}) => ({
+    invoice,
+    clientKey: 'box-1',
+    verified: false,
+    provenance: { source: 'zone' },
+    ...extra,
+  });
+
+  it('learns from a number a person corrected', () => {
+    const learned = learnFromInvoices({}, [
+      checked('HP-81450', { provenance: { source: 'manual' } }),
+    ]);
+    expect(learned['box-1'].shapes).toEqual(['A2 - D5']);
+  });
+
+  it('adds a corrected shape to the ones already learned', () => {
+    const before = { 'box-1': { shapes: ['D6'], prefix: '' } };
+    const learned = learnFromInvoices(before, [
+      checked('HP-81450', { provenance: { source: 'manual' } }),
+    ]);
+    expect(learned['box-1'].shapes).toEqual(['D6', 'A2 - D5']);
+    expect(before['box-1'].shapes).toEqual(['D6']);
+  });
+
+  it('learns from numbers the list confirms, not from ones merely read', () => {
+    expect(learnFromInvoices({}, [checked('664120')])).toEqual({});
+    expect(learnFromInvoices({}, [checked('664120', { verified: true })])['box-1'].shapes).toEqual([
+      'D6',
+    ]);
+  });
+
+  it('learns nothing from invoices found without a box', () => {
+    const learned = learnFromInvoices({}, [
+      checked('664120', { clientKey: 'file:batch.pdf', provenance: { source: 'manual' } }),
+    ]);
+    expect(learned).toEqual({});
+  });
+
+  it('hands back the very same object when there is nothing new', () => {
+    const before = { 'box-1': { shapes: ['D6'], prefix: '' } };
+    expect(learnFromInvoices(before, [checked('664120', { verified: true })])).toBe(before);
   });
 });

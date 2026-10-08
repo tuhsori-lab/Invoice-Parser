@@ -5,6 +5,8 @@
  *   by their headings, so the next list exported the same way loads in one go.
  * - What each client's numbers look like (their shape, and a prefix they all
  *   share), learned from numbers known to be right. Never a number itself.
+ * - How each client's invoices have gone: how many were accepted, corrected or
+ *   sent to review. Counts only.
  *
  * Kept in localStorage, which stays in this browser and is never sent anywhere.
  * A browser that will not keep it simply starts afresh.
@@ -48,4 +50,16 @@ export function loadLearnedShapes() {
 
 export function saveLearnedShapes(learned) {
   write(LEARNED_KEY, learned);
+}
+
+const TALLY_KEY = 'invoice-splitter.client-tally.v1';
+
+/** How each client's invoices have gone: counts only (see core/tally.js). */
+export function loadTally() {
+  const saved = read(TALLY_KEY, {});
+  return saved && typeof saved === 'object' ? saved : {};
+}
+
+export function saveTally(tally) {
+  write(TALLY_KEY, tally);
 }

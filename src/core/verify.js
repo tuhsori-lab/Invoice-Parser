@@ -71,6 +71,49 @@ export function learnShape(confirmed = []) {
   return { shapes: [...new Set(values.map(valueShape))], prefix: sharedPrefix(values) };
 }
 
+/**
+ * Add what checked invoices teach about each boxed client's numbers.
+ *
+ * A number teaches when it is known to be right: your invoice list has it, or
+ * a person typed it in or put it right - a correction is the clearest word
+ * there is on what a client's numbers look like. Shapes are added to the ones
+ * already learned; a prefix is kept only while every number taught has shared
+ * it. Invoices found without a box teach nothing, having no client to keep it
+ * under.
+ *
+ * @param {Record<string, { shapes: string[], prefix: string }>} learned - by box id.
+ * @param {Array<object>} groups - checked invoices, as verifyGroups returns them.
+ * @returns {Record<string, { shapes: string[], prefix: string }>} the same
+ *   object when nothing changed, a new one when something did.
+ */
+export function learnFromInvoices(learned = {}, groups = []) {
+  const known = new Map();
+  for (const group of groups) {
+    const right = group.verified || group.provenance?.source === 'manual';
+    if (!right || !group.invoice || !group.clientKey || group.clientKey.startsWith('file:')) {
+      continue;
+    }
+    known.set(group.clientKey, [...(known.get(group.clientKey) ?? []), group.invoice]);
+  }
+  let next = learned;
+  for (const [id, values] of known) {
+    const fresh = learnShape(values);
+    const before = learned[id] ?? { shapes: [], prefix: '' };
+    const shapes = [...new Set([...before.shapes, ...fresh.shapes])];
+    const prefix =
+      before.shapes.length === 0
+        ? fresh.prefix
+        : before.prefix === fresh.prefix
+          ? before.prefix
+          : '';
+    if (shapes.length !== before.shapes.length || prefix !== before.prefix) {
+      if (next === learned) next = { ...learned };
+      next[id] = { shapes, prefix };
+    }
+  }
+  return next;
+}
+
 /** Does this number look like the client's other numbers? */
 function fits(value, { shapes = [], prefix = '' }) {
   if (prefix && !String(value).startsWith(prefix)) return false;

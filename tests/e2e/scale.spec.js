@@ -230,6 +230,24 @@ test('reads the next scanned batch from a client with a box the quick way, on th
   // A PO number elsewhere on the page would not have been read, and it says so.
   await expect(page.locator('[data-testid^="po-not-read-"]')).toHaveCount(3);
 
+  // One number put right by hand, then everything saved: the client's row
+  // counts it as corrected, and the others as they went.
+  await page.getByTestId('invoice-value-g1').click();
+  await page.getByTestId('invoice-input-g1').fill('718840-A');
+  await page.keyboard.press('Enter');
+  await expect(table).toContainText('718840-A.pdf');
+  const waitForZip = page.waitForEvent('download');
+  await page.getByTestId('download-zip').click();
+  if (await page.getByTestId('confirm-export').isVisible()) {
+    await page.getByTestId('confirm-export').click();
+  }
+  await waitForZip;
+  await page.getByTestId('advanced-toggle').click();
+  const row = page.getByTestId('client-tally').locator('li', { hasText: /Quillfeather/i });
+  await expect(row.getByTestId('tally-corrected')).toHaveText('1 corrected');
+  const counts = await row.locator('[data-testid^="tally-"]').allInnerTexts();
+  expect(counts.map((said) => parseInt(said, 10)).reduce((sum, count) => sum + count, 0)).toBe(3);
+
   const offsite = requests.filter(
     (request) =>
       !request.url.startsWith('http://127.0.0.1:4173') &&

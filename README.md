@@ -130,8 +130,9 @@ alongside it. The box is always the answer; a label that reads the same number c
 opinion, and a label that reads a different one is shown next to it.
 
 **A client's own kind of number.** The shape of the number in a client's box is remembered when the
-box is saved. Numbers your invoice list confirms add to it, and so does a prefix they all share, such
-as `INV-`. Only the shape is kept — "6 digits" — never a number. Invoices found by a label rather than
+box is saved. Numbers your invoice list confirms add to it, and so do numbers you type in or put
+right yourself — a correction is the clearest word there is on what a client's numbers look like —
+and so does a prefix they all share, such as `INV-`. Only the shape is kept — "6 digits" — never a number. Invoices found by a label rather than
 a box are grouped by the file they came in, and a shape is only worked out for a file once two of
 its numbers are confirmed. The one change the app makes by itself: when a number does not fit, a
 single look-alike swap makes it fit, **and** the result is in your invoice list, it is put right and
@@ -169,6 +170,22 @@ pages with no number, how the number is found, and what the files are called —
 whole width. A setting changed and then put away is never out of mind: the button says how many are
 not as they started ("2 settings changed"). Leave the controls open and they are open the next time
 too; that one yes or no is the only thing remembered about them, in this browser.
+
+### How each client has gone
+
+At the bottom of Advanced controls is a short list, one line per client with a saved box, counting
+their invoices as they are saved — downloaded on their own, in the ZIP, or into a folder:
+
+| Count          | Invoices that                                                      |
+| -------------- | ------------------------------------------------------------------ |
+| Accepted       | went out with nothing flagged and nothing changed                  |
+| Corrected      | had their number typed in or put right — by you, or from your list |
+| Sent to review | went out with something still flagged                              |
+
+Each invoice counts once a batch, however many times it is saved. Invoices found by a label rather
+than a box are counted together on a last line. A client whose invoices keep needing a look stands
+out, and their box may want drawing again. Only the counts are kept, in this browser — never an
+invoice number or a file — and **Clear these counts** starts them again.
 
 ## The page strip
 
@@ -509,6 +526,7 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   knownList.js     reading your invoice list, and checking numbers against it
   image.js         cleaning up the picture of a box before it is read
   quickRead.js     which parts of a scanned page to read, and how many pages at once
+  tally.js         counting how each client's invoices have gone
   errors.js        plain-language messages for everything that can go wrong
 src/lib/           the browser side: pdf.js setup, reading a batch, text recognition,
                    thumbnails, downloads, saving to a folder, and where boxes are kept

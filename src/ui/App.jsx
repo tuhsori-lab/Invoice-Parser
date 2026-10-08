@@ -6,7 +6,7 @@ import { explain } from '../core/errors.js';
 import { exportWarning, reviewQueue } from '../core/review.js';
 import { createProfile, identifyingLinesFor, zonesForPage } from '../core/profiles.js';
 import { buildKnownList, guessColumns } from '../core/knownList.js';
-import { learnShape, verifyGroups } from '../core/verify.js';
+import { learnFromInvoices, verifyGroups } from '../core/verify.js';
 import { isPicture } from '../core/scans.js';
 import { closeBatch, loadBatch } from '../lib/loadBatch.js';
 import { clearThumbnails } from '../lib/thumbnails.js';
@@ -28,9 +28,12 @@ import { ListFileError, readListFile } from '../lib/knownListFile.js';
 import {
   loadColumnChoice,
   loadLearnedShapes,
+  loadTally,
   saveColumnChoice,
   saveLearnedShapes,
+  saveTally,
 } from '../lib/listStore.js';
+import { addToTally } from '../core/tally.js';
 import DropZone from './components/DropZone.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import ControlsToggle from './components/ControlsToggle.jsx';
@@ -41,6 +44,7 @@ import PointPrompt from './components/PointPrompt.jsx';
 import PurchaseOrders from './components/PurchaseOrders.jsx';
 import ReviewQueue from './components/ReviewQueue.jsx';
 import KnownList from './components/KnownList.jsx';
+import ClientTally from './components/ClientTally.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
 import ThemeChoice from './components/ThemeChoice.jsx';
 
@@ -163,6 +167,10 @@ export default function App() {
   const [strict, setStrict] = useState(true);
   // What each client's numbers look like, learned from numbers known to be right.
   const [learned, setLearned] = useState(loadLearnedShapes);
+  // How each client's invoices have gone, counted as they are saved.
+  const [tally, setTally] = useState(loadTally);
+  // The invoices of this batch already counted, so saving twice counts once.
+  const talliedRef = useRef(new Set());
   const readCancelRef = useRef(null);
   const cancelRef = useRef(null);
   const sourcesRef = useRef(new Map());
@@ -196,6 +204,7 @@ export default function App() {
       setPointDismissed(false);
       setScanDismissed(false);
       setSavedTo(null);
+      talliedRef.current = new Set();
       setQuery('');
       setIssueAt(-1);
       fixes.reset({ boundaries: {}, numbers: {}, moves: {} });
@@ -336,41 +345,17 @@ export default function App() {
 
   /*
    * Learn what each boxed client's numbers look like from the ones the invoice
-   * list confirms, so their next batch is checked against it too. Only the
-   * shape is kept - "2 letters, a hyphen, then 5 digits" - never a number.
+   * list confirms and the ones a person typed in or put right, so their next
+   * batch is checked against it too. Only the shape is kept - "2 letters, a
+   * hyphen, then 5 digits" - never a number.
    */
   useEffect(() => {
-    if (!knownList) return;
-    const confirmed = new Map();
-    for (const group of groups) {
-      if (!group.verified || !group.invoice || group.clientKey?.startsWith('file:')) continue;
-      confirmed.set(group.clientKey, [...(confirmed.get(group.clientKey) ?? []), group.invoice]);
-    }
-    if (confirmed.size === 0) return;
     setLearned((current) => {
-      let changed = false;
-      const next = { ...current };
-      for (const [id, values] of confirmed) {
-        const fresh = learnShape(values);
-        const before = current[id] ?? { shapes: [], prefix: '' };
-        const shapes = [...new Set([...before.shapes, ...fresh.shapes])];
-        // A prefix is only kept while every confirmed number has shared it.
-        const prefix =
-          before.shapes.length === 0
-            ? fresh.prefix
-            : before.prefix === fresh.prefix
-              ? before.prefix
-              : '';
-        if (shapes.length !== before.shapes.length || prefix !== before.prefix) {
-          next[id] = { shapes, prefix };
-          changed = true;
-        }
-      }
-      if (!changed) return current;
-      saveLearnedShapes(next);
+      const next = learnFromInvoices(current, groups);
+      if (next !== current) saveLearnedShapes(next);
       return next;
     });
-  }, [groups, knownList]);
+  }, [groups]);
 
   const groupOfPage = useMemo(() => {
     const byPage = new Map();
@@ -715,6 +700,29 @@ export default function App() {
     [files]
   );
 
+  /**
+   * Count invoices just saved towards how each client has gone - each invoice
+   * of a batch once, however many times it is saved.
+   */
+  const countSaved = useCallback(
+    (saved) => {
+      const fresh = saved.filter((group) => !talliedRef.current.has(group.id));
+      if (fresh.length === 0) return;
+      for (const group of fresh) talliedRef.current.add(group.id);
+      setTally((current) => {
+        const next = addToTally(current, fresh, (key) => boxes.find((box) => box.id === key)?.name);
+        saveTally(next);
+        return next;
+      });
+    },
+    [boxes]
+  );
+
+  const clearTally = useCallback(() => {
+    setTally({});
+    saveTally({});
+  }, []);
+
   const downloadInvoice = useCallback(
     async (group) => {
       setExporting({ what: group.fileName });
@@ -722,6 +730,7 @@ export default function App() {
         const { buildInvoicePdf } = await exportTools();
         const sources = await sourcesFor([group]);
         saveFile(await buildInvoicePdf(group, sources), group.fileName, 'application/pdf');
+        countSaved([group]);
       } catch (error) {
         setProblems((current) => [
           ...current,
@@ -731,7 +740,7 @@ export default function App() {
         setExporting(null);
       }
     },
-    [sourcesFor, exportTools]
+    [sourcesFor, exportTools, countSaved]
   );
 
   const downloadZip = useCallback(async () => {
@@ -744,6 +753,7 @@ export default function App() {
       });
       const zip = await buildZip(built, { type: 'blob' });
       saveFile(zip, 'invoices.zip', 'application/zip');
+      countSaved(groups);
     } catch (error) {
       setProblems((current) => [
         ...current,
@@ -752,7 +762,7 @@ export default function App() {
     } finally {
       setExporting(null);
     }
-  }, [groups, sourcesFor, exportTools]);
+  }, [groups, sourcesFor, exportTools, countSaved]);
 
   const downloadCsv = useCallback(async () => {
     const { buildCsv } = await exportTools();
@@ -811,6 +821,7 @@ export default function App() {
           onProgress: (done) => setExporting({ what: 'folder', phase: 'Saving', done, total }),
         });
         setSavedTo({ folder: folder.name, count: built.length });
+        countSaved(groups);
       } catch (error) {
         setProblems((current) => [
           ...current,
@@ -845,7 +856,7 @@ export default function App() {
       cancelLabel: 'Cancel',
       act: write,
     });
-  }, [groups, sourcesFor, exportTools]);
+  }, [groups, sourcesFor, exportTools, countSaved]);
 
   /** The same warning as the ZIP, before anything with problems left is saved. */
   const askThenSaveIntoFolder = useCallback(() => {
@@ -1035,6 +1046,7 @@ export default function App() {
               rememberedBoxes={boxes.length}
               onForgetBoxes={askThenForgetAll}
             />
+            <ClientTally tally={tally} onClear={clearTally} />
           </div>
 
           <section className="results" id="results" tabIndex={-1}>
