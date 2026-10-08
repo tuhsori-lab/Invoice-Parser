@@ -507,10 +507,16 @@ export default function App() {
    * @param {object} zone - fractions of the page, y from the bottom.
    * @param {object} page - the page it was drawn on.
    * @param {string} zoneShape - the shape of the number inside it.
+   * @param {string} [value] - the number itself: used to leave lines carrying it
+   *   out of what is remembered, and not kept.
    */
-  const rememberBox = useCallback((zone, page, zoneShape = '') => {
+  const rememberBox = useCallback((zone, page, zoneShape = '', value = '') => {
     const known = page.matchedProfiles?.[0];
-    const lines = identifyingLinesFor(page, analyzedRef.current);
+    const lines = identifyingLinesFor(page, analyzedRef.current, {
+      leaveOut: value,
+      zone,
+      shape: zoneShape,
+    });
     // Through createProfile, the one place that knows what a box may hold.
     const box = createProfile(
       known
@@ -782,8 +788,15 @@ export default function App() {
   const pageCount = pages.length;
 
   // Any page with text a box could be read from: a scanner's own reading of a
-  // page is as good a place to draw one as a typed page.
-  const pointable = useMemo(() => analyzed.filter((page) => page.layout?.length), [analyzed]);
+  // page is as good a place to draw one as a typed page. Not a page printed word
+  // for word more than once in the batch, though - terms of sale after every
+  // invoice, the same remittance slip - since an invoice carries a number of its
+  // own and is never the same twice, so there is nothing on it to point at.
+  const pointable = useMemo(() => {
+    const copies = new Map();
+    for (const page of analyzed) copies.set(page.text, (copies.get(page.text) ?? 0) + 1);
+    return analyzed.filter((page) => page.layout?.length && copies.get(page.text) === 1);
+  }, [analyzed]);
 
   /**
    * Pages a box could be drawn on that no saved spot covers yet, in page order.

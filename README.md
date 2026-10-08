@@ -219,17 +219,32 @@ before anything is saved; **Save this spot** remembers the box for that client. 
 the invoice number** button is on every page's preview, for pointing at any time.
 
 A client is recognised from then on by up to three lines near the top of the page the box was drawn
-on that turn up on their other pages too — their name, their address, the headings their software
-prints. Not simply the first line, which is not always the same twice: a page printed from a
-browser starts with the time it was printed and the order number, and a scan's first line is as
-likely to be its logo read as nonsense. A page is theirs when most of those lines are on it — an
-address shared with a neighbour in the same town is not enough. A line counts as there when all of
-its words are, whatever stray marks a scanner put between them; on a page this app read itself, when
-most of its words are, each allowed a letter wrong.
+on that are also on at least half of their other invoices in the batch — the pages where the box
+finds a number of the same shape. That picks their name, their address and the headings their
+software prints, and leaves out what changes from invoice to invoice:
+
+- the time a page was printed, which a browser puts on the first line of every printout;
+- a scan's logo, read as nonsense that never comes out the same twice;
+- the customer the invoice is addressed to, and that customer's order number, which repeat only on
+  invoices to the same customer;
+- any line with the boxed invoice number in it, so what is remembered never holds one.
+
+Measuring against the client's own invoices, not the whole batch, matters in a batch from several
+clients: a table heading every supplier prints, like `Description Qty Amount`, is on more pages
+than any one client's letterhead, and would otherwise be taken for it.
+
+A page is theirs when the first of those lines is on it — nearly always the letterhead — or when
+most of them are. A line counts as there when all of its words are, whatever stray marks a scanner
+put between them, or all but one when the one that differs has a digit in it: a letterhead can carry
+a VAT or account number that changes from one invoice to another. On a page this app read itself,
+most of a line's words are enough, each allowed a letter wrong.
 
 Every page matched to that client is then read from inside the box, in this batch and in their next
 one, which is not asked about again. In a batch from several clients the card moves on to the first
-page of the next client nobody has pointed at, so they can be taught one after another.
+page of the next client nobody has pointed at, so they can be taught one after another. It never
+asks about a page printed word for word more than once in the batch — terms of sale after every
+invoice, the same remittance slip — since an invoice has a number of its own and is never the same
+twice.
 
 **Pages with nothing in the box.** On many invoices only the first page carries the number; the
 pages after it are continuations. A page with no number in the box has no number, and pages with no

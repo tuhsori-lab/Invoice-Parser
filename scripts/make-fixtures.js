@@ -251,6 +251,52 @@ function printoutLines({ order, time, day, sheet }) {
   ];
 }
 
+/**
+ * The invoices of fixture 25, each followed by the same page of terms. Every
+ * name and number is invented.
+ */
+const TERMS_SHEETS = [
+  { number: 'SI-7710001', customer: 'TIDEWATER BOUTIQUE LLC', po: 'TWB2201' },
+  { number: 'SI-7710002', customer: 'TIDEWATER BOUTIQUE LLC', po: 'TWB2201' },
+  { number: 'SI-7710015', customer: 'KESTREL AND FINCH INC', po: 'KF-8812' },
+  { number: 'SI-7710021', customer: 'NORTHGATE STORES LTD', po: 'NG55107', vat: 'GB123456789' },
+];
+
+/** One landscape invoice of fixture 25: the number under an "Invoice" title. */
+function drawTermsInvoice(page, fonts, { number, customer, po, vat = 'IT00999888777' }) {
+  const text = (value, x, y, size = 6, bold = false) =>
+    page.drawText(value, { x, y, size, font: bold ? fonts.bold : fonts.regular, color: INK });
+  text('MARLOWE ATELIER', 40, 531, 9, true);
+  text(`VAT #: ${vat}`, 420, 531, 7, true);
+  text('Invoice', 694, 531, 12, true);
+  text('14 Quayside Walk', 40, 521);
+  text(number, 695, 521);
+  text('Bristol, BS1 4QA', 40, 513);
+  text('http://www.marlowe-atelier.example', 40, 497);
+  text('Bill To', 60, 480, 6, true);
+  text('Ship to', 560, 480, 6, true);
+  text(`Customer PO: ${po}`, 640, 480);
+  text(customer, 40, 470);
+  text(customer, 560, 470);
+  text('Style Description Colour Quantity WSP TOTAL', 40, 420, 6, true);
+  text('MA-2201 LINEN OVERSHIRT NAVY 5 88.00 440.00', 40, 410);
+  text('USD 440.00', 760, 330, 7, true);
+}
+
+/** The page of terms printed after every invoice of fixture 25, word for word. */
+function drawTermsPage(page, fonts) {
+  const lines = [
+    'MARLOWE ATELIER LIMITED ("MAL")',
+    'TERMS AND CONDITIONS OF SALE',
+    'All sales are subject to these terms and those contained in any purchase order.',
+    'Title to products passes to the buyer once MAL receives payment in full.',
+    'The buyer shall pay interest on any sum overdue at 4% a year above base rate.',
+  ];
+  lines.forEach((value, row) =>
+    page.drawText(value, { x: 50, y: 780 - row * 16, size: 9, font: fonts.regular, color: INK })
+  );
+}
+
 /** Draw one scanned sheet: letterhead, customer, the number in its box, a line or two. */
 function drawScannedSheet(canvas, { label, number, sheet, body }) {
   const write = (text, x, y) => drawBitmapText(canvas, text, { x, y, scale: SCAN_DOT, gray: 25 });
@@ -690,6 +736,32 @@ const FIXTURES = [
       for (const [text, x, y] of lines) {
         page.drawText(text, { x, y, size: 9, font, opacity: 0 });
       }
+    }
+    await writeFile(join(FIXTURE_DIR, name), await pdf.save());
+    return name;
+  },
+
+  /**
+   * 25. Landscape invoices to several customers, each followed by a page of terms.
+   *
+   * The number sits under a large "Invoice" title rather than after a label,
+   * so only a box reads it. The bill-to block and the customer's PO change from
+   * one customer to the next, the last invoice prints a different VAT number in
+   * the letterhead, and the terms page is the same every time - so the client
+   * has to be known by the letterhead alone, and the terms pages are pages to
+   * keep with their invoice, not pages to ask about.
+   */
+  async () => {
+    const name = '25-invoices-with-terms.pdf';
+    const pdf = await PDFDocument.create();
+    pdf.setTitle('Invoices with a page of terms after each (synthetic)');
+    const fonts = {
+      regular: await pdf.embedFont(StandardFonts.Helvetica),
+      bold: await pdf.embedFont(StandardFonts.HelveticaBold),
+    };
+    for (const sheet of TERMS_SHEETS) {
+      drawTermsInvoice(pdf.addPage([842, 595]), fonts, sheet);
+      drawTermsPage(pdf.addPage([595, 842]), fonts);
     }
     await writeFile(join(FIXTURE_DIR, name), await pdf.save());
     return name;

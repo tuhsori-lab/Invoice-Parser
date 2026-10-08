@@ -2,8 +2,8 @@
  * What the app knows about a client's invoices.
  *
  * In the app a client is a box: where their invoice number sits on the page,
- * the shape of that number, and the first line of their page - usually the
- * letterhead - that says "this page is theirs". Recognising pages that way is
+ * the shape of that number, and the lines near the top of their page - usually
+ * the letterhead - that say "this page is theirs". Recognising pages that way is
  * what lets one bulk file hold several clients, each read from their own box.
  *
  * The engine also accepts labels a client's number comes after, which the
@@ -13,19 +13,31 @@
  * Storing them is the app's job. This module only describes them and matches
  * them against page text.
  *
- * A client is known by up to three lines from the top of their page that turn
- * up on their other pages too, and a page is theirs when most of those lines are
- * on it: one line alone - an address shared with a neighbour, say - is not
- * enough. Not simply the first line, because the first line is not always the
- * same twice: a page printed from a browser starts with the time it was printed,
- * and a scan's first line is as likely to be its logo read as nonsense.
+ * A client is known by up to three lines from the top of their page that are
+ * on most of their invoices - the pages where their box finds a number of the
+ * right shape. Not simply the first line, because the first line is not always
+ * the same twice: a page printed from a browser starts with the time it was
+ * printed, and a scan's first line is as likely to be its logo read as
+ * nonsense. Not a line that only repeats on some of their invoices: the
+ * customer an invoice is addressed to, or that customer's order number, is on
+ * their invoices to that customer and no others. And measured against their
+ * own invoices, not the whole batch, so a table heading every supplier prints
+ * cannot outnumber the letterhead and be taken for it.
+ *
+ * A page is theirs when the first of those lines - nearly always the
+ * letterhead - is on it, or when most of them are.
  *
  * A line counts as there when it is, word for word, or when all of its words
- * are, whatever stray marks a scanner put between them. Text read by this app's
- * own text recognition is never quite the same twice - "HARBOR & PINE" on one
- * page, "HARB0R & PINE" on the next, run into the line beside it on a third - so
- * there most of a line's words are enough, each allowed a letter wrong.
+ * are, whatever stray marks a scanner put between them - or all but one, when
+ * the one missing has a digit in it and at least three others are there, since
+ * a letterhead can carry a VAT or account number that changes from one invoice
+ * to the next. Text read by this app's own text recognition is never quite the
+ * same twice - "HARBOR & PINE" on one page, "HARB0R & PINE" on the next, run
+ * into the line beside it on a third - so there most of a line's words are
+ * enough, each allowed a letter wrong.
  */
+
+import { detectInZone } from './detect.js';
 
 /**
  * A spot on a page, remembered so it can be found again on the next invoice.
@@ -210,18 +222,23 @@ function mostlyOn(haystack, line) {
  */
 function appearsOn(haystack, line, tolerant) {
   if (haystack.includes(flatten(line))) return true;
-  if (tolerant) return mostlyOn(haystack, line);
   const words = wordsOf(line);
-  return words.length > 0 && words.every((word) => haystack.includes(word));
+  if (words.length === 0) return false;
+  const missing = words.filter((word) => !haystack.includes(word));
+  if (missing.length === 0) return true;
+  // One number in the line may differ: a VAT number, an account number.
+  if (missing.length === 1 && /\d/.test(missing[0]) && words.length >= 4) return true;
+  return tolerant && mostlyOn(haystack, line);
 }
 
 /**
- * Is this page one of this client's? Most of their lines have to be on it -
- * every one, for a client known by one line or two.
+ * Is this page one of this client's? The most widespread of their lines is
+ * enough on its own; failing that, most of their lines have to be there.
  */
 function claims(profile, haystack, tolerant) {
   const lines = profile?.identifyingText ?? [];
   if (lines.length === 0) return false;
+  if (appearsOn(haystack, lines[0], false)) return true;
   const seen = lines.filter((line) => appearsOn(haystack, line, tolerant)).length;
   return seen > lines.length / 2;
 }
@@ -265,39 +282,76 @@ function looksLikeWords(line) {
 /**
  * The lines that say whose page this is, for knowing their pages again.
  *
- * The lines near the top of the page, made of real-looking words, that turn up
- * on at least one other page of the batch - up to three, top first. A client's
- * name, address and the headings their software prints are on every one of
- * their pages; the time a page was printed, an order number, or a logo read as
- * nonsense is on none of the others. With nothing to compare against, the
- * first line that looks like words stands alone.
+ * The lines near the top of the page, made of real-looking words, that are on
+ * at least half of this client's other invoices: up to three, in the order they
+ * are printed. Their invoices are the pages where the box finds a number of the
+ * right shape. A client's name, address and the headings their software prints
+ * are on every one of them; the customer an invoice is addressed to repeats
+ * only on that customer's invoices; the time a page was printed, an order
+ * number, or a logo read as nonsense is on none of the others.
+ *
+ * Without a box to go by - or one that finds nothing anywhere else - the
+ * yardstick is the most widespread line on the page instead. With nothing to
+ * compare against at all, the first line that looks like words stands alone.
  *
  * @param {object} page - the page the box was drawn on.
  * @param {Array<object>} [batch] - every page of the batch.
+ * @param {object} [options]
+ * @param {string} [options.leaveOut] - the number inside the box. A line with it
+ *   in is never chosen, so what is remembered about a client never holds one of
+ *   their invoice numbers.
+ * @param {object} [options.zone] - the box, as for detectInZone.
+ * @param {string} [options.shape] - the shape of the number inside it.
  * @returns {string[]}
  */
-export function identifyingLinesFor(page, batch = []) {
+export function identifyingLinesFor(page, batch = [], options = {}) {
+  const leaveOut = String(options.leaveOut ?? '')
+    .trim()
+    .toLowerCase();
   const lines = String(page?.text ?? '')
     .split('\n')
     .map((line) => line.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((line) => !leaveOut || !line.toLowerCase().includes(leaveOut));
   const candidates = lines.slice(0, LETTERHEAD_LINES).filter(looksLikeWords);
   if (candidates.length === 0) return lines.length ? [lines[0]] : [];
 
   // The nearest pages first: a client's pages usually sit together in a batch.
-  const others = batch
+  const nearest = batch
     .filter((other) => other && other.index !== page.index && other.text)
     .sort((a, b) => Math.abs(a.index - page.index) - Math.abs(b.index - page.index))
-    .slice(0, LETTERHEAD_SAMPLE)
-    .map((other) => ({ haystack: flatten(other.text), tolerant: Boolean(page.ocr || other.ocr) }));
+    .slice(0, LETTERHEAD_SAMPLE);
 
-  const recurring = candidates.filter((line) =>
-    others.some(({ haystack, tolerant }) => appearsOn(haystack, line, tolerant))
-  );
-  return (recurring.length ? recurring : candidates).slice(
-    0,
-    recurring.length ? IDENTIFYING_LINES : 1
-  );
+  // This client's other invoices: where the box reads a number of its shape.
+  const { zone, shape = '' } = options;
+  const theirs = zone
+    ? nearest.filter(
+        (other) =>
+          other.pageWidth &&
+          other.pageHeight &&
+          detectInZone(
+            other.text,
+            other.layout,
+            zone,
+            { width: other.pageWidth, height: other.pageHeight },
+            shape
+          )
+      )
+    : [];
+  const yardstick = theirs.length ? theirs : nearest;
+
+  const counted = candidates.map((line) => ({
+    line,
+    count: yardstick.filter((other) =>
+      appearsOn(flatten(other.text), line, Boolean(page.ocr || other.ocr))
+    ).length,
+  }));
+  const enough = theirs.length ? theirs.length : Math.max(...counted.map((entry) => entry.count));
+  if (enough === 0) return [candidates[0]];
+  const chosen = counted.filter((entry) => entry.count > 0 && entry.count * 2 >= enough);
+  return (chosen.length ? chosen : counted.slice(0, 1))
+    .slice(0, IDENTIFYING_LINES)
+    .map((entry) => entry.line);
 }
 
 /**

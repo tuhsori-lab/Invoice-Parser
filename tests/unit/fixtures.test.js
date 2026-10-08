@@ -276,6 +276,62 @@ describe("scanned printouts that carry the scanner's own text", () => {
   });
 });
 
+describe('a box saved in a batch from two clients', () => {
+  it('is known by the letterhead, not a table heading both clients print', async () => {
+    const pages = [
+      ...(await loadFixturePages('22-boxed-number.pdf')),
+      ...(await loadFixturePages('21-column-heading.pdf')),
+    ].map((page, position) => ({ ...page, index: position + 1 }));
+    const [first] = pages;
+    const zone = HARBOR_PINE.zone;
+    const lines = identifyingLinesFor(first, pages, { leaveOut: '50621', zone, shape: 'D5' });
+
+    expect(lines[0]).toBe('Harbor & Pine Apparel');
+    const box = createProfile({ name: 'x', identifyingText: lines, zone, zoneShape: 'D5' });
+    const groups = groupPages(analyzePages(pages, { profiles: [box] }), {});
+    // The other client's pages are still read by their own label, not the box.
+    expect(groups.map((group) => [group.invoice, group.provenance?.source])).toEqual([
+      ['50621', 'zone'],
+      ['50698', 'zone'],
+      ['SR-40881_2', 'common'],
+      ['SR-40997_1', 'common'],
+    ]);
+  });
+});
+
+describe('invoices to several customers, with a page of terms after each', () => {
+  it('case 25: reads every invoice from a box drawn on the first, and keeps the terms with each', async () => {
+    const pages = await loadFixturePages('25-invoices-with-terms.pdf');
+    const [first] = pages;
+    const span = first.layout.find(
+      (part) => first.text.slice(part.start, part.end) === 'SI-7710001'
+    );
+    const box = createProfile({
+      name: 'drawn on page 1',
+      identifyingText: identifyingLinesFor(first, pages, { leaveOut: 'SI-7710001' }),
+      zone: {
+        x0: span.x / first.pageWidth,
+        x1: span.endX / first.pageWidth,
+        y0: span.y / first.pageHeight,
+        y1: (span.y + span.fontSize) / first.pageHeight,
+      },
+      zoneShape: 'A2 - D7',
+    });
+
+    // Known by the letterhead, never by the first customer or the boxed number.
+    expect(box.identifyingText[0]).toBe('MARLOWE ATELIER VAT #: IT00999888777 Invoice');
+    expect(box.identifyingText.join(' ')).not.toMatch(/TIDEWATER|SI-7710001/);
+
+    const groups = groupPages(analyzePages(pages, { profiles: [box] }), {});
+    expect(groups.map((group) => [group.invoice, group.pages.map((page) => page.index)])).toEqual([
+      ['SI-7710001', [1, 2]],
+      ['SI-7710002', [3, 4]],
+      ['SI-7710015', [5, 6]],
+      ['SI-7710021', [7, 8]],
+    ]);
+  });
+});
+
 describe('pointing at where the number is', () => {
   /**
    * The whole point of a saved spot: shown once where the number is, the app
