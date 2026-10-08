@@ -58,6 +58,13 @@ describe('the level between ink and paper', () => {
     expect(gray.slice(38).every((value) => value === 0)).toBe(true);
   });
 
+  it('leaves blank, speckled paper all white', () => {
+    // Paper with the faint speckle of a scan, and no ink.
+    const pixels = rgba(Array.from({ length: 60 }, (_, at) => Array(3).fill(240 + (at % 7))));
+    expect(cleanUp(pixels).level).toBe(0);
+    expect([...toGray(pixels)].every((value) => value === 255)).toBe(true);
+  });
+
   it('can stop at shades of grey', () => {
     const pixels = rgba([[200, 100, 50]]);
     expect(cleanUp(pixels, { threshold: false }).level).toBeNull();

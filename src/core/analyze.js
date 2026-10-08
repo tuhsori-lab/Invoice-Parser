@@ -213,7 +213,8 @@ export function analyzePages(pages = [], settings = {}) {
 
 /**
  * What one reading of a scanned page gives: the invoice number the usual rules
- * find in it, and how sure text recognition was of that number.
+ * find in it, how sure text recognition was of that number, and whether two
+ * ways of reading it disagreed.
  *
  * Used to choose between two readings of the same page, so it goes through
  * exactly the detection every other page does - a box drawn for the client, the
@@ -222,10 +223,15 @@ export function analyzePages(pages = [], settings = {}) {
  * @param {ExtractedPage} page - the page as it was before it was read.
  * @param {{ text: string, layout: Array<object>|null }} reading - what was read.
  * @param {object} [settings] - as for analyzePages.
- * @returns {{ value: string|null, confidence: number|null }}
+ * @returns {{ value: string|null, confidence: number|null, conflict: boolean }}
  */
 export function judgeReading(page, reading, settings = {}) {
   const [read] = analyzePages([{ ...page, ...reading, ocr: true }], settings);
   const value = read.detection?.value ?? null;
-  return { value, confidence: value ? valueConfidence(read.text, read.layout, value) : null };
+  return {
+    value,
+    confidence: value ? valueConfidence(read.text, read.layout, value) : null,
+    // Two ways of reading it gave different numbers.
+    conflict: Boolean(read.conflict),
+  };
 }

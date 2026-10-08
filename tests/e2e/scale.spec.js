@@ -183,3 +183,57 @@ test('reads scanned pages that have a note typed on top, and a box drawn on one 
   await expect(table).toContainText('2031-TB-00587.pdf');
   await expect(table.getByText('the spot you chose')).toHaveCount(2);
 });
+
+test('reads the next scanned batch from a client with a box the quick way, on this computer only', async ({
+  page,
+}) => {
+  test.setTimeout(300_000);
+  const requests = [];
+  page.on('request', (request) => requests.push({ url: request.url(), method: request.method() }));
+
+  // First batch: read whole, then a box drawn around the number. The engine is
+  // started as soon as the scans are seen, before anyone asks for them to be read.
+  await loadFixtures(page, ['27-scan-150dpi.pdf']);
+  const notice = page.getByTestId('scanned-notice');
+  await expect(notice).toBeVisible();
+  await expect
+    .poll(() => requests.filter((request) => request.url.includes('/tesseract/')).length, {
+      timeout: 60_000,
+    })
+    .toBeGreaterThan(0);
+  await page.getByTestId('read-scanned').click();
+  await expect(notice).toHaveCount(0, { timeout: 240_000 });
+  const table = page.getByTestId('invoice-table');
+  await expect(table).toContainText('718840.pdf');
+
+  await page.getByTestId('tile-1').click();
+  await page.getByTestId('point-start').click();
+  const sheet = await page.getByTestId('spot-picker').boundingBox();
+  await page.mouse.move(sheet.x + sheet.width * 0.755, sheet.y + sheet.height * 0.153);
+  await page.mouse.down();
+  await page.mouse.move(sheet.x + sheet.width * 0.84, sheet.y + sheet.height * 0.183, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.getByTestId('spot-value')).toHaveText('718840');
+  await page.getByTestId('spot-save').click();
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  // The next batch: each page is read in parts - the top, the box, the foot.
+  await loadFixtures(page, ['27-scan-150dpi.pdf']);
+  await expect(notice).toBeVisible();
+  await page.getByTestId('read-scanned').click();
+  await expect(notice).toHaveCount(0, { timeout: 240_000 });
+  await expect(table).toContainText('718840.pdf');
+  await expect(table).toContainText('718841.pdf');
+  await expect(table).toContainText('718856.pdf');
+  // A PO number elsewhere on the page would not have been read, and it says so.
+  await expect(page.locator('[data-testid^="po-not-read-"]')).toHaveCount(3);
+
+  const offsite = requests.filter(
+    (request) =>
+      !request.url.startsWith('http://127.0.0.1:4173') &&
+      !request.url.startsWith('blob:') &&
+      !request.url.startsWith('data:')
+  );
+  expect(offsite).toEqual([]);
+  expect(requests.filter((request) => request.method !== 'GET')).toEqual([]);
+});

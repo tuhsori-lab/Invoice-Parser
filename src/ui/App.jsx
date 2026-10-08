@@ -22,7 +22,7 @@ import { useUndoable } from '../lib/useUndoable.js';
 import { loadBoxes, saveBoxes } from '../lib/boxStore.js';
 import { applyTheme, loadTheme, watchSystemTheme } from '../lib/theme.js';
 import { loadControlsOpen, saveControlsOpen } from '../lib/controlsStore.js';
-import { readScannedPages, stopOcr } from '../lib/ocr.js';
+import { preloadOcr, readScannedPages, stopOcr } from '../lib/ocr.js';
 import { measurePictures, pictureKey, scansToRead } from '../lib/pictures.js';
 import { ListFileError, readListFile } from '../lib/knownListFile.js';
 import {
@@ -539,6 +539,13 @@ export default function App() {
     [scannedPages]
   );
 
+  // Scanned pages turned up: start the recognition engine now, from this app's
+  // own address, so it is ready by the time somebody asks for them to be read.
+  const offerScans = scannedPages.length > 0 && !scanDismissed;
+  useEffect(() => {
+    if (offerScans) preloadOcr();
+  }, [offerScans]);
+
   /**
    * What a reading of a scanned page gives, by the same rules as every other
    * page, so that an unsure one can be read again and the better one kept.
@@ -581,6 +588,9 @@ export default function App() {
         onProgress: setReading,
         judge,
         boxFor,
+        // With a box saved, read only the top, the box and the foot of a page
+        // whose top names that client.
+        quick: boxes.length > 0,
       });
       if (found.size > 0) {
         setPages((current) =>
@@ -607,7 +617,7 @@ export default function App() {
       setReading(null);
       await stopOcr();
     }
-  }, [scannedPages, docsById, judge, boxFor, boxedPages]);
+  }, [scannedPages, docsById, judge, boxFor, boxedPages, boxes.length]);
 
   /* ------------------------------------------------------------------ boxes */
 
@@ -1109,8 +1119,8 @@ export default function App() {
                 {reading ? (
                   <>
                     <p>
-                      Reading page {reading.pageIndex} &mdash; {reading.done} of {reading.total}{' '}
-                      done. This is slow; you can stop at any point and keep what has been read.
+                      Reading scanned pages &mdash; {reading.done} of {reading.total} done. This is
+                      slow; you can stop at any point and keep what has been read.
                     </p>
                     <div className="progress-track">
                       <div

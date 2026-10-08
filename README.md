@@ -262,7 +262,27 @@ picture's ink from its paper, with coloured marks such as a red PAID stamp washe
 at two sizes in black and white and once in plain grey. When those readings agree with each other
 and with the page, that counts as the second opinion a scanned number needs. When they disagree,
 every reading is shown and none is picked — unless your invoice list has exactly one of them, in
-which case that one is used and the table says it was put right.
+which case that one is used and the table says it was put right. A box reading that recognition is less than 50% sure of is treated as not read at all: at that
+score it is guessing at specks, and a guess shown beside the real number only gets in the way. A
+box with nothing printed in it —
+a later page of an invoice — reads as empty paper, not as specks to be guessed at.
+
+### Reading scans faster
+
+- **Several pages at once.** Pages are read side by side, one on each of up to four copies of the
+  recognition engine — one for each of the computer's processors, less one so the app stays
+  responsive. While those are reading, the next page is being drawn.
+- **Ready before you click.** The engine starts loading the moment scanned pages turn up, while the
+  offer to read them is on screen.
+- **Only what matters, for a client with a box.** Once a client has a saved box, their scanned pages
+  are read in three parts instead of whole: the top quarter, to tell whose invoice it is; the box,
+  for the number; and the foot of the page, for "Page 2 of 3". If the top of a page does not say
+  which client it is, the whole page is read as before; if the number in the box is unsure, or two
+  readings of it disagree, the whole page gets a second look at another size. One thing is lost: a
+  PO number in the middle of such a page is not read, and the PO list says **not read (scan)** for
+  it rather than "none found".
+
+On the sample scans with a box saved, a page now takes well under a third of the time it did.
 
 The recognition engine, its WebAssembly and the English language data are all served by this app
 (copied out of `node_modules` by `npm run assets`, about 14 MB). They are fetched the first time
@@ -361,7 +381,9 @@ files by their own order number, so that is what a remittance or a dispute refer
 invoice's PO is listed in its own section under the table, with the label it was found after, and
 **Copy list** puts it on the clipboard as two tab-separated columns with a heading row, so it pastes
 straight into a spreadsheet as `Invoice` and `PO`. The list follows the search box, and copies
-exactly what it shows. It can be switched off under _Advanced controls → Finding the number_.
+exactly what it shows. It can be switched off under _Advanced controls → Finding the number_. On a scan read the quick way
+(see _Reading scans faster_), the PO column says **not read (scan)**: only the top, the box and the
+foot of those pages were read.
 
 A PO is found the way an invoice number is — after a label, and in its column when the label is a
 heading — using `PO #`, `P.O. No.`, `PO Number`, `Purchase Order`, and `Customer PO` or `Your PO`.
@@ -480,6 +502,8 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   scans.js         telling a scan from a typed page, and how large to read it
   verify.js        the checks every invoice goes through before it can go out unreviewed
   knownList.js     reading your invoice list, and checking numbers against it
+  image.js         cleaning up the picture of a box before it is read
+  quickRead.js     which parts of a scanned page to read, and how many pages at once
   errors.js        plain-language messages for everything that can go wrong
 src/lib/           the browser side: pdf.js setup, reading a batch, text recognition,
                    thumbnails, downloads, saving to a folder, and where boxes are kept

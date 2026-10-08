@@ -68,7 +68,42 @@ export function otsuLevel(gray) {
 }
 
 /**
+ * How far apart in grey, at least, ink and paper have to be for a picture to
+ * have any ink in it. Faint grey print on white is about a hundred apart; the
+ * speckle of a blank piece of scanned paper is a few.
+ */
+export const LEAST_INK_CONTRAST = 40;
+
+/**
+ * How far apart in grey the two sides of a level are, on average.
+ *
+ * @param {Uint8Array} gray
+ * @param {number} level
+ * @returns {number} 0 when everything is on one side.
+ */
+export function contrastAt(gray, level) {
+  let darkSum = 0;
+  let dark = 0;
+  let lightSum = 0;
+  let light = 0;
+  for (const value of gray) {
+    if (value < level) {
+      darkSum += value;
+      dark += 1;
+    } else {
+      lightSum += value;
+      light += 1;
+    }
+  }
+  return dark && light ? lightSum / light - darkSum / dark : 0;
+}
+
+/**
  * Turn a picture to pure black and white, in place.
+ *
+ * A picture with no ink in it - blank paper, whose only marks are the speckle
+ * of the scan - comes out all white, rather than with that speckle turned to
+ * black marks that recognition would try to read.
  *
  * @param {Uint8ClampedArray} rgba - four bytes a pixel; changed in place.
  * @param {object} [options]
@@ -78,7 +113,9 @@ export function otsuLevel(gray) {
  */
 export function cleanUp(rgba, { threshold = true, dropColour = false } = {}) {
   const gray = toGray(rgba, { brightest: dropColour });
-  const level = threshold ? otsuLevel(gray) : null;
+  let level = threshold ? otsuLevel(gray) : null;
+  // Nothing darker than the paper by enough to be ink: all of it is paper.
+  if (level !== null && contrastAt(gray, level) < LEAST_INK_CONTRAST) level = 0;
   for (let at = 0, pixel = 0; at < rgba.length; at += 4, pixel += 1) {
     const value = level === null ? gray[pixel] : gray[pixel] < level ? 0 : 255;
     rgba[at] = value;

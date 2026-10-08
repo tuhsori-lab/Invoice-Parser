@@ -97,6 +97,12 @@ export default function PurchaseOrders({ groups, colourOf, onOpenPage }) {
                 <td>
                   {group.po?.value ? (
                     <span className="po-value">{group.po.value}</span>
+                  ) : group.pages.some((page) => page.partial) ? (
+                    // Only the top, the box and the foot of a scanned page were
+                    // read, to be quicker: a PO number elsewhere would be missed.
+                    <span className="muted" data-testid={`po-not-read-${group.id}`}>
+                      not read (scan)
+                    </span>
                   ) : (
                     <span className="muted">none found</span>
                   )}

@@ -19,7 +19,7 @@ import { groupPages } from '../src/core/group.js';
 import { assignFileNames } from '../src/core/naming.js';
 import { createProfile, zonesForPage } from '../src/core/profiles.js';
 import { valueShape } from '../src/core/detect.js';
-import { readScannedPages, stopOcr } from '../src/lib/ocr.js';
+import { preloadOcr, readScannedPages, stopOcr } from '../src/lib/ocr.js';
 import { measurePictures, pictureKey, scansToRead } from '../src/lib/pictures.js';
 import { buildKnownList } from '../src/core/knownList.js';
 import { verifyGroups } from '../src/core/verify.js';
@@ -144,11 +144,16 @@ async function run(scenario) {
 
   let ocrSeconds = 0;
   if (toRead.length > 0) {
+    // The app starts the engine as soon as scans turn up, while the offer to
+    // read them is on screen; the clock starts when reading does.
+    await preloadOcr();
     const started = performance.now();
     const found = await readScannedPages(toRead, docsById, {
       judge: (page, reading) => judgeReading(page, reading, analysis),
       boxFor: (page, reading) =>
         zonesForPage(reading.text, analysis.profiles ?? [], { tolerant: true })[0] ?? null,
+      // As the app does: quick reading whenever a box is saved.
+      quick: (analysis.profiles ?? []).length > 0,
       pageMode: settings.pageMode,
       rotateAuto: settings.rotateAuto,
     });
@@ -202,6 +207,8 @@ function mark(expected, groups) {
     sentToReview: 0,
     correctSplits: 0,
     details: [],
+    // Right, but sent for a second look anyway, and why.
+    reviewed: [],
   };
   const splits = new Set();
   for (const group of groups) {
@@ -211,6 +218,17 @@ function mark(expected, groups) {
     const right = Boolean(match) && match.invoice === group.invoice;
     const flagged = group.flags.length > 0;
     if (flagged) result.sentToReview += 1;
+    if (flagged && right)
+      result.reviewed.push({
+        invoice: group.invoice,
+        flags: group.flags,
+        notes: group.notes,
+        readings: group.pages.map((page) => [
+          page.index,
+          page.text?.slice(0, 160),
+          page.boxReadings?.readings,
+        ]),
+      });
     if (right) {
       result.correct += 1;
     } else {
