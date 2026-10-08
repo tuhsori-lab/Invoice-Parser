@@ -24,7 +24,7 @@ const BASE = import.meta.env.BASE_URL;
  * How a whole page is laid out for recognition. 6 - "one block of text" - is
  * the engine's own default and what this app has always used.
  */
-export const DEFAULT_PAGE_MODE = 6;
+export const DEFAULT_PAGE_MODE = 12;
 
 /** Reading a box: one line of text. */
 const LINE_MODE = 7;
@@ -232,7 +232,7 @@ export async function readScannedPages(pages, docsById, options = {}) {
   const { onProgress, signal, judge, boxFor } = options;
   const settings = {
     pageMode: options.pageMode ?? DEFAULT_PAGE_MODE,
-    rotateAuto: options.rotateAuto ?? false,
+    rotateAuto: options.rotateAuto ?? true,
   };
   const found = new Map();
   if (pages.length === 0) return found;

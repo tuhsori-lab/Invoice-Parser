@@ -107,12 +107,12 @@ async function load(fileName) {
   return loadBatch([file]);
 }
 
-/** Reading settings under test, from the page address: ?psm=11&rotate=1. */
+/** Reading settings under test, from the page address: ?psm=11&rotate=0. */
 const settings = (() => {
   const params = new URLSearchParams(location.search);
   return {
     pageMode: params.get('psm') ? Number(params.get('psm')) : undefined,
-    rotateAuto: params.get('rotate') === '1' ? true : undefined,
+    rotateAuto: params.get('rotate') === '0' ? false : undefined,
   };
 })();
 

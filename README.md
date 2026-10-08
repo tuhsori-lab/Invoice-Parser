@@ -248,6 +248,12 @@ Recognition is also not steady, and the app is built around that:
   scans. On a scan with no such text under the box, the app says so and points to **Read scanned
   pages**.
 
+**Straightened, and read as scattered text.** A page scanned a little crooked is straightened before
+it is read, and a whole page is read as text scattered about the page rather than as one block — an
+invoice is a letterhead, some boxes and a table, not a paragraph. On the sample scans these two
+together read more invoice numbers right and none wrong; straightening costs some time, which the
+quicker reading below wins back.
+
 **The box is read close up, three ways.** On a page from a client with a saved box, the box is also
 cut out and read on its own: drawn large enough that capital letters are about 30 pixels tall,
 read as a single line using only the letters, digits and `- / _ .` an invoice number is made of,

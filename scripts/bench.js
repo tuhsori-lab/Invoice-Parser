@@ -14,7 +14,7 @@
  *   npm run bench -- --mode box          only runs with a saved box
  *   npm run bench -- --mode list         only runs checked against an invoice list
  *   npm run bench -- --psm 11            read whole pages in another layout mode
- *   npm run bench -- --rotate            straighten crooked pages before reading
+ *   npm run bench -- --no-rotate         do not straighten crooked pages first
  *   npm run bench -- --save-baseline     keep this run as the one to compare with
  *
  * Results go to bench/results/latest.json. When bench/baseline.json exists, the
@@ -199,7 +199,7 @@ async function main() {
   if (args.only) query.set('only', String(args.only));
   if (args.mode) query.set('mode', String(args.mode));
   if (args.psm) query.set('psm', String(args.psm));
-  if (args.rotate) query.set('rotate', '1');
+  if (args['no-rotate']) query.set('rotate', '0');
   console.log('Running the benchmark in a headless browser...');
   await page.goto(`http://127.0.0.1:${PORT}/bench/index.html?${query}`);
   await page.waitForFunction(() => window.__benchResults, null, { timeout: 0, polling: 1000 });
