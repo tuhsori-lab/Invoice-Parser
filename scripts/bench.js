@@ -12,6 +12,7 @@
  *   npm run bench                        everything
  *   npm run bench -- --only 26,31        just those samples (both modes)
  *   npm run bench -- --mode box          only runs with a saved box
+ *   npm run bench -- --mode list         only runs checked against an invoice list
  *   npm run bench -- --save-baseline     keep this run as the one to compare with
  *
  * Results go to bench/results/latest.json. When bench/baseline.json exists, the
@@ -115,6 +116,7 @@ function report(results, baseline) {
     typed: results.filter((entry) => !entry.scannedPages && !entry.error),
     'scans, labels': results.filter((entry) => entry.scannedPages && entry.mode === 'labels'),
     'scans, box': results.filter((entry) => entry.scannedPages && entry.mode === 'box'),
+    'scans, list': results.filter((entry) => entry.scannedPages && entry.mode === 'list'),
     overall: results.filter((entry) => !entry.error),
   };
   console.log('');

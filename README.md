@@ -89,9 +89,74 @@ A few rules do most of the work of not being confidently wrong:
   decides; on a later line only what stands in the label's column counts, so the postcode is passed
   over and the number below the heading is taken.
 
-Anything the engine is unsure about is flagged for review rather than quietly guessed:
-`no-number`, `fallback` (the bare tier answered), `conflict` (two labels, two different numbers),
-`duplicate-name` (two invoices want the same file name), and `ocr` (the text came from a scan).
+Anything the engine is unsure about is flagged for review rather than quietly guessed. The checks
+are listed under [Checking every invoice](#checking-every-invoice).
+
+## Checking every invoice
+
+The rule is simple: **an invoice goes out without a second look only when nothing gives any reason
+to doubt it.** When something does, it goes on the list of things to check, with a sentence saying
+what and on which pages — "S0-80155 on page 2 is not in your invoice list, but SO-80155 is - they
+differ only by letters and digits that look alike." Where there is an obvious right answer it is
+offered as a button (**Use SO-80155**), and never put in without that click.
+
+| Check                     | What it means                                                                                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No number                 | No invoice number was found on these pages.                                                                                                                   |
+| Two different numbers     | The page gives two numbers — say the box you drew and the "Invoice No." label disagree — and both are shown.                                                  |
+| Not in your invoice list  | With a list loaded, the number is not in it (see below).                                                                                                      |
+| Close to one in your list | Not in the list, but exactly one entry is one character away, or differs only by look-alikes (O/0, I/1, S/5, B/8, Z/2, G/6). That entry is offered.           |
+| Doesn't look like theirs  | The number is not the shape of this client's other numbers — "2 letters, a hyphen, then 5 digits". If one look-alike swap would make it fit, that is offered. |
+| Far out of sequence       | The number is far from this client's other numbers in the batch: 864127 among 664120 to 664133.                                                               |
+| Pages out of order        | A page says "Page 1 of" in the middle of an invoice (two invoices may have been joined), or the marks run out of order.                                       |
+| Page count doesn't match  | The pages say "of 3" but only two are here.                                                                                                                   |
+| Blank page                | A page with nothing on it.                                                                                                                                    |
+| Page from no client       | In a batch where you have drawn a box, a page no client you have shown the app claims, that no label read and that does not name the invoice it sits in.      |
+| Same file name            | Two invoices want the same file name; the second gets `(2)`.                                                                                                  |
+| "Invoice" on its own      | The number came from the bare word "Invoice" with no label after it.                                                                                          |
+| Read from a scan          | The number came from text recognition and nothing backs it up (see below).                                                                                    |
+
+**A number read from a scan** goes out without review only when something double-checks it: your
+invoice list has it, or text recognition was at least 75% sure of it _and_ a second reading agrees —
+the box and a label on the same page read the same number, or the same number is read on two of the
+invoice's pages. A number you typed in yourself needs no check. Everything else read from a scan is
+flagged, saying how sure the reading was.
+
+**Two readings of one page.** When a box is saved for a client, the label rules still read the page
+alongside it. The box is always the answer; a label that reads the same number counts as a second
+opinion, and a label that reads a different one is shown next to it.
+
+**A client's own kind of number.** The shape of the number in a client's box is remembered when the
+box is saved. Numbers your invoice list confirms add to it, and so does a prefix they all share, such
+as `INV-`. Only the shape is kept — "6 digits" — never a number. Invoices found by a label rather than
+a box are grouped by the file they came in, and a shape is only worked out for a file once two of
+its numbers are confirmed. The one change the app makes by itself: when a number does not fit, a
+single look-alike swap makes it fit, **and** the result is in your invoice list, it is put right and
+the table says so ("Read as S0-80155; put right from your invoice list").
+
+### Your invoice list
+
+**Load invoice list**, above the page strip, takes a CSV or Excel (.xlsx) file of your invoice numbers.
+It is read in this browser tab, used for this session, and never saved or sent anywhere.
+
+To make one, export your open (or recent) invoices from your accounting system as CSV or Excel — most
+have an "Export" or "Download" button on their invoice or receivables list. One column must hold the
+invoice numbers; a column of client names is optional. Older `.xls` files need saving as `.xlsx` or
+`.csv` first.
+
+When the file is loaded, the app guesses which column is which from the headings and asks you to
+confirm. Your choice is remembered by heading, so the next list exported the same way is used
+straight away. Then:
+
+- a number in the list is marked **In your invoice list**;
+- a number one character from exactly one entry, or a look-alike of it, is flagged and the entry
+  offered;
+- a number not in the list is flagged **Not in your invoice list**;
+- entries in the list that no invoice in the batch carries are listed under **Expected but not
+  found**.
+
+**Only let invoices that are in the list go out without a second look** is on whenever a list is
+loaded. Turned off, a number missing from the list is only noted beside it.
 
 ## Advanced controls
 
@@ -396,6 +461,8 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   review.js        what needs a person's eye, said in plain words
   profiles.js      what the app remembers about a client, and matching it to pages
   scans.js         telling a scan from a typed page, and how large to read it
+  verify.js        the checks every invoice goes through before it can go out unreviewed
+  knownList.js     reading your invoice list, and checking numbers against it
   errors.js        plain-language messages for everything that can go wrong
 src/lib/           the browser side: pdf.js setup, reading a batch, text recognition,
                    thumbnails, downloads, saving to a folder, and where boxes are kept

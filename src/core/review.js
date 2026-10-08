@@ -12,7 +12,39 @@ import { pageRangeForCsv } from './naming.js';
  * Which problem to lead with when an invoice has several.
  * Worst first: a missing number stops the work, an OCR warning merely slows it.
  */
-export const FLAG_ORDER = ['no-number', 'conflict', 'duplicate-name', 'fallback', 'ocr'];
+export const FLAG_ORDER = [
+  'no-number',
+  'conflict',
+  'near-list',
+  'not-in-list',
+  'odd-shape',
+  'out-of-sequence',
+  'page-order',
+  'page-count',
+  'no-client',
+  'blank-page',
+  'duplicate-name',
+  'fallback',
+  'ocr',
+];
+
+/** "page 5" or "pages 5 and 7". */
+function pageList(numbers = []) {
+  if (numbers.length === 1) return `page ${numbers[0]}`;
+  return `pages ${numbers.slice(0, -1).join(', ')} and ${numbers[numbers.length - 1]}`;
+}
+
+/** "Page 5" from "page 5". */
+function capitalise(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** Where a reading came from, in words: "the box you drew", "after "Invoice No:"". */
+function readingFrom(hit) {
+  if (hit.source === 'zone') return 'in the box you drew';
+  if (hit.source === 'bare') return 'after the word "Invoice"';
+  return `after "${hit.label}"`;
+}
 
 /** "page 5", or "pages 5 to 6, 9". */
 export function describePages(group) {
@@ -30,12 +62,61 @@ export function describePages(group) {
  */
 export function reviewReason(flag, group) {
   const where = describePages(group);
+  const note = group.notes?.[flag] ?? {};
 
   switch (flag) {
     case 'no-number':
       return `No invoice number was found on ${where}.`;
-    case 'conflict':
+    case 'conflict': {
+      const readings = note.readings ?? [];
+      if (readings.length >= 2) {
+        const said = readings.map((hit) => `${hit.value} (${readingFrom(hit)})`).join(' and ');
+        return `Page ${note.page} gives two different numbers: ${said}. ${group.invoice} was used.`;
+      }
       return `Two different invoice numbers appear on ${where}. ${group.invoice} was used.`;
+    }
+    case 'near-list': {
+      const close = note.suggestion ? `, but ${note.suggestion} is` : '';
+      const why =
+        note.why === 'look-alike'
+          ? ' - they differ only by letters and digits that look alike'
+          : note.suggestion
+            ? ' - one character differs'
+            : '';
+      return `${group.invoice} on ${where} is not in your invoice list${close}${why}.`;
+    }
+    case 'not-in-list':
+      return `${group.invoice} on ${where} is not in your invoice list.`;
+    case 'odd-shape': {
+      const usual = note.looksLike ? `, which are ${note.looksLike}` : '';
+      const fix = note.suggestion ? ` ${note.suggestion} would fit.` : '';
+      return `${group.invoice} on ${where} does not look like this client's other numbers${usual}.${fix}`;
+    }
+    case 'out-of-sequence': {
+      const range = note.from && note.to ? ` (${note.from} to ${note.to})` : '';
+      return `${group.invoice} on ${where} is far from this client's other numbers in this batch${range}.`;
+    }
+    case 'page-order':
+      return note.kind === 'restart'
+        ? `Page ${note.page} says "Page 1 of", but it is in the middle of this invoice (${where}). Two invoices may have been joined.`
+        : `The "Page X of Y" marks on ${where} are out of order.`;
+    case 'page-count':
+      if (!note.says)
+        return `The "Page X of Y" marks on ${where} do not match how many pages are here.`;
+      return `The pages say this invoice has ${note.says} ${note.says === 1 ? 'page' : 'pages'}, but ${note.has} ${
+        note.has === 1 ? 'is' : 'are'
+      } here (${where}). A page may be missing, or belong to another invoice.`;
+    case 'blank-page': {
+      const pages = note.pages?.length ? note.pages : group.pages.map((page) => page.index);
+      return `${capitalise(pageList(pages))} ${pages.length === 1 ? 'is' : 'are'} blank.`;
+    }
+    case 'no-client': {
+      const pages = note.pages?.length ? note.pages : group.pages.map((page) => page.index);
+      const one = pages.length === 1;
+      return `${capitalise(pageList(pages))} ${one ? 'does' : 'do'} not match any client you have drawn a box for. ${
+        one ? 'It' : 'They'
+      } may belong to another client.`;
+    }
     case 'duplicate-name':
       // Said the same way for both invoices in a clash: only one of them has a
       // name that actually changed, so neither sentence claims that it did.
@@ -43,7 +124,15 @@ export function reviewReason(flag, group) {
     case 'fallback':
       return `${group.invoice} came from the word "Invoice" on its own, with no label after it. Worth a glance at ${where}.`;
     case 'ocr':
-      return `The text on ${where} was read from a scan, so the number may not be right.`;
+      if (!group.invoice) {
+        return `The text on ${where} was read from a scan, so the number may not be right.`;
+      }
+      {
+        const page = note.page ?? group.pages[0].index;
+        return typeof note.confidence === 'number' && note.confidence < 75
+          ? `${group.invoice} was read from a scan on page ${page}, and the app was only ${note.confidence}% sure of it.`
+          : `${group.invoice} was read from a scan on page ${page}, and nothing else on the page backs it up. Check it against the page.`;
+      }
     default:
       return `Something on ${where} is worth checking.`;
   }

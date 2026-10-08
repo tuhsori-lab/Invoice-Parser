@@ -5,6 +5,9 @@ import { assignFileNames, buildFileName, DEFAULT_TEMPLATE } from '../core/naming
 import { explain } from '../core/errors.js';
 import { exportWarning, reviewQueue } from '../core/review.js';
 import { createProfile, identifyingLinesFor, zonesForPage } from '../core/profiles.js';
+import { buildKnownList, guessColumns } from '../core/knownList.js';
+import { learnShape, verifyGroups } from '../core/verify.js';
+import { isPicture } from '../core/scans.js';
 import { closeBatch, loadBatch } from '../lib/loadBatch.js';
 import { clearThumbnails } from '../lib/thumbnails.js';
 import { saveFile } from '../lib/download.js';
@@ -21,6 +24,13 @@ import { applyTheme, loadTheme, watchSystemTheme } from '../lib/theme.js';
 import { loadControlsOpen, saveControlsOpen } from '../lib/controlsStore.js';
 import { readScannedPages, stopOcr } from '../lib/ocr.js';
 import { measurePictures, pictureKey, scansToRead } from '../lib/pictures.js';
+import { ListFileError, readListFile } from '../lib/knownListFile.js';
+import {
+  loadColumnChoice,
+  loadLearnedShapes,
+  saveColumnChoice,
+  saveLearnedShapes,
+} from '../lib/listStore.js';
 import DropZone from './components/DropZone.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import ControlsToggle from './components/ControlsToggle.jsx';
@@ -30,6 +40,7 @@ import PreviewModal from './components/PreviewModal.jsx';
 import PointPrompt from './components/PointPrompt.jsx';
 import PurchaseOrders from './components/PurchaseOrders.jsx';
 import ReviewQueue from './components/ReviewQueue.jsx';
+import KnownList from './components/KnownList.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
 import ThemeChoice from './components/ThemeChoice.jsx';
 
@@ -142,6 +153,16 @@ export default function App() {
   const [scanDismissed, setScanDismissed] = useState(false);
   // Where the last "Save to a folder" put this batch, to say so.
   const [savedTo, setSavedTo] = useState(null);
+  // The person's own list of invoice numbers: the file's rows, the columns
+  // chosen, and whether only invoices in it may go out without review. Kept in
+  // memory for this session and never saved.
+  const [listFile, setListFile] = useState(null);
+  const [listChoice, setListChoice] = useState(null);
+  const [listPending, setListPending] = useState(false);
+  const [listError, setListError] = useState('');
+  const [strict, setStrict] = useState(true);
+  // What each client's numbers look like, learned from numbers known to be right.
+  const [learned, setLearned] = useState(loadLearnedShapes);
   const readCancelRef = useRef(null);
   const cancelRef = useRef(null);
   const sourcesRef = useRef(new Map());
@@ -244,9 +265,21 @@ export default function App() {
   const analyzedRef = useRef(analyzed);
   analyzedRef.current = analyzed;
 
-  const groups = useMemo(
+  const knownList = useMemo(
     () =>
-      assignFileNames(
+      listFile && listChoice ? buildKnownList(listFile.rows, listChoice, listFile.fileName) : null,
+    [listFile, listChoice]
+  );
+
+  /*
+   * Detection and grouping make a first guess; verification decides what can go
+   * out without a second look, and why the rest cannot. File names come last,
+   * so that a number put right by the invoice list is the one the file is named
+   * after.
+   */
+  const verification = useMemo(
+    () =>
+      verifyGroups(
         groupPages(analyzed, {
           mode: settled.mode,
           unnumbered: settled.unnumbered,
@@ -255,10 +288,64 @@ export default function App() {
           pagesPerInvoice: Number(settled.pagesPerInvoice) || 1,
           overrides: fixes.state,
         }),
-        { template: settled.template, prefix: settled.prefix }
+        {
+          knownList,
+          strict,
+          learned,
+          isPicture: (page) => {
+            const picture = pictures.get(pictureKey(page));
+            return picture ? isPicture(picture) : undefined;
+          },
+        }
       ),
-    [analyzed, settled, fixes.state]
+    [analyzed, settled, fixes.state, knownList, strict, learned, pictures]
   );
+  const groups = useMemo(
+    () =>
+      assignFileNames(verification.groups, {
+        template: settled.template,
+        prefix: settled.prefix,
+      }),
+    [verification, settled.template, settled.prefix]
+  );
+
+  /*
+   * Learn what each boxed client's numbers look like from the ones the invoice
+   * list confirms, so their next batch is checked against it too. Only the
+   * shape is kept - "2 letters, a hyphen, then 5 digits" - never a number.
+   */
+  useEffect(() => {
+    if (!knownList) return;
+    const confirmed = new Map();
+    for (const group of groups) {
+      if (!group.verified || !group.invoice || group.clientKey?.startsWith('file:')) continue;
+      confirmed.set(group.clientKey, [...(confirmed.get(group.clientKey) ?? []), group.invoice]);
+    }
+    if (confirmed.size === 0) return;
+    setLearned((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const [id, values] of confirmed) {
+        const fresh = learnShape(values);
+        const before = current[id] ?? { shapes: [], prefix: '' };
+        const shapes = [...new Set([...before.shapes, ...fresh.shapes])];
+        // A prefix is only kept while every confirmed number has shared it.
+        const prefix =
+          before.shapes.length === 0
+            ? fresh.prefix
+            : before.prefix === fresh.prefix
+              ? before.prefix
+              : '';
+        if (shapes.length !== before.shapes.length || prefix !== before.prefix) {
+          next[id] = { shapes, prefix };
+          changed = true;
+        }
+      }
+      if (!changed) return current;
+      saveLearnedShapes(next);
+      return next;
+    });
+  }, [groups, knownList]);
 
   const groupOfPage = useMemo(() => {
     const byPage = new Map();
@@ -275,6 +362,60 @@ export default function App() {
   );
 
   const issues = useMemo(() => reviewQueue(groups), [groups]);
+
+  /* --------------------------------------------------------- invoice list */
+
+  /** Read a list file, and use it straight away if its columns were chosen before. */
+  const loadListFile = useCallback(async (file) => {
+    setListError('');
+    try {
+      const rows = await readListFile(file);
+      if (rows.length === 0) throw new ListFileError('No rows were found in this file.');
+      const guess = guessColumns(rows);
+      const remembered = loadColumnChoice();
+      const invoiceAt = remembered ? guess.headers.indexOf(remembered.invoice) : -1;
+      setListFile({ fileName: file.name, rows, guess });
+      if (guess.hasHeader && invoiceAt >= 0) {
+        const clientAt = remembered.client ? guess.headers.indexOf(remembered.client) : -1;
+        setListChoice({
+          invoiceColumn: invoiceAt,
+          clientColumn: clientAt >= 0 ? clientAt : null,
+          hasHeader: true,
+        });
+        setListPending(false);
+      } else {
+        setListChoice(null);
+        setListPending(true);
+      }
+    } catch (error) {
+      setListError(
+        error instanceof ListFileError
+          ? error.message
+          : 'This file could not be read as a list of invoices. Try saving it as .csv.'
+      );
+    }
+  }, []);
+
+  const chooseListColumns = useCallback(
+    (choice) => {
+      setListChoice(choice);
+      setListPending(false);
+      if (listFile?.guess.hasHeader) {
+        saveColumnChoice({
+          invoice: listFile.guess.headers[choice.invoiceColumn],
+          client: choice.clientColumn === null ? null : listFile.guess.headers[choice.clientColumn],
+        });
+      }
+    },
+    [listFile]
+  );
+
+  const removeList = useCallback(() => {
+    setListFile(null);
+    setListChoice(null);
+    setListPending(false);
+    setListError('');
+  }, []);
 
   /** Pages that match the search box, or null when nothing is being searched. */
   const matchedPages = useMemo(() => {
@@ -1019,6 +1160,22 @@ export default function App() {
               />
             )}
 
+            <KnownList
+              list={knownList}
+              pending={listPending && listFile ? listFile : null}
+              error={listError}
+              strict={strict}
+              verified={groups.filter((group) => group.verified).length}
+              total={groups.length}
+              missing={verification.missing}
+              onFile={loadListFile}
+              onChoose={chooseListColumns}
+              onCancel={() => setListPending(false)}
+              onChangeColumns={() => setListPending(true)}
+              onRemove={removeList}
+              onStrict={setStrict}
+            />
+
             <PageStrip
               groups={groups}
               docsById={docsById}
@@ -1036,6 +1193,7 @@ export default function App() {
               current={issueAt}
               onGo={goToNextIssue}
               onOpenPage={setPreviewIndex}
+              onAccept={renameInvoice}
             />
 
             {shownGroups.length === 0 ? (
@@ -1050,6 +1208,7 @@ export default function App() {
                 onPreview={setPreviewIndex}
                 onDownload={downloadInvoice}
                 onRename={renameInvoice}
+                onAccept={renameInvoice}
                 busy={Boolean(exporting)}
               />
             )}

@@ -15,6 +15,8 @@ import {
   detectFieldValue,
   detectPurchaseOrder,
   hasConflict,
+  readPageMarker,
+  readingsAgree,
   valueConfidence,
 } from './detect.js';
 import { labelsForPage, zonesForPage } from './profiles.js';
@@ -92,11 +94,20 @@ export function analyzePages(pages = [], settings = {}) {
       extraLabel,
     ].filter(Boolean);
 
+    const [best = null] = candidates;
+    // How sure text recognition was of the number - only a scan says.
+    const detection =
+      best && page.ocr ? { ...best, confidence: valueConfidence(text, layout, best.value) } : best;
+
     return {
       ...page,
-      detection: candidates[0] ?? null,
+      detection,
       candidates,
       conflict: hasConflict(candidates),
+      // Two ways of reading the page found the same number.
+      agreement: readingsAgree(candidates),
+      // "Page 2 of 3", when the page says so.
+      pageOf: readPageMarker(text),
       extra: extraLabels.length ? detectFieldValue(text, extraLabels, { layout }) : null,
       // Always looked for: it costs next to nothing, and whether the list of
       // them is shown is a question of display that should not re-read a page.

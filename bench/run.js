@@ -20,7 +20,10 @@ import { assignFileNames } from '../src/core/naming.js';
 import { createProfile } from '../src/core/profiles.js';
 import { valueShape } from '../src/core/detect.js';
 import { readScannedPages, stopOcr } from '../src/lib/ocr.js';
-import { measurePictures, scansToRead } from '../src/lib/pictures.js';
+import { measurePictures, pictureKey, scansToRead } from '../src/lib/pictures.js';
+import { buildKnownList } from '../src/core/knownList.js';
+import { verifyGroups } from '../src/core/verify.js';
+import { isPicture } from '../src/core/scans.js';
 import { CASES, SPECIAL_CASES } from '../tests/fixtures/expected.js';
 import { SCAN_SUITE, boxFor, expectedGroups } from '../scripts/lib/scanSuite.js';
 
@@ -70,6 +73,15 @@ function scenarios() {
       file: fixture.file,
       what: fixture.what,
       mode: 'labels',
+      expected,
+    });
+    // As if the person had loaded their own list of open invoices.
+    list.push({
+      id: `${fixture.case}-list`,
+      file: fixture.file,
+      what: `${fixture.what}, checked against the invoice list`,
+      mode: 'list',
+      knownList: expected.map((group) => group.invoice),
       expected,
     });
     const box = boxFor(fixture);
@@ -134,7 +146,22 @@ async function run(scenario) {
     analyzed = analyzePages(pages, analysis);
   }
 
-  const groups = assignFileNames(groupPages(analyzed, groupSettings));
+  // The same checks the app runs before anything can go out without review.
+  const knownList = scenario.knownList
+    ? buildKnownList(
+        scenario.knownList.map((value) => [value]),
+        { invoiceColumn: 0, hasHeader: false },
+        'bench-list.csv'
+      )
+    : null;
+  const { groups } = verifyGroups(assignFileNames(groupPages(analyzed, groupSettings)), {
+    knownList,
+    strict: true,
+    isPicture: (page) => {
+      const picture = pictures.get(pictureKey(page));
+      return picture ? isPicture(picture) : undefined;
+    },
+  });
   closeBatch(files);
   return { ...mark(scenario.expected, groups), scannedPages: toRead.length, ocrSeconds };
 }
@@ -196,7 +223,9 @@ async function main() {
   const mode = params.get('mode');
   const chosen = scenarios().filter(
     (scenario) =>
-      (!only || only.includes(scenario.id) || only.includes(scenario.id.replace('-box', ''))) &&
+      (!only ||
+        only.includes(scenario.id) ||
+        only.includes(scenario.id.replace(/-(box|list)$/, ''))) &&
       (!mode || scenario.mode === mode)
   );
 

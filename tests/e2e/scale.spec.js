@@ -115,8 +115,8 @@ test('a number typed by hand settles a scan that could not be read', async ({ pa
   await page.keyboard.press('Enter');
 
   await expect(page.getByTestId('invoice-table')).toContainText('552211.pdf');
-  // Still flagged: the text came from a scan, whatever was typed over it.
-  await expect(page.getByTestId('review-queue')).toContainText('was read from a scan');
+  // A number a person typed in is one they have checked: nothing left to review.
+  await expect(page.getByTestId('review-queue')).toHaveCount(0);
 });
 
 test('reads scanned pages that have a note typed on top, and a box drawn on one of them', async ({

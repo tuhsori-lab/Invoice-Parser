@@ -1633,3 +1633,78 @@ select {
   box-shadow: 0 0 0 9999px rgb(20 18 16 / 0.32);
   pointer-events: none;
 }
+
+/* ---------------------------------------------------------- invoice list */
+
+.known-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--sheet);
+  font-size: 0.875rem;
+}
+
+.known-list p {
+  margin: 0;
+}
+
+.known-list .button {
+  align-self: flex-start;
+}
+
+.known-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.column-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.column-choice select {
+  max-width: 100%;
+}
+
+.list-missing summary {
+  cursor: pointer;
+}
+
+.list-missing ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+/* A number the person's own list confirms. */
+.verified {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--accent);
+}
+
+.verified::before {
+  content: '✓ ';
+}
+
+.note {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
+.review-text .button {
+  margin-top: 0.35rem;
+}
