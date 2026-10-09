@@ -1743,3 +1743,40 @@ select {
   color: var(--ink-soft);
   font-variant-numeric: tabular-nums;
 }
+
+/* What's missing: choose what goes in the spreadsheet, then save it. */
+.missing-report {
+  margin-top: 2rem;
+  border-top: 1px solid var(--rule-strong);
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.missing-report h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.missing-report p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.missing-kinds {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.875rem;
+}
+
+.choice.unavailable {
+  cursor: default;
+  color: var(--ink-faint);
+}

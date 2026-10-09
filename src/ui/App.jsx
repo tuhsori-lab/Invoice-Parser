@@ -34,6 +34,7 @@ import {
   saveTally,
 } from '../lib/listStore.js';
 import { addToTally } from '../core/tally.js';
+import { REPORT_COLUMNS } from '../core/report.js';
 import DropZone from './components/DropZone.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import ControlsToggle from './components/ControlsToggle.jsx';
@@ -45,6 +46,7 @@ import PurchaseOrders from './components/PurchaseOrders.jsx';
 import ReviewQueue from './components/ReviewQueue.jsx';
 import KnownList from './components/KnownList.jsx';
 import ClientTally from './components/ClientTally.jsx';
+import MissingReport from './components/MissingReport.jsx';
 import ConfirmDialog from './components/ConfirmDialog.jsx';
 import ThemeChoice from './components/ThemeChoice.jsx';
 
@@ -387,9 +389,17 @@ export default function App() {
       setListFile({ fileName: file.name, rows, guess });
       if (guess.hasHeader && invoiceAt >= 0) {
         const clientAt = remembered.client ? guess.headers.indexOf(remembered.client) : -1;
+        // Chosen before POs could be: take the PO column the headings suggest.
+        const poAt =
+          remembered.po === undefined
+            ? (guess.poColumn ?? -1)
+            : remembered.po
+              ? guess.headers.indexOf(remembered.po)
+              : -1;
         setListChoice({
           invoiceColumn: invoiceAt,
           clientColumn: clientAt >= 0 ? clientAt : null,
+          poColumn: poAt >= 0 ? poAt : null,
           hasHeader: true,
         });
         setListPending(false);
@@ -414,6 +424,10 @@ export default function App() {
         saveColumnChoice({
           invoice: listFile.guess.headers[choice.invoiceColumn],
           client: choice.clientColumn === null ? null : listFile.guess.headers[choice.clientColumn],
+          po:
+            choice.poColumn === null || choice.poColumn === undefined
+              ? null
+              : listFile.guess.headers[choice.poColumn],
         });
       }
     },
@@ -763,6 +777,15 @@ export default function App() {
       setExporting(null);
     }
   }, [groups, sourcesFor, exportTools, countSaved]);
+
+  /** What is missing, as a spreadsheet: the rows chosen in "What's missing". */
+  const downloadReport = useCallback(
+    async (rows) => {
+      const { buildReportCsv } = await exportTools();
+      saveFile(buildReportCsv(rows, REPORT_COLUMNS), 'whats-missing.csv', 'text/csv;charset=utf-8');
+    },
+    [exportTools]
+  );
 
   const downloadCsv = useCallback(async () => {
     const { buildCsv } = await exportTools();
@@ -1255,6 +1278,13 @@ export default function App() {
                 onOpenPage={setPreviewIndex}
               />
             )}
+
+            <MissingReport
+              groups={groups}
+              knownList={knownList}
+              missing={verification.missing}
+              onSave={downloadReport}
+            />
           </section>
         </main>
       )}

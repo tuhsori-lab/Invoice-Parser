@@ -126,7 +126,7 @@ describe('checking a number', () => {
 
   it('keeps one entry per number, with its client', () => {
     expect(list.entries).toHaveLength(5);
-    expect(list.byValue.get('104233')).toEqual({ value: '104233', client: 'Lakeshore' });
+    expect(list.byValue.get('104233')).toEqual({ value: '104233', client: 'Lakeshore', po: '' });
   });
 });
 

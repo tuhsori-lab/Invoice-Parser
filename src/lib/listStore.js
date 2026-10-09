@@ -32,14 +32,21 @@ function write(key, value) {
   }
 }
 
-/** The headings chosen last time: { invoice: string, client: string|null }. */
+/**
+ * The headings chosen last time: { invoice: string, client: string|null,
+ * po?: string|null }. No `po` at all means it was saved before POs could be chosen.
+ */
 export function loadColumnChoice() {
   const saved = read(COLUMNS_KEY, null);
   return saved && typeof saved.invoice === 'string' ? saved : null;
 }
 
 export function saveColumnChoice(choice) {
-  write(COLUMNS_KEY, { invoice: choice.invoice, client: choice.client ?? null });
+  write(COLUMNS_KEY, {
+    invoice: choice.invoice,
+    client: choice.client ?? null,
+    po: choice.po ?? null,
+  });
 }
 
 /** What each client's numbers look like, by box id. */

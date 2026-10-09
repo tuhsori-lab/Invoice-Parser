@@ -145,8 +145,8 @@ It is read in this browser tab, used for this session, and never saved or sent a
 
 To make one, export your open (or recent) invoices from your accounting system as CSV or Excel — most
 have an "Export" or "Download" button on their invoice or receivables list. One column must hold the
-invoice numbers; a column of client names is optional. Older `.xls` files need saving as `.xlsx` or
-`.csv` first.
+invoice numbers; a column of client names and a column of PO numbers are optional. Older `.xls`
+files need saving as `.xlsx` or `.csv` first.
 
 When the file is loaded, the app guesses which column is which from the headings and asks you to
 confirm. Your choice is remembered by heading, so the next list exported the same way is used
@@ -161,6 +161,25 @@ straight away. Then:
 
 **Only let invoices that are in the list go out without a second look** is on whenever a list is
 loaded. Turned off, a number missing from the list is only noted beside it.
+
+### What's missing, in a spreadsheet
+
+Under the invoices is **What's missing**: tick what you want, then **Download as a spreadsheet
+(CSV)**. The file, `whats-missing.csv`, opens in Excel with one row for each thing to chase:
+
+| Row                             | What it means                                                                                  |
+| ------------------------------- | ---------------------------------------------------------------------------------------------- |
+| In your list, not in this batch | An invoice your list expects that no invoice in the PDFs carries                               |
+| In this batch, not in your list | An invoice in the PDFs your list does not have — with the closest entry, if one is a near miss |
+| No invoice number found         | Pages where no number was found                                                                |
+| No PO found                     | An invoice with no PO on it, or "Not read" on a scan read the quick way                        |
+| PO is not the one in your list  | The PO on the invoice and the one your list has for it differ                                  |
+
+Each row gives the invoice, its pages, the PO on the invoice and the PO in your list, and the
+client. The first two need your invoice list loaded, and the last needs a PO column in it. POs are
+compared by their letters and digits, so `PO-5512`, `po 5512` and `5512` count as the same. The
+counts beside each choice show how many rows it adds. Like everything else, the file is made in
+this browser.
 
 ## Advanced controls
 
@@ -529,6 +548,7 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   image.js         cleaning up the picture of a box before it is read
   quickRead.js     which parts of a scanned page to read, and how many pages at once
   tally.js         counting how each client's invoices have gone
+  report.js        what is missing - invoices and POs - as rows for a spreadsheet
   errors.js        plain-language messages for everything that can go wrong
 src/lib/           the browser side: pdf.js setup, reading a batch, text recognition,
                    thumbnails, downloads, saving to a folder, and where boxes are kept

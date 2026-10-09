@@ -130,11 +130,12 @@ export default function KnownList({
   );
 }
 
-/** Choosing which column holds the numbers, and which the client names. */
+/** Choosing which column holds the numbers, which the client names, and which the POs. */
 function ColumnChoice({ pending, onChoose, onCancel }) {
   const { rows, guess, fileName } = pending;
   const [invoiceColumn, setInvoiceColumn] = useState(guess.invoiceColumn);
   const [clientColumn, setClientColumn] = useState(guess.clientColumn);
+  const [poColumn, setPoColumn] = useState(guess.poColumn ?? null);
   const sample = guess.hasHeader ? rows[1] : rows[0];
 
   const label = (header, column) => {
@@ -179,12 +180,31 @@ function ColumnChoice({ pending, onChoose, onCancel }) {
           ))}
         </select>
       </label>
+      <label className="field">
+        <span>PO numbers (optional)</span>
+        <select
+          value={poColumn ?? ''}
+          onChange={(event) =>
+            setPoColumn(event.target.value === '' ? null : Number(event.target.value))
+          }
+          data-testid="list-po-column"
+        >
+          <option value="">None</option>
+          {guess.headers.map((header, column) => (
+            <option key={column} value={column}>
+              {label(header, column)}
+            </option>
+          ))}
+        </select>
+      </label>
       <div className="known-list-actions">
         <button
           type="button"
           className="button"
           data-testid="list-apply"
-          onClick={() => onChoose({ invoiceColumn, clientColumn, hasHeader: guess.hasHeader })}
+          onClick={() =>
+            onChoose({ invoiceColumn, clientColumn, poColumn, hasHeader: guess.hasHeader })
+          }
         >
           Use this list
         </button>

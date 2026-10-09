@@ -164,7 +164,10 @@ describe('remembering what the number looks like', () => {
     const profile = createProfile({ zone: spot, zoneShape: 'A4 D4 _ D1' });
 
     expect(profile.zoneShape).toBe('A4 D4 _ D1');
-    expect(JSON.stringify(profile)).not.toMatch(/\d{4}/);
+    // Everything but the box's own random id, which may happen to hold digits.
+    const { id, ...kept } = profile;
+    expect(id).toBeTruthy();
+    expect(JSON.stringify(kept)).not.toMatch(/\d{4}/);
   });
 
   it('drops a shape that is not one', () => {

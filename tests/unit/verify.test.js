@@ -73,7 +73,7 @@ describe('the invoice list', () => {
     const { missing } = verifyGroups(groupPages([page(1, '104233')]), {
       knownList: listOf('104233', '104301'),
     });
-    expect(missing).toEqual([{ value: '104301', client: '' }]);
+    expect(missing).toEqual([{ value: '104301', client: '', po: '' }]);
   });
 
   it('does not count as missing a number it is offering for one that is here', () => {
