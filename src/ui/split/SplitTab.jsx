@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { analyzePages, judgeReading } from '../../core/analyze.js';
 import { groupPages } from '../../core/group.js';
 import { assignFileNames, buildFileName, DEFAULT_TEMPLATE } from '../../core/naming.js';
@@ -20,7 +21,6 @@ import {
 import { useDebounced } from '../../lib/useDebounced.js';
 import { useUndoable } from '../../lib/useUndoable.js';
 import { loadBoxes, saveBoxes } from '../../lib/boxStore.js';
-import { loadControlsOpen, saveControlsOpen } from '../../lib/controlsStore.js';
 import { preloadOcr, readScannedPages, stopOcr } from '../../lib/ocr.js';
 import { measurePictures, pictureKey, scansToRead } from '../../lib/pictures.js';
 import { ListFileError, readListFile } from '../../lib/knownListFile.js';
@@ -36,7 +36,7 @@ import { addToTally } from '../../core/tally.js';
 import { REPORT_COLUMNS } from '../../core/report.js';
 import DropZone from './DropZone.jsx';
 import SettingsPanel from './SettingsPanel.jsx';
-import ControlsToggle from './ControlsToggle.jsx';
+import ClientSettings from './ClientSettings.jsx';
 import PageStrip from './PageStrip.jsx';
 import InvoiceTable from './InvoiceTable.jsx';
 import PreviewModal from './PreviewModal.jsx';
@@ -47,6 +47,8 @@ import KnownList from './KnownList.jsx';
 import ClientTally from './ClientTally.jsx';
 import MissingReport from './MissingReport.jsx';
 import ConfirmDialog from '../common/ConfirmDialog.jsx';
+import ProgressBar from '../common/ProgressBar.jsx';
+import { useToast } from '../common/Toasts.jsx';
 
 /** What the app does before anyone changes anything. */
 const INITIAL_SETTINGS = {
@@ -112,20 +114,13 @@ const EXAMPLE_GROUP = {
  * fixes made by hand - and the tab stays mounted while another is open, so
  * nothing is lost by looking at Settings and coming back.
  */
-export default function SplitTab({ active = true }) {
+export default function SplitTab({ active = true, settingsSlot = null, onOpenSettings }) {
+  const toast = useToast();
   const [files, setFiles] = useState([]);
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(null);
   const [problems, setProblems] = useState([]);
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
-  // The settings sidebar, closed until somebody asks for it.
-  const [controlsOpen, setControlsOpen] = useState(loadControlsOpen);
-  const toggleControls = useCallback(() => {
-    setControlsOpen((open) => {
-      saveControlsOpen(!open);
-      return !open;
-    });
-  }, []);
   // Compared as text: a number typed into a box comes back as a string.
   const changedSettings = Object.keys(INITIAL_SETTINGS).filter(
     (key) => String(settings[key]) !== String(INITIAL_SETTINGS[key])
@@ -161,8 +156,6 @@ export default function SplitTab({ active = true }) {
   const [pointDismissed, setPointDismissed] = useState(false);
   // Whether the offer to read scanned pages was waved off for this batch.
   const [scanDismissed, setScanDismissed] = useState(false);
-  // Where the last "Save to a folder" put this batch, to say so.
-  const [savedTo, setSavedTo] = useState(null);
   // The person's own list of invoice numbers: the file's rows, the columns
   // chosen, and whether only invoices in it may go out without review. Kept in
   // memory for this session and never saved.
@@ -202,7 +195,6 @@ export default function SplitTab({ active = true }) {
       setPointing(false);
       setPointDismissed(false);
       setScanDismissed(false);
-      setSavedTo(null);
       talliedRef.current = new Set();
       setQuery('');
       setIssueAt(-1);
@@ -243,7 +235,6 @@ export default function SplitTab({ active = true }) {
     setPointing(false);
     setPointDismissed(false);
     setScanDismissed(false);
-    setSavedTo(null);
     setQuery('');
     setIssueAt(-1);
     fixes.reset({ boundaries: {}, numbers: {}, moves: {} });
@@ -606,20 +597,20 @@ export default function SplitTab({ active = true }) {
           )
         );
       }
+      toast(
+        found.size === 1 ? 'Read 1 scanned page.' : `Read ${found.size} scanned pages.`,
+        found.size < toRead.length ? { kind: 'info' } : undefined
+      );
     } catch (error) {
-      setProblems((current) => [
-        ...current,
-        {
-          fileName: '',
-          message: `Text recognition could not start: ${error.message}. Nothing was changed.`,
-        },
-      ]);
+      const message = `Text recognition could not start: ${error.message}. Nothing was changed.`;
+      setProblems((current) => [...current, { fileName: '', message }]);
+      toast(message, { kind: 'error' });
     } finally {
       readCancelRef.current = null;
       setReading(null);
       await stopOcr();
     }
-  }, [scannedPages, docsById, judge, boxFor, boxedPages, boxes.length]);
+  }, [scannedPages, docsById, judge, boxFor, boxedPages, boxes.length, toast]);
 
   /* ------------------------------------------------------------------ boxes */
 
@@ -670,6 +661,18 @@ export default function SplitTab({ active = true }) {
     setBoxes((current) => current.filter((entry) => entry.id !== id));
   }, []);
 
+  /**
+   * Change what one client's numbers look like, from an example number typed in
+   * Settings. Only the shape is kept.
+   */
+  const setBoxShape = useCallback((id, shape) => {
+    setBoxes((current) =>
+      current.map((entry) =>
+        entry.id === id ? createProfile({ ...entry, zoneShape: shape }) : entry
+      )
+    );
+  }, []);
+
   /** Forget every box, after asking: it cannot be undone. */
   const askThenForgetAll = useCallback(() => {
     setConfirming({
@@ -691,7 +694,7 @@ export default function SplitTab({ active = true }) {
    * needed until somebody exports something, so it is fetched at that point
    * rather than on the way in. It still comes from this app's own files.
    */
-  const exportTools = useCallback(() => import('../core/export.js'), []);
+  const exportTools = useCallback(() => import('../../core/export.js'), []);
 
   /** Load each source file into pdf-lib once, and keep it for every export. */
   const sourcesFor = useCallback(
@@ -742,16 +745,16 @@ export default function SplitTab({ active = true }) {
         const sources = await sourcesFor([group]);
         saveFile(await buildInvoicePdf(group, sources), group.fileName, 'application/pdf');
         countSaved([group]);
+        toast(`Downloaded ${group.fileName}.`);
       } catch (error) {
-        setProblems((current) => [
-          ...current,
-          { fileName: group.fileName, kind: explain(error).kind },
-        ]);
+        const kind = explain(error).kind;
+        setProblems((current) => [...current, { fileName: group.fileName, kind }]);
+        toast(explain(kind, { fileName: group.fileName }).what, { kind: 'error' });
       } finally {
         setExporting(null);
       }
     },
-    [sourcesFor, exportTools, countSaved]
+    [sourcesFor, exportTools, countSaved, toast]
   );
 
   const downloadZip = useCallback(async () => {
@@ -765,29 +768,35 @@ export default function SplitTab({ active = true }) {
       const zip = await buildZip(built, { type: 'blob' });
       saveFile(zip, 'invoices.zip', 'application/zip');
       countSaved(groups);
+      toast(
+        `Downloaded invoices.zip with ${built.length === 1 ? '1 invoice' : `${built.length} invoices`}.`
+      );
     } catch (error) {
-      setProblems((current) => [
-        ...current,
-        { fileName: 'invoices.zip', kind: explain(error).kind },
-      ]);
+      const kind = explain(error).kind;
+      setProblems((current) => [...current, { fileName: 'invoices.zip', kind }]);
+      toast(explain(kind, { fileName: 'invoices.zip' }).what, { kind: 'error' });
     } finally {
       setExporting(null);
     }
-  }, [groups, sourcesFor, exportTools, countSaved]);
+  }, [groups, sourcesFor, exportTools, countSaved, toast]);
 
   /** What is missing, as a spreadsheet: the rows chosen in "What's missing". */
   const downloadReport = useCallback(
     async (rows) => {
       const { buildReportCsv } = await exportTools();
       saveFile(buildReportCsv(rows, REPORT_COLUMNS), 'whats-missing.csv', 'text/csv;charset=utf-8');
+      toast(
+        `Downloaded whats-missing.csv with ${rows.length === 1 ? '1 row' : `${rows.length} rows`}.`
+      );
     },
-    [exportTools]
+    [exportTools, toast]
   );
 
   const downloadCsv = useCallback(async () => {
     const { buildCsv } = await exportTools();
     saveFile(buildCsv(groups), 'page-map.csv', 'text/csv;charset=utf-8');
-  }, [groups, exportTools]);
+    toast('Downloaded page-map.csv.');
+  }, [groups, exportTools, toast]);
 
   /** Exporting with problems left is allowed, but never by accident. */
   const askThenExport = useCallback(() => {
@@ -840,7 +849,10 @@ export default function SplitTab({ active = true }) {
         await writeIntoFolder(folder, built, {
           onProgress: (done) => setExporting({ what: 'folder', phase: 'Saving', done, total }),
         });
-        setSavedTo({ folder: folder.name, count: built.length });
+        toast(
+          `Saved ${built.length === 1 ? '1 invoice' : `${built.length} invoices`} to \u201c${folder.name}\u201d.`,
+          { testId: 'saved-to' }
+        );
         countSaved(groups);
       } catch (error) {
         setProblems((current) => [
@@ -853,6 +865,7 @@ export default function SplitTab({ active = true }) {
               }
             : { fileName: folder.name, kind: explain(error).kind },
         ]);
+        toast(`Could not save into \u201c${folder.name}\u201d.`, { kind: 'error' });
       } finally {
         setExporting(null);
       }
@@ -876,7 +889,7 @@ export default function SplitTab({ active = true }) {
       cancelLabel: 'Cancel',
       act: write,
     });
-  }, [groups, sourcesFor, exportTools, countSaved]);
+  }, [groups, sourcesFor, exportTools, countSaved, toast]);
 
   /** The same warning as the ZIP, before anything with problems left is saved. */
   const askThenSaveIntoFolder = useCallback(() => {
@@ -987,6 +1000,13 @@ export default function SplitTab({ active = true }) {
 
   return (
     <div className="split-tab">
+      {pageCount === 0 && (
+        <div className="page-head">
+          <h2>Split</h2>
+          <p>Drop in bulk PDFs and get one correctly named PDF per invoice.</p>
+        </div>
+      )}
+
       <DropZone
         files={files}
         pageCount={pageCount}
@@ -996,26 +1016,15 @@ export default function SplitTab({ active = true }) {
       />
 
       {loading && (
-        <div className="progress" role="status">
-          <p>
-            Reading {loading.fileName} &mdash; page {loading.done} of {loading.total || '?'}
-          </p>
-          <div className="progress-track">
-            <div
-              className="progress-bar"
-              style={{ width: `${loading.total ? (loading.done / loading.total) * 100 : 5}%` }}
-            />
-          </div>
-          <button
-            type="button"
-            className="button quiet"
-            onClick={() => {
-              if (cancelRef.current) cancelRef.current.aborted = true;
-            }}
-          >
-            Cancel
-          </button>
-        </div>
+        <ProgressBar
+          label={`Reading ${loading.fileName} \u2014 page ${loading.done} of ${loading.total || '?'}`}
+          done={loading.done}
+          total={loading.total}
+          onCancel={() => {
+            if (cancelRef.current) cancelRef.current.aborted = true;
+          }}
+          testId="loading"
+        />
       )}
 
       {problems.length > 0 && (
@@ -1046,19 +1055,7 @@ export default function SplitTab({ active = true }) {
       )}
 
       {pageCount > 0 && (
-        <main className={`workspace${controlsOpen ? ' controls-open' : ''}`}>
-          <ControlsToggle open={controlsOpen} onToggle={toggleControls} changed={changedSettings} />
-          <div className="settings-column" id="advanced-controls" hidden={!controlsOpen}>
-            <SettingsPanel
-              settings={settings}
-              nameExample={nameExample}
-              onChange={(key, value) => setSettings((current) => ({ ...current, [key]: value }))}
-              rememberedBoxes={boxes.length}
-              onForgetBoxes={askThenForgetAll}
-            />
-            <ClientTally tally={tally} onClear={clearTally} />
-          </div>
-
+        <div className="workspace">
           <section className="results" id="results" tabIndex={-1}>
             <div className="results-head">
               <p className="summary" data-testid="summary" role="status" aria-live="polite">
@@ -1066,12 +1063,6 @@ export default function SplitTab({ active = true }) {
                 {groups.length === 1 ? 'invoice' : 'invoices'}
                 {needingReview > 0 && `, ${needingReview} worth a look`}.
               </p>
-              {savedTo && (
-                <p className="saved-to" role="status" data-testid="saved-to">
-                  Saved {savedTo.count === 1 ? '1 invoice' : `${savedTo.count} invoices`} to &ldquo;
-                  {savedTo.folder}&rdquo;.
-                </p>
-              )}
               <div className="results-tools">
                 <span className="undo-pair">
                   <button
@@ -1139,36 +1130,44 @@ export default function SplitTab({ active = true }) {
                 >
                   Download page map
                 </button>
+                <button
+                  type="button"
+                  className="button quiet"
+                  onClick={onOpenSettings}
+                  data-testid="open-settings"
+                  title="How invoices are split and named, and each client's box"
+                >
+                  {changedSettings > 0 ? `Settings \u00b7 ${changedSettings} changed` : 'Settings'}
+                </button>
               </div>
             </div>
+
+            {exporting?.total > 0 && (
+              <ProgressBar
+                label={
+                  exporting.what === 'folder'
+                    ? `${exporting.phase} invoices for the folder \u2014 ${exporting.done} of ${exporting.total}`
+                    : `Building ${exporting.what} \u2014 ${exporting.done} of ${exporting.total}`
+                }
+                done={exporting.done}
+                total={exporting.total}
+                testId="exporting"
+              />
+            )}
 
             {((scannedPages.length > 0 && !scanDismissed) || reading) && (
               <div className="scanned" data-testid="scanned-notice">
                 {reading ? (
-                  <>
-                    <p>
-                      Reading scanned pages &mdash; {reading.done} of {reading.total} done. This is
-                      slow; you can stop at any point and keep what has been read.
-                    </p>
-                    <div className="progress-track">
-                      <div
-                        className="progress-bar"
-                        style={{
-                          width: `${reading.total ? (reading.done / reading.total) * 100 : 0}%`,
-                        }}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      className="button quiet"
-                      data-testid="stop-reading"
-                      onClick={() => {
-                        if (readCancelRef.current) readCancelRef.current.aborted = true;
-                      }}
-                    >
-                      Stop
-                    </button>
-                  </>
+                  <ProgressBar
+                    label={`Reading scanned pages \u2014 ${reading.done} of ${reading.total} done. You can stop at any point and keep what has been read.`}
+                    done={reading.done}
+                    total={reading.total}
+                    onCancel={() => {
+                      if (readCancelRef.current) readCancelRef.current.aborted = true;
+                    }}
+                    cancelLabel="Stop"
+                    cancelTestId="stop-reading"
+                  />
                 ) : (
                   <>
                     <p>{scannedNotice(scannedPages, pageCount)}</p>
@@ -1273,7 +1272,7 @@ export default function SplitTab({ active = true }) {
               onSave={downloadReport}
             />
           </section>
-        </main>
+        </div>
       )}
 
       {previewPage && (
@@ -1303,20 +1302,43 @@ export default function SplitTab({ active = true }) {
         />
       )}
 
-      {confirming && (
-        <ConfirmDialog
-          question={confirming.question}
-          detail={confirming.detail}
-          confirmLabel={confirming.confirmLabel}
-          cancelLabel={confirming.cancelLabel}
-          onCancel={() => setConfirming(null)}
-          onConfirm={() => {
-            const act = confirming.act;
-            setConfirming(null);
-            act();
-          }}
-        />
-      )}
+      {settingsSlot &&
+        createPortal(
+          <>
+            <SettingsPanel
+              settings={settings}
+              nameExample={nameExample}
+              onChange={(key, value) => setSettings((current) => ({ ...current, [key]: value }))}
+            />
+            <ClientSettings
+              boxes={boxes}
+              learned={learned}
+              onSetShape={setBoxShape}
+              onForget={forgetBox}
+              onForgetAll={askThenForgetAll}
+            />
+            <ClientTally tally={tally} onClear={clearTally} />
+          </>,
+          settingsSlot
+        )}
+
+      {/* Drawn over the whole page, so it shows from the Settings tab too. */}
+      {confirming &&
+        createPortal(
+          <ConfirmDialog
+            question={confirming.question}
+            detail={confirming.detail}
+            confirmLabel={confirming.confirmLabel}
+            cancelLabel={confirming.cancelLabel}
+            onCancel={() => setConfirming(null)}
+            onConfirm={() => {
+              const act = confirming.act;
+              setConfirming(null);
+              act();
+            }}
+          />,
+          document.body
+        )}
     </div>
   );
 }

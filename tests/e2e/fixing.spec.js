@@ -108,8 +108,9 @@ test('keeps a fix when a detection setting changes afterwards', async ({ page })
 
   // Changing how unnumbered pages are handled re-runs detection over the same
   // text. The number typed by hand has to survive that.
-  await page.getByTestId('advanced-toggle').click();
+  await page.getByTestId('tab-settings').click();
   await page.getByRole('radio', { name: /Set aside for me to look at/ }).check();
+  await page.getByTestId('tab-split').click();
 
   await expect(page.getByTestId('summary')).toHaveText(
     '2 pages split into 2 invoices, 1 worth a look.'

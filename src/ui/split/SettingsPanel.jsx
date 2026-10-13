@@ -8,13 +8,7 @@ import { compileCustomPattern } from '../../core/detect.js';
  * Everything here re-runs detection over text that is already in memory, so
  * changing a setting is instant and never re-reads a PDF.
  */
-export default function SettingsPanel({
-  settings,
-  onChange,
-  nameExample,
-  rememberedBoxes = 0,
-  onForgetBoxes,
-}) {
+export default function SettingsPanel({ settings, onChange, nameExample }) {
   const [advancedOpen, setAdvancedOpen] = useState(Boolean(settings.customPattern));
   const set = (key) => (event) => {
     const target = event.target;
@@ -23,7 +17,7 @@ export default function SettingsPanel({
   const patternProblem = compileCustomPattern(settings.customPattern).error;
 
   return (
-    <aside className="settings" aria-label="Split settings">
+    <div className="settings" role="group" aria-label="Split settings">
       <fieldset className="field-group">
         <legend>Split into invoices</legend>
 
@@ -165,32 +159,6 @@ export default function SettingsPanel({
             <small>In its own section under the table, ready to copy out.</small>
           </span>
         </label>
-        <div className="field" data-testid="remembered-boxes">
-          <span>Boxes you have drawn</span>
-          {rememberedBoxes > 0 ? (
-            <div className="field-row">
-              <p className="field-value">
-                {rememberedBoxes === 1
-                  ? 'One client is remembered in this browser.'
-                  : `${rememberedBoxes} clients are remembered in this browser.`}
-              </p>
-              <button
-                type="button"
-                className="link-button"
-                data-testid="forget-boxes"
-                onClick={onForgetBoxes}
-              >
-                Forget them all
-              </button>
-            </div>
-          ) : (
-            <p className="field-value muted">None yet.</p>
-          )}
-          <small>
-            Kept only in this browser: where the number sits and what it looks like, never the
-            number itself.
-          </small>
-        </div>
       </fieldset>
 
       <fieldset className="field-group">
@@ -263,6 +231,6 @@ export default function SettingsPanel({
           </label>
         )}
       </section>
-    </aside>
+    </div>
   );
 }

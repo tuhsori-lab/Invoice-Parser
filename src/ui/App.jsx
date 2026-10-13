@@ -26,6 +26,8 @@ export default function App() {
   const [tab, setTab] = useState(loadTab);
   const [theme, setTheme] = useState(loadTheme);
   const [shown, setShown] = useState(shownTheme);
+  // Where the Split tab draws its own settings, inside the Settings tab.
+  const [splitSettings, setSplitSettings] = useState(null);
 
   useEffect(() => {
     saveTab(tab);
@@ -62,7 +64,11 @@ export default function App() {
             aria-labelledby="tab-split"
             hidden={tab !== 'split'}
           >
-            <SplitTab active={tab === 'split'} />
+            <SplitTab
+              active={tab === 'split'}
+              settingsSlot={splitSettings}
+              onOpenSettings={() => setTab('settings')}
+            />
           </section>
           <section
             className="tab-panel"
@@ -80,7 +86,12 @@ export default function App() {
             aria-labelledby="tab-settings"
             hidden={tab !== 'settings'}
           >
-            <SettingsTab theme={theme} onTheme={setTheme} onForgetEverything={startAfresh} />
+            <SettingsTab
+              theme={theme}
+              onTheme={setTheme}
+              splitSlotRef={setSplitSettings}
+              onForgetEverything={startAfresh}
+            />
           </section>
         </main>
       </div>

@@ -2147,3 +2147,12 @@ select {
   color: var(--problem);
   border-color: var(--problem);
 }
+
+.settings-page .legend-like {
+  margin: 0 0 0.75rem;
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}

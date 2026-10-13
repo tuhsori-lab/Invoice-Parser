@@ -1,9 +1,6 @@
-import { useEffect, useState } from 'react';
 import { tileClass } from '../colors.js';
 import { pageRangeForCsv } from '../../core/naming.js';
-
-/** How long "Copied" stays up before the button reads normally again. */
-const COPIED_FOR_MS = 2500;
+import { useToast } from '../common/Toasts.jsx';
 
 /**
  * The purchase order behind every invoice in the batch, in one list.
@@ -18,13 +15,7 @@ const COPIED_FOR_MS = 2500;
  * exactly what it lists.
  */
 export default function PurchaseOrders({ groups, colourOf, onOpenPage }) {
-  const [copied, setCopied] = useState(null);
-
-  useEffect(() => {
-    if (!copied) return undefined;
-    const timer = setTimeout(() => setCopied(null), COPIED_FOR_MS);
-    return () => clearTimeout(timer);
-  }, [copied]);
+  const toast = useToast();
 
   if (groups.length === 0) return null;
 
@@ -45,9 +36,15 @@ export default function PurchaseOrders({ groups, colourOf, onOpenPage }) {
     ];
     try {
       await navigator.clipboard.writeText(`${rows.join('\n')}\n`);
-      setCopied({ ok: true, count: groups.length });
+      toast(
+        `Copied ${groups.length === 1 ? '1 row' : `${groups.length} rows`}. Paste it anywhere.`,
+        { testId: 'po-copied' }
+      );
     } catch {
-      setCopied({ ok: false });
+      toast('This browser would not allow copying. Select the list instead.', {
+        kind: 'error',
+        testId: 'po-copied',
+      });
     }
   };
 
@@ -61,13 +58,6 @@ export default function PurchaseOrders({ groups, colourOf, onOpenPage }) {
           </p>
         </div>
         <div className="po-actions">
-          <span className="po-copied" role="status" data-testid="po-copied">
-            {copied?.ok &&
-              `Copied ${copied.count === 1 ? '1 row' : `${copied.count} rows`}. Paste it anywhere.`}
-            {copied &&
-              !copied.ok &&
-              'This browser would not allow copying. Select the list instead.'}
-          </span>
           <button type="button" className="button quiet" onClick={copy} data-testid="po-copy">
             Copy list
           </button>

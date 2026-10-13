@@ -147,7 +147,7 @@ test('can be pointed from any page, not only when asked', async ({ page }) => {
   const table = page.getByTestId('invoice-table');
   await expect(table).toContainText('the spot you chose');
   await expect(table).toContainText('SR-40997_1.pdf');
-  await page.getByTestId('advanced-toggle').click();
+  await page.getByTestId('tab-settings').click();
   await expect(page.getByTestId('remembered-boxes')).toContainText(
     'One client is remembered in this browser'
   );
@@ -183,7 +183,7 @@ test('forgets one client box from their page', async ({ page }) => {
 
   // Without the box the everyday label answers instead, and still gets it right.
   await expect(page.getByTestId('invoice-table')).toContainText('an everyday label');
-  await page.getByTestId('advanced-toggle').click();
+  await page.getByTestId('tab-settings').click();
   await expect(page.getByTestId('remembered-boxes')).toContainText('None yet');
 });
 
@@ -195,9 +195,10 @@ test('forgets every box at once, after asking', async ({ page }) => {
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByTestId('summary')).toHaveText('4 pages split into 2 invoices.');
 
-  await page.getByTestId('advanced-toggle').click();
+  await page.getByTestId('tab-settings').click();
   await page.getByTestId('forget-boxes').click();
   await page.getByRole('button', { name: 'Yes, forget them' }).click();
+  await page.getByTestId('tab-split').click();
 
   await expect(page.getByTestId('summary')).toHaveText(
     '4 pages split into 1 invoice, 1 worth a look.'

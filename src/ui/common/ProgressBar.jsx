@@ -8,6 +8,7 @@ export default function ProgressBar({
   total = 0,
   onCancel,
   cancelLabel = 'Cancel',
+  cancelTestId,
   testId,
 }) {
   const known = total > 0;
@@ -18,7 +19,12 @@ export default function ProgressBar({
         <p>{label}</p>
         {known && <span className="progress-percent">{percent}%</span>}
         {onCancel && (
-          <button type="button" className="button quiet" onClick={onCancel}>
+          <button
+            type="button"
+            className="button quiet"
+            onClick={onCancel}
+            data-testid={cancelTestId}
+          >
             {cancelLabel}
           </button>
         )}

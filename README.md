@@ -191,18 +191,38 @@ compared by their letters and digits, so `PO-5512`, `po 5512` and `5512` count a
 counts beside each choice show how many rows it adds. Like everything else, the file is made in
 this browser.
 
-## Advanced controls
+## Settings
 
-Most batches split correctly as they are, so every setting — how pages are split, what happens to
-pages with no number, how the number is found, and what the files are called — sits behind one
-**Advanced controls** button above the results, closed to begin with. Closed, the invoices get the
-whole width. A setting changed and then put away is never out of mind: the button says how many are
-not as they started ("2 settings changed"). Leave the controls open and they are open the next time
-too; that one yes or no is the only thing remembered about them, in this browser.
+Most batches split correctly as they are, so every setting lives on its own **Settings** tab, and
+the Split tab gives the invoices the whole width. The **Settings** button beside the export buttons
+goes straight there, and says how many settings are not as they started ("Settings · 2 changed").
+Changes apply to the batch that is open at once; switching tabs never loses it.
+
+| Section                  | What it holds                                                                           |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| Split into invoices      | By invoice number, a marker on the first page, or a fixed number of pages each          |
+| Pages with no number     | Keep them with the invoice before, or set them aside to look at                         |
+| Finding the number       | Which labels to trust, an extra value to read, and the PO list                          |
+| File names               | What every file name starts with, and the pattern it follows                            |
+| Clients                  | Each client with a saved box, and what their numbers look like                          |
+| How each client has gone | Accepted, corrected and sent-to-review counts per client                                |
+| Appearance               | System, Light or Dark                                                                   |
+| Start afresh             | **Reset everything**: forgets every box, shape, choice, count and setting, after asking |
+
+**Clients** lists everyone you have drawn a box for. Under each name it says what their invoice
+numbers look like — "2 letters, a hyphen, then 5 digits" — which is what the _Doesn't look like
+theirs_ check holds a number to. To change it, type an example number and choose **Use this shape**:
+only its shape is kept, never the example. **Forget** removes one client; **Forget all clients**
+removes every one, after asking.
+
+Messages that only report something — a file saved, a list copied, scans read, an export that
+failed — appear for a few seconds in the bottom corner. Anything that needs you to act stays where
+it is until it is dealt with. Loading, reading scans and exporting each show a progress bar with
+how far along they are.
 
 ### How each client has gone
 
-At the bottom of Advanced controls is a short list, one line per client with a saved box, counting
+Under **Settings** is a short list, one line per client with a saved box, counting
 their invoices as they are saved — downloaded on their own, in the ZIP, or into a folder:
 
 | Count          | Invoices that                                                      |
@@ -424,8 +444,8 @@ slightly differently is still found while the column beside it is not swept in. 
 before any label does; when it finds nothing, the label tiers are tried as usual.
 
 One box per client: **Draw the box again** on any of their pages replaces it, **Forget this
-client's box** on the same page removes it, and **Forget them all** under _Advanced
-controls → Finding the number_ clears every one. Boxes are kept in this browser's storage and nowhere else.
+client's box** on the same page removes it, and **Settings → Clients** lists every client, with
+**Forget** for one and **Forget all clients** for every one. Boxes are kept in this browser's storage and nowhere else.
 
 ## PO numbers
 
@@ -434,7 +454,7 @@ files by their own order number, so that is what a remittance or a dispute refer
 invoice's PO is listed in its own section under the table, with the label it was found after, and
 **Copy list** puts it on the clipboard as two tab-separated columns with a heading row, so it pastes
 straight into a spreadsheet as `Invoice` and `PO`. The list follows the search box, and copies
-exactly what it shows. It can be switched off under _Advanced controls → Finding the number_. On a scan read the quick way
+exactly what it shows. It can be switched off under _Settings → Finding the number_. On a scan read the quick way
 (see _Reading scans faster_), the PO column says **not read (scan)**: only the top, the box and the
 foot of those pages were read.
 
@@ -563,6 +583,12 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
 src/lib/           the browser side: pdf.js setup, reading a batch, text recognition,
                    thumbnails, downloads, saving to a folder, and where boxes are kept
 src/ui/            the interface (React) and its one stylesheet
+  App.jsx          the shell: the bar along the top and the three tabs
+  shell/           the top bar, the tab bar and the light/dark switch
+  common/          toasts, progress bar, empty state, icons, dialogs
+  split/           the Split tab and everything on it
+  reconcile/       the Reconcile tab
+  settings/        the Settings tab
 scripts/           the fixture generator, the benchmark runner, and their small helpers
 bench/             the benchmark page and the baseline it is compared against
 tests/unit/        unit tests, including every layout in tests/fixtures/expected.js
