@@ -1,30 +1,11 @@
 /**
- * Building the files that come out: one PDF per invoice, a ZIP of all of them,
- * and a CSV page map.
+ * Building the files that come out: one PDF per invoice, and a ZIP of all of them.
  *
  * Everything here happens in memory, in the browser. Nothing is uploaded.
  */
 
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
-import { pageRangeForCsv } from './naming.js';
-
-/** Columns of the CSV page map, in order. */
-export const CSV_COLUMNS = [
-  'Invoice',
-  'Extra',
-  'Found after',
-  'Pages',
-  'Page count',
-  'File name',
-  'Source file(s)',
-];
-
-/**
- * Byte order mark. Without it Excel reads the file as the local code page and
- * turns any accented character into mojibake.
- */
-const UTF8_BOM = '\ufeff';
 
 /**
  * Copy one invoice's pages into a new PDF.
@@ -91,48 +72,6 @@ export async function buildZip(files, options = {}) {
 }
 
 /**
- * Wrap a value in quotes if it contains anything that would break a CSV row.
- *
- * Semicolons are quoted too: Excel uses a semicolon as the column separator in
- * several countries, and an unquoted one there splits a cell in half.
- */
-function csvCell(value) {
-  const text = value === null || value === undefined ? '' : String(value);
-  if (/[",;\r\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
-  return text;
-}
-
-/**
- * The page map: one row per invoice, saying where it came from.
- *
- * Page ranges are written as "1 to 3, 7". Excel reads "1-3" as a date and shows
- * "3-Jan", which makes the page map useless for the person checking it.
- *
- * @param {Array<object>} groups - groups that already have `fileName` set.
- * @returns {string} the CSV text, starting with a UTF-8 byte order mark.
- */
-export function buildCsv(groups = []) {
-  const rows = [CSV_COLUMNS];
-
-  for (const group of groups) {
-    const pageNumbers = group.pages.map((page) => page.index);
-    const sourceFiles = [...new Set(group.pages.map((page) => page.fileName))];
-    rows.push([
-      group.invoice ?? '',
-      group.extra?.value ?? '',
-      group.provenance?.label ?? '',
-      pageRangeForCsv(pageNumbers),
-      pageNumbers.length,
-      group.fileName ?? '',
-      sourceFiles.join('; '),
-    ]);
-  }
-
-  const body = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
-  return `${UTF8_BOM}${body}\r\n`;
-}
-
-/**
  * Build every invoice PDF in the batch, reporting progress as it goes.
  *
  * @param {Array<object>} groups - groups that already have `fileName` set.
@@ -151,18 +90,4 @@ export async function buildAllInvoicePdfs(groups, sources, options = {}) {
     onProgress?.(position + 1, groups.length);
   }
   return files;
-}
-
-/**
- * The report of what is missing, as a spreadsheet (see core/report.js).
- *
- * @param {Array<{ cells: Array<string|number> }>} rows - the rows chosen to go in it.
- * @param {string[]} columns - the heading row.
- * @returns {string} the CSV text, starting with a UTF-8 byte order mark.
- */
-export function buildReportCsv(rows = [], columns = []) {
-  const body = [columns, ...rows.map((row) => row.cells)]
-    .map((row) => row.map(csvCell).join(','))
-    .join('\r\n');
-  return `${UTF8_BOM}${body}\r\n`;
 }

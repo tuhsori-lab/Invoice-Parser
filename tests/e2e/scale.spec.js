@@ -62,11 +62,6 @@ test('stays usable on a long batch: search, fix, and export', async ({ page }) =
   await expect(page.getByTestId('summary')).toContainText('211 invoices');
   await page.keyboard.press('Control+z');
   await expect(page.getByTestId('summary')).toHaveText('220 pages split into 210 invoices.');
-
-  // And the page map still comes out.
-  const waitFor = page.waitForEvent('download');
-  await page.getByTestId('download-csv').click();
-  expect((await waitFor).suggestedFilename()).toBe('page-map.csv');
 });
 
 test('offers to read a page that is only a picture, and flags what it read', async ({ page }) => {
@@ -98,7 +93,6 @@ test('offers to read a page that is only a picture, and flags what it read', asy
   await expect(page.getByTestId('invoice-table')).toContainText(
     'Text was read from a scan, so it may be wrong'
   );
-  await expect(page.getByTestId('review-queue')).toContainText('was read from a scan');
 
   // Text recognition is served by this app, not fetched from anyone else.
   expect(offsite).toEqual([]);
@@ -116,7 +110,7 @@ test('a number typed by hand settles a scan that could not be read', async ({ pa
 
   await expect(page.getByTestId('invoice-table')).toContainText('552211.pdf');
   // A number a person typed in is one they have checked: nothing left to review.
-  await expect(page.getByTestId('review-queue')).toHaveCount(0);
+  await expect(page.getByTestId('summary')).not.toContainText('worth a look');
 });
 
 test('reads scanned pages that have a note typed on top, and a box drawn on one of them', async ({
@@ -227,11 +221,8 @@ test('reads the next scanned batch from a client with a box the quick way, on th
   await expect(table).toContainText('718840.pdf');
   await expect(table).toContainText('718841.pdf');
   await expect(table).toContainText('718856.pdf');
-  // A PO number elsewhere on the page would not have been read, and it says so.
-  await expect(page.locator('[data-testid^="po-not-read-"]')).toHaveCount(3);
 
-  // One number put right by hand, then everything saved: the client's row
-  // counts it as corrected, and the others as they went.
+  // One number put right by hand, then everything saved.
   await page.getByTestId('invoice-value-g1').click();
   await page.getByTestId('invoice-input-g1').fill('718840-A');
   await page.keyboard.press('Enter');
@@ -242,11 +233,6 @@ test('reads the next scanned batch from a client with a box the quick way, on th
     await page.getByTestId('confirm-export').click();
   }
   await waitForZip;
-  await page.getByTestId('tab-settings').click();
-  const row = page.getByTestId('client-tally').locator('li', { hasText: /Quillfeather/i });
-  await expect(row.getByTestId('tally-corrected')).toHaveText('1 corrected');
-  const counts = await row.locator('[data-testid^="tally-"]').allInnerTexts();
-  expect(counts.map((said) => parseInt(said, 10)).reduce((sum, count) => sum + count, 0)).toBe(3);
 
   const offsite = requests.filter(
     (request) =>

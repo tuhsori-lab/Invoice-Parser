@@ -68,7 +68,6 @@ function openGroup(page) {
     pages: [],
     continuationPages: [],
     extra: null,
-    po: null,
     provenance: null,
     client: '',
     template: '',
@@ -93,7 +92,6 @@ function addPage(group, page, { continuation = false } = {}) {
     };
   }
   if (!group.extra && page.extra?.value) group.extra = page.extra;
-  if (!group.po && page.po?.value) group.po = page.po;
   if (!group.client && page.client) group.client = page.client;
   // A client with its own way of naming files gets it for their invoices.
   if (!group.template && page.matchedProfiles?.[0]?.filenameTemplate) {
@@ -121,7 +119,6 @@ function combineByNumber(groups) {
     existing.continuationPages.push(...group.continuationPages);
     existing.pages.sort((a, b) => a.index - b.index);
     if (!existing.extra && group.extra) existing.extra = group.extra;
-    if (!existing.po && group.po) existing.po = group.po;
   }
   return out;
 }
@@ -243,7 +240,6 @@ function recompute(group) {
   group.invoice = null;
   group.provenance = null;
   group.extra = null;
-  group.po = null;
   group.client = '';
   group.template = '';
   group.continuationPages = [];
@@ -258,7 +254,6 @@ function recompute(group) {
       };
     }
     if (!group.extra && page.extra?.value) group.extra = page.extra;
-    if (!group.po && page.po?.value) group.po = page.po;
     if (!group.client && page.client) group.client = page.client;
     if (!group.template && page.matchedProfiles?.[0]?.filenameTemplate) {
       group.template = page.matchedProfiles[0].filenameTemplate;

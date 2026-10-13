@@ -6,7 +6,6 @@ import { assignFileNames, buildFileName, DEFAULT_TEMPLATE } from '../../core/nam
 import { explain } from '../../core/errors.js';
 import { exportWarning, reviewQueue } from '../../core/review.js';
 import { createProfile, identifyingLinesFor, zonesForPage } from '../../core/profiles.js';
-import { buildKnownList, guessColumns } from '../../core/knownList.js';
 import { learnFromInvoices, verifyGroups } from '../../core/verify.js';
 import { isPicture } from '../../core/scans.js';
 import { closeBatch, loadBatch } from '../../lib/loadBatch.js';
@@ -23,17 +22,7 @@ import { useUndoable } from '../../lib/useUndoable.js';
 import { loadBoxes, saveBoxes } from '../../lib/boxStore.js';
 import { preloadOcr, readScannedPages, stopOcr } from '../../lib/ocr.js';
 import { measurePictures, pictureKey, scansToRead } from '../../lib/pictures.js';
-import { ListFileError, readListFile } from '../../lib/knownListFile.js';
-import {
-  loadColumnChoice,
-  loadLearnedShapes,
-  loadTally,
-  saveColumnChoice,
-  saveLearnedShapes,
-  saveTally,
-} from '../../lib/listStore.js';
-import { addToTally } from '../../core/tally.js';
-import { REPORT_COLUMNS } from '../../core/report.js';
+import { loadLearnedShapes, saveLearnedShapes } from '../../lib/listStore.js';
 import DropZone from './DropZone.jsx';
 import SettingsPanel from './SettingsPanel.jsx';
 import ClientSettings from './ClientSettings.jsx';
@@ -41,11 +30,6 @@ import PageStrip from './PageStrip.jsx';
 import InvoiceTable from './InvoiceTable.jsx';
 import PreviewModal from './PreviewModal.jsx';
 import PointPrompt from './PointPrompt.jsx';
-import PurchaseOrders from './PurchaseOrders.jsx';
-import ReviewQueue from './ReviewQueue.jsx';
-import KnownList from './KnownList.jsx';
-import ClientTally from './ClientTally.jsx';
-import MissingReport from './MissingReport.jsx';
 import ConfirmDialog from '../common/ConfirmDialog.jsx';
 import ProgressBar from '../common/ProgressBar.jsx';
 import { useToast } from '../common/Toasts.jsx';
@@ -61,7 +45,6 @@ const INITIAL_SETTINGS = {
   useBareInvoice: true,
   customPattern: '',
   extraLabel: '',
-  listPurchaseOrders: true,
   prefix: '',
   template: DEFAULT_TEMPLATE,
 };
@@ -156,20 +139,8 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
   const [pointDismissed, setPointDismissed] = useState(false);
   // Whether the offer to read scanned pages was waved off for this batch.
   const [scanDismissed, setScanDismissed] = useState(false);
-  // The person's own list of invoice numbers: the file's rows, the columns
-  // chosen, and whether only invoices in it may go out without review. Kept in
-  // memory for this session and never saved.
-  const [listFile, setListFile] = useState(null);
-  const [listChoice, setListChoice] = useState(null);
-  const [listPending, setListPending] = useState(false);
-  const [listError, setListError] = useState('');
-  const [strict, setStrict] = useState(true);
   // What each client's numbers look like, learned from numbers known to be right.
   const [learned, setLearned] = useState(loadLearnedShapes);
-  // How each client's invoices have gone, counted as they are saved.
-  const [tally, setTally] = useState(loadTally);
-  // The invoices of this batch already counted, so saving twice counts once.
-  const talliedRef = useRef(new Set());
   const readCancelRef = useRef(null);
   const cancelRef = useRef(null);
   const sourcesRef = useRef(new Map());
@@ -195,7 +166,6 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
       setPointing(false);
       setPointDismissed(false);
       setScanDismissed(false);
-      talliedRef.current = new Set();
       setQuery('');
       setIssueAt(-1);
       fixes.reset({ boundaries: {}, numbers: {}, moves: {} });
@@ -264,17 +234,10 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
   const analyzedRef = useRef(analyzed);
   analyzedRef.current = analyzed;
 
-  const knownList = useMemo(
-    () =>
-      listFile && listChoice ? buildKnownList(listFile.rows, listChoice, listFile.fileName) : null,
-    [listFile, listChoice]
-  );
-
   /*
    * Detection and grouping make a first guess; verification decides what can go
    * out without a second look, and why the rest cannot. File names come last,
-   * so that a number put right by the invoice list is the one the file is named
-   * after.
+   * so that a number put right by hand is the one the file is named after.
    */
   const grouped = useMemo(
     () =>
@@ -312,8 +275,6 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
   const verification = useMemo(
     () =>
       verifyGroups(grouped, {
-        knownList,
-        strict,
         learned,
         isPicture: (page) => {
           const picture = pictures.get(pictureKey(page));
@@ -322,7 +283,7 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
         // Scans not read yet: whatever their invoices say is not to be trusted.
         unreadScans: scannedIndexes,
       }),
-    [grouped, knownList, strict, learned, pictures, scannedIndexes]
+    [grouped, learned, pictures, scannedIndexes]
   );
   const groups = useMemo(
     () =>
@@ -334,8 +295,8 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
   );
 
   /*
-   * Learn what each boxed client's numbers look like from the ones the invoice
-   * list confirms and the ones a person typed in or put right, so their next
+   * Learn what each boxed client's numbers look like from the ones a person
+   * typed in or put right, so their next
    * batch is checked against it too. Only the shape is kept - "2 letters, a
    * hyphen, then 5 digits" - never a number.
    */
@@ -362,72 +323,6 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
   );
 
   const issues = useMemo(() => reviewQueue(groups), [groups]);
-
-  /* --------------------------------------------------------- invoice list */
-
-  /** Read a list file, and use it straight away if its columns were chosen before. */
-  const loadListFile = useCallback(async (file) => {
-    setListError('');
-    try {
-      const rows = await readListFile(file);
-      if (rows.length === 0) throw new ListFileError('No rows were found in this file.');
-      const guess = guessColumns(rows);
-      const remembered = loadColumnChoice();
-      const invoiceAt = remembered ? guess.headers.indexOf(remembered.invoice) : -1;
-      setListFile({ fileName: file.name, rows, guess });
-      if (guess.hasHeader && invoiceAt >= 0) {
-        const clientAt = remembered.client ? guess.headers.indexOf(remembered.client) : -1;
-        // Chosen before POs could be: take the PO column the headings suggest.
-        const poAt =
-          remembered.po === undefined
-            ? (guess.poColumn ?? -1)
-            : remembered.po
-              ? guess.headers.indexOf(remembered.po)
-              : -1;
-        setListChoice({
-          invoiceColumn: invoiceAt,
-          clientColumn: clientAt >= 0 ? clientAt : null,
-          poColumn: poAt >= 0 ? poAt : null,
-          hasHeader: true,
-        });
-        setListPending(false);
-      } else {
-        setListChoice(null);
-        setListPending(true);
-      }
-    } catch (error) {
-      setListError(
-        error instanceof ListFileError
-          ? error.message
-          : 'This file could not be read as a list of invoices. Try saving it as .csv.'
-      );
-    }
-  }, []);
-
-  const chooseListColumns = useCallback(
-    (choice) => {
-      setListChoice(choice);
-      setListPending(false);
-      if (listFile?.guess.hasHeader) {
-        saveColumnChoice({
-          invoice: listFile.guess.headers[choice.invoiceColumn],
-          client: choice.clientColumn === null ? null : listFile.guess.headers[choice.clientColumn],
-          po:
-            choice.poColumn === null || choice.poColumn === undefined
-              ? null
-              : listFile.guess.headers[choice.poColumn],
-        });
-      }
-    },
-    [listFile]
-  );
-
-  const removeList = useCallback(() => {
-    setListFile(null);
-    setListChoice(null);
-    setListPending(false);
-    setListError('');
-  }, []);
 
   /** Pages that match the search box, or null when nothing is being searched. */
   const matchedPages = useMemo(() => {
@@ -714,29 +609,6 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
     [files]
   );
 
-  /**
-   * Count invoices just saved towards how each client has gone - each invoice
-   * of a batch once, however many times it is saved.
-   */
-  const countSaved = useCallback(
-    (saved) => {
-      const fresh = saved.filter((group) => !talliedRef.current.has(group.id));
-      if (fresh.length === 0) return;
-      for (const group of fresh) talliedRef.current.add(group.id);
-      setTally((current) => {
-        const next = addToTally(current, fresh, (key) => boxes.find((box) => box.id === key)?.name);
-        saveTally(next);
-        return next;
-      });
-    },
-    [boxes]
-  );
-
-  const clearTally = useCallback(() => {
-    setTally({});
-    saveTally({});
-  }, []);
-
   const downloadInvoice = useCallback(
     async (group) => {
       setExporting({ what: group.fileName });
@@ -744,7 +616,6 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
         const { buildInvoicePdf } = await exportTools();
         const sources = await sourcesFor([group]);
         saveFile(await buildInvoicePdf(group, sources), group.fileName, 'application/pdf');
-        countSaved([group]);
         toast(`Downloaded ${group.fileName}.`);
       } catch (error) {
         const kind = explain(error).kind;
@@ -754,7 +625,7 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
         setExporting(null);
       }
     },
-    [sourcesFor, exportTools, countSaved, toast]
+    [sourcesFor, exportTools, toast]
   );
 
   const downloadZip = useCallback(async () => {
@@ -767,7 +638,6 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
       });
       const zip = await buildZip(built, { type: 'blob' });
       saveFile(zip, 'invoices.zip', 'application/zip');
-      countSaved(groups);
       toast(
         `Downloaded invoices.zip with ${built.length === 1 ? '1 invoice' : `${built.length} invoices`}.`
       );
@@ -778,25 +648,7 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
     } finally {
       setExporting(null);
     }
-  }, [groups, sourcesFor, exportTools, countSaved, toast]);
-
-  /** What is missing, as a spreadsheet: the rows chosen in "What's missing". */
-  const downloadReport = useCallback(
-    async (rows) => {
-      const { buildReportCsv } = await exportTools();
-      saveFile(buildReportCsv(rows, REPORT_COLUMNS), 'whats-missing.csv', 'text/csv;charset=utf-8');
-      toast(
-        `Downloaded whats-missing.csv with ${rows.length === 1 ? '1 row' : `${rows.length} rows`}.`
-      );
-    },
-    [exportTools, toast]
-  );
-
-  const downloadCsv = useCallback(async () => {
-    const { buildCsv } = await exportTools();
-    saveFile(buildCsv(groups), 'page-map.csv', 'text/csv;charset=utf-8');
-    toast('Downloaded page-map.csv.');
-  }, [groups, exportTools, toast]);
+  }, [groups, sourcesFor, exportTools, toast]);
 
   /** Exporting with problems left is allowed, but never by accident. */
   const askThenExport = useCallback(() => {
@@ -853,7 +705,6 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
           `Saved ${built.length === 1 ? '1 invoice' : `${built.length} invoices`} to \u201c${folder.name}\u201d.`,
           { testId: 'saved-to' }
         );
-        countSaved(groups);
       } catch (error) {
         setProblems((current) => [
           ...current,
@@ -889,7 +740,7 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
       cancelLabel: 'Cancel',
       act: write,
     });
-  }, [groups, sourcesFor, exportTools, countSaved, toast]);
+  }, [groups, sourcesFor, exportTools, toast]);
 
   /** The same warning as the ZIP, before anything with problems left is saved. */
   const askThenSaveIntoFolder = useCallback(() => {
@@ -1125,14 +976,6 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
                 <button
                   type="button"
                   className="button quiet"
-                  onClick={downloadCsv}
-                  data-testid="download-csv"
-                >
-                  Download page map
-                </button>
-                <button
-                  type="button"
-                  className="button quiet"
                   onClick={onOpenSettings}
                   data-testid="open-settings"
                   title="How invoices are split and named, and each client's box"
@@ -1204,22 +1047,6 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
               />
             )}
 
-            <KnownList
-              list={knownList}
-              pending={listPending && listFile ? listFile : null}
-              error={listError}
-              strict={strict}
-              verified={groups.filter((group) => group.verified).length}
-              total={groups.length}
-              missing={verification.missing}
-              onFile={loadListFile}
-              onChoose={chooseListColumns}
-              onCancel={() => setListPending(false)}
-              onChangeColumns={() => setListPending(true)}
-              onRemove={removeList}
-              onStrict={setStrict}
-            />
-
             <PageStrip
               groups={groups}
               docsById={docsById}
@@ -1229,15 +1056,6 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
               onSplit={splitAt}
               onJoin={joinAt}
               onMovePage={movePage}
-            />
-
-            <ReviewQueue
-              items={issues}
-              colourOf={colourOf}
-              current={issueAt}
-              onGo={goToNextIssue}
-              onOpenPage={setPreviewIndex}
-              onAccept={renameInvoice}
             />
 
             {shownGroups.length === 0 ? (
@@ -1256,21 +1074,6 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
                 busy={Boolean(exporting)}
               />
             )}
-
-            {settings.listPurchaseOrders && (
-              <PurchaseOrders
-                groups={shownGroups}
-                colourOf={colourOf}
-                onOpenPage={setPreviewIndex}
-              />
-            )}
-
-            <MissingReport
-              groups={groups}
-              knownList={knownList}
-              missing={verification.missing}
-              onSave={downloadReport}
-            />
           </section>
         </div>
       )}
@@ -1317,7 +1120,6 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
               onForget={forgetBox}
               onForgetAll={askThenForgetAll}
             />
-            <ClientTally tally={tally} onClear={clearTally} />
           </>,
           settingsSlot
         )}

@@ -1,6 +1,5 @@
 /**
- * The files that come out: one PDF per invoice, a ZIP of all of them, and the
- * CSV page map.
+ * The files that come out: one PDF per invoice, and a ZIP of all of them.
  *
  * The PDFs here are the real sample files, opened with pdf-lib the way the app
  * does, so a page count in a test is a page count in a finished file.
@@ -9,13 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import { PDFDocument } from 'pdf-lib';
-import {
-  buildAllInvoicePdfs,
-  buildCsv,
-  buildInvoicePdf,
-  buildZip,
-  CSV_COLUMNS,
-} from '../../src/core/export.js';
+import { buildAllInvoicePdfs, buildInvoicePdf, buildZip } from '../../src/core/export.js';
 import { readFixture } from '../helpers/loadFixture.js';
 
 /** Load the sample PDFs the app would keep in memory for export. */
@@ -125,78 +118,5 @@ describe('the ZIP', () => {
     const method = zipped[8] | (zipped[9] << 8);
     expect(method, 'compression method 0 is STORE').toBe(0);
     expect(zipped.length).toBeGreaterThan(data.length);
-  });
-});
-
-describe('the CSV page map', () => {
-  const rows = (csv) =>
-    csv
-      .replace(/^\ufeff/, '')
-      .trim()
-      .split('\r\n');
-
-  it('starts with a byte order mark so Excel reads it properly', () => {
-    expect(buildCsv([]).charCodeAt(0)).toBe(0xfeff);
-  });
-
-  it('writes the columns in the order the spec asks for', () => {
-    expect(rows(buildCsv([]))[0]).toBe(CSV_COLUMNS.join(','));
-  });
-
-  it('writes page ranges the long way so Excel does not turn them into dates', () => {
-    const csv = buildCsv([
-      {
-        invoice: '104233',
-        extra: { value: 'PO-9' },
-        provenance: { label: 'Invoice #:' },
-        fileName: 'INV-104233.pdf',
-        pages: [1, 2, 3, 7].map((index) => ({ index, fileName: 'batch.pdf' })),
-      },
-    ]);
-
-    expect(rows(csv)[1]).toBe('104233,PO-9,Invoice #:,"1 to 3, 7",4,INV-104233.pdf,batch.pdf');
-  });
-
-  it('lists every source file an invoice came from, once each', () => {
-    const csv = buildCsv([
-      {
-        invoice: '104233',
-        provenance: { label: 'Invoice #:' },
-        fileName: 'INV-104233.pdf',
-        pages: [
-          { index: 1, fileName: 'january.pdf' },
-          { index: 2, fileName: 'january.pdf' },
-          { index: 3, fileName: 'february.pdf' },
-        ],
-      },
-    ]);
-
-    expect(rows(csv)[1]).toContain('"january.pdf; february.pdf"');
-  });
-
-  it('leaves an invoice with no number as an empty cell rather than "null"', () => {
-    const csv = buildCsv([
-      {
-        invoice: null,
-        provenance: null,
-        fileName: 'NO-NUMBER_p5-6.pdf',
-        pages: [5, 6].map((index) => ({ index, fileName: 'batch.pdf' })),
-      },
-    ]);
-
-    expect(rows(csv)[1]).toBe(',,,5 to 6,2,NO-NUMBER_p5-6.pdf,batch.pdf');
-  });
-
-  it('quotes a value that has a quote or a comma in it', () => {
-    const csv = buildCsv([
-      {
-        invoice: 'A,1',
-        provenance: { label: 'Ref "special"' },
-        fileName: 'A-1.pdf',
-        pages: [{ index: 1, fileName: 'batch.pdf' }],
-      },
-    ]);
-
-    expect(rows(csv)[1]).toBe('"A,1",,"Ref ""special""",1,1,A-1.pdf,batch.pdf');
   });
 });

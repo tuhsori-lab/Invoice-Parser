@@ -34,8 +34,8 @@ test('splits and joins an invoice by clicking the gaps on the strip', async ({ p
     '3 pages split into 2 invoices, 2 worth a look.'
   );
   await expect(page.getByTestId('gap-3')).toHaveClass(/gap-manual/);
-  await expect(page.getByTestId('review-queue')).toContainText(
-    'Another invoice has the same number'
+  await expect(page.getByTestId('invoice-table')).toContainText(
+    'Two invoices would be saved under the same name'
   );
 
   // Clicking the same gap again puts them back together.
@@ -54,7 +54,6 @@ test('joins a page that detection split off on its own', async ({ page }) => {
   await page.getByTestId('gap-3').click();
 
   await expect(page.getByTestId('summary')).toHaveText('3 pages split into 2 invoices.');
-  await expect(page.getByTestId('review-queue')).toBeHidden();
 });
 
 test('moves a page onto another invoice by dragging it', async ({ page }) => {
@@ -84,9 +83,7 @@ test('moves a page from the preview, without a mouse', async ({ page }) => {
 test('corrects an invoice number in place and marks it as edited', async ({ page }) => {
   await loadFixtures(page, ['12-unusual-label.pdf']);
 
-  await expect(page.getByTestId('review-queue')).toContainText(
-    'No invoice number was found on page 1.'
-  );
+  await expect(page.getByTestId('invoice-table')).toContainText('No invoice number found');
 
   await page.getByTestId('invoice-value-g1').click();
   await page.getByTestId('invoice-input-g1').fill('889900');
@@ -95,7 +92,7 @@ test('corrects an invoice number in place and marks it as edited', async ({ page
   await expect(page.getByTestId('invoice-value-g1')).toContainText('889900');
   await expect(page.getByTestId('invoice-value-g1')).toContainText('edited');
   await expect(page.getByTestId('invoice-table')).toContainText('889900.pdf');
-  await expect(page.getByTestId('review-queue')).toBeHidden();
+  await expect(page.getByTestId('summary')).not.toContainText('worth a look');
 });
 
 test('keeps a fix when a detection setting changes afterwards', async ({ page }) => {
@@ -150,12 +147,13 @@ test('undoes and redoes every kind of fix, with the keyboard too', async ({ page
   await expect(page.getByTestId('redo')).toBeDisabled();
 });
 
-test('walks the review queue with the N key', async ({ page }) => {
+test('steps through the invoices worth a look with the N key', async ({ page }) => {
   await loadFixtures(page, ['05-repeat-later.pdf', '07-bare-invoice.pdf']);
 
-  const queue = page.getByTestId('review-queue');
-  await expect(queue).toContainText('3 invoices need a look');
-  await expect(queue).toContainText('came from the word "Invoice" on its own');
+  await expect(page.getByTestId('summary')).toContainText('3 worth a look');
+  await expect(page.getByTestId('invoice-table')).toContainText(
+    'Number found from the word "Invoice" alone'
+  );
 
   await page.keyboard.press('n');
   await expect(page.getByTestId('preview-modal')).toBeVisible();

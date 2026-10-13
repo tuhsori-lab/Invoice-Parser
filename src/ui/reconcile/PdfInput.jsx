@@ -12,6 +12,7 @@ export default function PdfInput({
   onReadScans,
 }) {
   const busy = Boolean(reading || scanReading);
+  const fileCount = new Set(items.map((item) => item.fileId)).size;
   const fromText = items.filter((item) => item.source === 'text').length;
   const fromScan = items.filter((item) => item.source === 'scan').length;
   const fromName = items.filter((item) => item.source === 'filename').length;
@@ -32,7 +33,7 @@ export default function PdfInput({
       {items.length === 0 && !reading ? (
         <DropArea
           title="Drop invoice PDFs or a folder"
-          note="One invoice per file. Sub-folders are included."
+          note="Files holding many invoices are split. Sub-folders are included."
           accept="application/pdf,.pdf"
           folders
           onFiles={onFiles}
@@ -45,7 +46,8 @@ export default function PdfInput({
           {items.length > 0 && (
             <div className="input-summary" data-testid="pdf-summary">
               <p className="input-summary-main">
-                {items.length === 1 ? '1 file' : `${items.length} files`}
+                {fileCount === 1 ? '1 file' : `${fileCount} files`},{' '}
+                {items.length === 1 ? '1 invoice' : `${items.length} invoices`}
               </p>
               <ul>
                 {fromText > 0 && <li>{fromText} numbered from their own text</li>}
