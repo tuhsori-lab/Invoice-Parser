@@ -197,6 +197,9 @@ test('never sends anything anywhere while a batch is being worked on', async ({ 
   });
   await expect(page.getByTestId('list-summary')).toContainText('1 of this batch');
 
+  // What is missing, pulled into a spreadsheet, is built here too.
+  await download(page, () => page.getByTestId('report-download').click());
+
   // Saving counts towards how each client has gone - kept in this browser, and
   // cleared from it.
   await download(page, () => page.getByTestId('download-zip').click());
