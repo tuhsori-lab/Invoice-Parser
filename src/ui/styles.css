@@ -2509,3 +2509,8 @@ select {
 .theme-switching *::after {
   transition: none !important;
 }
+
+/* A long file name that wraps in a table cell lines up with the rest. */
+.data-table .link-button {
+  text-align: left;
+}
