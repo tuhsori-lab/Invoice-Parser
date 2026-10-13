@@ -62,8 +62,9 @@ test('can be switched off', async ({ page }) => {
   await loadFixtures(page, ['20-form-layout.pdf']);
   await expect(page.getByTestId('po-list')).toBeVisible();
 
-  await page.getByTestId('advanced-toggle').click();
+  await page.getByTestId('tab-settings').click();
   await page.getByTestId('list-pos').uncheck();
+  await page.getByTestId('tab-split').click();
   await expect(page.getByTestId('po-list')).toHaveCount(0);
 
   // The table is untouched: the list is only a view of what was already found.

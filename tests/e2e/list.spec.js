@@ -3,6 +3,7 @@
  * Every number and name here is invented.
  */
 
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
@@ -115,12 +116,58 @@ test('reads an Excel list, and remembers which columns were chosen', async ({ pa
 
 test('says plainly when a list file cannot be used', async ({ page }) => {
   await loadFixtures(page, ['01-same-line.pdf']);
+  // An Excel file that is damaged: it starts like one, and is not.
   await page.getByTestId('list-input').setInputFiles({
-    name: 'old.xls',
-    mimeType: 'application/vnd.ms-excel',
-    buffer: Buffer.from('not really'),
+    name: 'broken.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: Buffer.from('PK\u0003\u0004 this is not a workbook'),
   });
   await expect(page.getByTestId('list-error')).toContainText(
-    'This is an older Excel file (.xls). Open it in Excel and save it as .xlsx or .csv'
+    'broken.xlsx could not be opened. It may be damaged, or password-protected.'
   );
+});
+
+test('pulls what is missing into a spreadsheet: invoices and POs', async ({ page }) => {
+  // 2071548 (PO 7730415), then SR-40881_2 and SR-40997_1 with no PO on them.
+  await loadFixtures(page, ['20-form-layout.pdf', '21-column-heading.pdf']);
+  await page
+    .getByTestId('list-input')
+    .setInputFiles(
+      csv(
+        'Invoice No,Customer,PO Number\n2071548,Acme,7730999\nSR-40881_2,Acme,\n900100,Northwind,PO-1\n'
+      )
+    );
+  // The PO column is found by its heading.
+  await expect(page.getByTestId('list-po-column')).toHaveValue('2');
+  await page.getByTestId('list-apply').click();
+
+  const report = page.getByTestId('missing-report');
+  await expect(report.getByTestId('report-count-missing-from-batch')).toHaveText('1 row');
+  await expect(report.getByTestId('report-count-not-in-list')).toHaveText('1 row');
+  await expect(report.getByTestId('report-count-po-not-found')).toHaveText('2 rows');
+  await expect(report.getByTestId('report-count-po-different')).toHaveText('1 row');
+
+  // Leave one kind out, and save the rest.
+  await report.getByTestId('report-no-number').uncheck();
+  const waitFor = page.waitForEvent('download');
+  await report.getByTestId('report-download').click();
+  const saved = await waitFor;
+  expect(saved.suggestedFilename()).toBe('whats-missing.csv');
+  const text = readFileSync(await saved.path(), 'utf8').replace(/^\uFEFF/, '');
+  expect(text.trim().split('\r\n')).toEqual([
+    'What,Invoice,Pages,PO on the invoice,PO in your list,Client,Note',
+    '"In your list, not in this batch",900100,,,PO-1,Northwind,',
+    '"In this batch, not in your list",SR-40997_1,3,,,,',
+    'No PO found,SR-40881_2,2,,,Acme,',
+    'No PO found,SR-40997_1,3,,,,',
+    'PO is not the one in your list,2071548,1,7730415,7730999,Acme,',
+  ]);
+});
+
+test('offers what it can about missing POs without an invoice list', async ({ page }) => {
+  await loadFixtures(page, ['20-form-layout.pdf', '21-column-heading.pdf']);
+  const report = page.getByTestId('missing-report');
+  await expect(report.getByTestId('report-count-po-not-found')).toHaveText('2 rows');
+  await expect(report.getByTestId('report-missing-from-batch')).toBeDisabled();
+  await expect(report).toContainText('Load your invoice list to see this.');
 });

@@ -152,3 +152,17 @@ export async function buildAllInvoicePdfs(groups, sources, options = {}) {
   }
   return files;
 }
+
+/**
+ * The report of what is missing, as a spreadsheet (see core/report.js).
+ *
+ * @param {Array<{ cells: Array<string|number> }>} rows - the rows chosen to go in it.
+ * @param {string[]} columns - the heading row.
+ * @returns {string} the CSV text, starting with a UTF-8 byte order mark.
+ */
+export function buildReportCsv(rows = [], columns = []) {
+  const body = [columns, ...rows.map((row) => row.cells)]
+    .map((row) => row.map(csvCell).join(','))
+    .join('\r\n');
+  return `${UTF8_BOM}${body}\r\n`;
+}

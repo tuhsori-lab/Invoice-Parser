@@ -178,7 +178,7 @@ async function writePdf(name, pages) {
     bold: await pdf.embedFont(StandardFonts.HelveticaBold),
   };
   pdf.setTitle(name);
-  pdf.setCreator('Invoice Splitter fixture generator (synthetic data)');
+  pdf.setCreator('Invoice Hub fixture generator (synthetic data)');
   for (const pageLines of pages) drawPage(pdf, fonts, pageLines);
   const bytes = await pdf.save();
   await writeFile(join(FIXTURE_DIR, name), bytes);

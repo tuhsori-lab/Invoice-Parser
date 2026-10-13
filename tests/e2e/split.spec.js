@@ -57,7 +57,7 @@ test('splits a batch and says where every number came from', async ({ page }) =>
 test('shows the file name pattern working before anything is exported', async ({ page }) => {
   await loadFixtures(page, ['01-same-line.pdf']);
 
-  await page.getByTestId('advanced-toggle').click();
+  await page.getByTestId('tab-settings').click();
   await expect(page.getByTestId('name-example')).toContainText('104233_PO-9921.pdf');
 
   await page.getByLabel('Start every name with').fill('Northwind ');
@@ -137,8 +137,9 @@ test('changing a setting re-splits the batch without re-reading the file', async
 
   await expect(page.getByTestId('summary')).toHaveText('2 pages split into 1 invoice.');
 
-  await page.getByTestId('advanced-toggle').click();
+  await page.getByTestId('tab-settings').click();
   await page.getByRole('radio', { name: /Set aside for me to look at/ }).check();
+  await page.getByTestId('tab-split').click();
 
   await expect(page.getByTestId('summary')).toHaveText(
     '2 pages split into 2 invoices, 1 worth a look.'
@@ -197,10 +198,13 @@ test('never sends anything anywhere while a batch is being worked on', async ({ 
   });
   await expect(page.getByTestId('list-summary')).toContainText('1 of this batch');
 
+  // What is missing, pulled into a spreadsheet, is built here too.
+  await download(page, () => page.getByTestId('report-download').click());
+
   // Saving counts towards how each client has gone - kept in this browser, and
   // cleared from it.
   await download(page, () => page.getByTestId('download-zip').click());
-  await page.getByTestId('advanced-toggle').click();
+  await page.getByTestId('tab-settings').click();
   const tally = page.getByTestId('client-tally');
   await expect(tally).toContainText('Invoices found without a box');
   await expect(tally.locator('li')).toHaveCount(1);
@@ -257,30 +261,30 @@ test('an invoice with no number is bracketed and striped in yellow', async ({ pa
   expect(await background('tile-2')).toContain('repeating-linear-gradient');
 });
 
-test('keeps the settings behind "Advanced controls" until they are asked for', async ({ page }) => {
+test('keeps the settings on their own tab, and comes back to the tab left open', async ({
+  page,
+}) => {
   await loadFixtures(page, ['04-remittance-slip.pdf']);
 
-  // Closed to begin with: the invoices get the whole width.
-  const toggle = page.getByTestId('advanced-toggle');
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  // Not on the Split tab: the invoices get the whole width.
   await expect(page.getByRole('radio', { name: /Set aside for me to look at/ })).toBeHidden();
   await expect(page.getByTestId('summary')).toHaveText('2 pages split into 1 invoice.');
 
-  await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await page.getByTestId('open-settings').click();
+  await expect(page.getByTestId('tab-settings')).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('radio', { name: /Set aside for me to look at/ }).check();
   await page.getByLabel('Start every name with').fill('March ');
 
-  // Put away again, a changed setting is still owned up to.
-  await toggle.click();
-  await expect(page.getByLabel('Start every name with')).toBeHidden();
-  await expect(page.getByTestId('controls-changed')).toHaveText('2 settings changed');
+  // Back on Split, the batch is as it was, split the new way, and the changed
+  // settings are owned up to.
+  await page.getByTestId('tab-split').click();
+  await expect(page.getByTestId('summary')).toHaveText(
+    '2 pages split into 2 invoices, 1 worth a look.'
+  );
+  await expect(page.getByTestId('open-settings')).toHaveText('Settings \u00b7 2 changed');
 
-  // Left open, they are open the next time.
-  await toggle.click();
+  // The tab left open is the one open next time.
+  await page.getByTestId('tab-settings').click();
   await page.reload();
-  await page.getByTestId('file-input').setInputFiles([fixture('04-remittance-slip.pdf')]);
-  await expect(page.getByTestId('advanced-toggle')).toHaveAttribute('aria-expanded', 'true');
-  await expect(page.getByLabel('Start every name with')).toBeVisible();
-  await expect(page.getByTestId('controls-changed')).toHaveCount(0);
+  await expect(page.getByTestId('tab-settings')).toHaveAttribute('aria-selected', 'true');
 });

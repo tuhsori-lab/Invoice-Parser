@@ -147,6 +147,8 @@ export function rowsFromSpreadsheetXml({ sheet, sharedStrings = '' }) {
 
 const INVOICE_HEADING = /\b(invoice|inv|document|doc|bill)\b|^(number|no\.?|#|ref(erence)?)$/i;
 const CLIENT_HEADING = /\b(client|customer|supplier|vendor|company|account|name)\b/i;
+/** A purchase order column: "PO", "PO Number", "Customer PO", "Purchase order". Not "Order". */
+const PO_HEADING = /(^|[^a-z])p\.?\s?o\.?([^a-z]|$)|\bpurchase\s*order/i;
 
 /** Could this cell be an invoice number? It has a digit and is not a long sentence. */
 function valueLike(cell) {
@@ -156,11 +158,11 @@ function valueLike(cell) {
 
 /**
  * A first guess at which column holds the invoice numbers, which the client
- * names, and whether the first row is a heading.
+ * names, which the PO numbers, and whether the first row is a heading.
  *
  * @param {string[][]} rows
  * @returns {{ hasHeader: boolean, invoiceColumn: number, clientColumn: number|null,
- *   headers: string[] }}
+ *   poColumn: number|null, headers: string[] }}
  */
 export function guessColumns(rows = []) {
   const [first = []] = rows;
@@ -176,7 +178,10 @@ export function guessColumns(rows = []) {
   );
   const body = hasHeader ? rows.slice(1) : rows;
 
-  let invoiceColumn = hasHeader ? headers.findIndex((header) => INVOICE_HEADING.test(header)) : -1;
+  const poAt = hasHeader ? headers.findIndex((header) => PO_HEADING.test(header)) : -1;
+  let invoiceColumn = hasHeader
+    ? headers.findIndex((header, column) => column !== poAt && INVOICE_HEADING.test(header))
+    : -1;
   if (invoiceColumn < 0) {
     let best = 0;
     let bestCount = -1;
@@ -190,9 +195,18 @@ export function guessColumns(rows = []) {
     invoiceColumn = best;
   }
   const clientAt = hasHeader
-    ? headers.findIndex((header, column) => column !== invoiceColumn && CLIENT_HEADING.test(header))
+    ? headers.findIndex(
+        (header, column) =>
+          column !== invoiceColumn && column !== poAt && CLIENT_HEADING.test(header)
+      )
     : -1;
-  return { hasHeader, invoiceColumn, clientColumn: clientAt >= 0 ? clientAt : null, headers };
+  return {
+    hasHeader,
+    invoiceColumn,
+    clientColumn: clientAt >= 0 ? clientAt : null,
+    poColumn: poAt >= 0 && poAt !== invoiceColumn ? poAt : null,
+    headers,
+  };
 }
 
 /* ----------------------------------------------------- the list itself */
@@ -247,13 +261,15 @@ export function oneEditApart(a, b) {
  * Turn the rows of a file into a list to check numbers against.
  *
  * @param {string[][]} rows
- * @param {{ invoiceColumn: number, clientColumn?: number|null, hasHeader: boolean }} choice
+ * @param {{ invoiceColumn: number, clientColumn?: number|null, poColumn?: number|null,
+ *   hasHeader: boolean }} choice
  * @param {string} [fileName]
- * @returns {{ fileName: string, entries: Array<{ value: string, client: string }>,
+ * @returns {{ fileName: string, hasPo: boolean,
+ *   entries: Array<{ value: string, client: string, po: string }>,
  *   byValue: Map<string, object>, byLookAlike: Map<string, object[]> }}
  */
 export function buildKnownList(rows, choice, fileName = '') {
-  const { invoiceColumn, clientColumn = null, hasHeader } = choice;
+  const { invoiceColumn, clientColumn = null, poColumn = null, hasHeader } = choice;
   const entries = [];
   const byValue = new Map();
   const byLookAlike = new Map();
@@ -263,13 +279,14 @@ export function buildKnownList(rows, choice, fileName = '') {
     const entry = {
       value,
       client: clientColumn === null ? '' : String(row[clientColumn] ?? '').trim(),
+      po: poColumn === null ? '' : String(row[poColumn] ?? '').trim(),
     };
     entries.push(entry);
     byValue.set(value, entry);
     const key = lookAlikeKey(value);
     byLookAlike.set(key, [...(byLookAlike.get(key) ?? []), entry]);
   }
-  return { fileName, entries, byValue, byLookAlike };
+  return { fileName, hasPo: poColumn !== null, entries, byValue, byLookAlike };
 }
 
 /**

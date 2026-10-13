@@ -38,7 +38,17 @@ export function loadTheme() {
  * @param {'system'|'light'|'dark'} choice
  */
 export function applyTheme(choice) {
-  document.documentElement.dataset.theme = choice === 'system' ? systemTheme() : choice;
+  const root = document.documentElement;
+  const next = choice === 'system' ? systemTheme() : choice;
+  if (root.dataset.theme !== next) {
+    // Every colour changes at once: nothing fades from light to dark half way.
+    root.classList.add('theme-switching');
+    root.dataset.theme = next;
+    void root.offsetWidth;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => root.classList.remove('theme-switching'))
+    );
+  }
   try {
     if (choice === 'system') window.localStorage.removeItem(KEY);
     else window.localStorage.setItem(KEY, choice);
@@ -51,13 +61,16 @@ export function applyTheme(choice) {
  * Follow the computer's own setting while "System" is chosen.
  *
  * @param {() => 'system'|'light'|'dark'} currentChoice
+ * @param {() => void} [onApplied] - told once the page has switched.
  * @returns {() => void} stop following.
  */
-export function watchSystemTheme(currentChoice) {
+export function watchSystemTheme(currentChoice, onApplied) {
   const media = window.matchMedia?.('(prefers-color-scheme: dark)');
   if (!media) return () => {};
   const update = () => {
-    if (currentChoice() === 'system') applyTheme('system');
+    if (currentChoice() !== 'system') return;
+    applyTheme('system');
+    onApplied?.();
   };
   media.addEventListener('change', update);
   return () => media.removeEventListener('change', update);

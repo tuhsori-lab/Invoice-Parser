@@ -242,7 +242,7 @@ test('reads the next scanned batch from a client with a box the quick way, on th
     await page.getByTestId('confirm-export').click();
   }
   await waitForZip;
-  await page.getByTestId('advanced-toggle').click();
+  await page.getByTestId('tab-settings').click();
   const row = page.getByTestId('client-tally').locator('li', { hasText: /Quillfeather/i });
   await expect(row.getByTestId('tally-corrected')).toHaveText('1 corrected');
   const counts = await row.locator('[data-testid^="tally-"]').allInnerTexts();

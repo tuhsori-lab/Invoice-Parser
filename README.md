@@ -1,6 +1,16 @@
-# Invoice Splitter
+# Invoice Hub
 
-Split a bulk PDF full of invoices into one correctly named PDF per invoice — entirely in your browser.
+Split a bulk PDF full of invoices into one correctly named PDF per invoice, and check invoices
+against your own lists — entirely in your browser.
+
+The app has three tabs:
+
+- **Split** — drop in bulk PDFs and get one correctly named PDF per invoice.
+- **Reconcile** — check a folder of invoice PDFs against a spreadsheet, both ways.
+- **Settings** — how invoices are split and named, each client's box, light or dark, and a reset.
+
+(Invoice Hub used to be called Invoice Splitter. The repository and the web address keep their
+old name, `Invoice-Parser`, so existing links still work.)
 
 **[Try it](https://tuhsori-lab.github.io/Invoice-Parser/)** — it runs entirely in the page; nothing
 you open is uploaded.
@@ -145,8 +155,8 @@ It is read in this browser tab, used for this session, and never saved or sent a
 
 To make one, export your open (or recent) invoices from your accounting system as CSV or Excel — most
 have an "Export" or "Download" button on their invoice or receivables list. One column must hold the
-invoice numbers; a column of client names is optional. Older `.xls` files need saving as `.xlsx` or
-`.csv` first.
+invoice numbers; a column of client names and a column of PO numbers are optional. Excel files
+can be `.xlsx` or the older `.xls`.
 
 When the file is loaded, the app guesses which column is which from the headings and asks you to
 confirm. Your choice is remembered by heading, so the next list exported the same way is used
@@ -162,18 +172,107 @@ straight away. Then:
 **Only let invoices that are in the list go out without a second look** is on whenever a list is
 loaded. Turned off, a number missing from the list is only noted beside it.
 
-## Advanced controls
+### What's missing, in a spreadsheet
 
-Most batches split correctly as they are, so every setting — how pages are split, what happens to
-pages with no number, how the number is found, and what the files are called — sits behind one
-**Advanced controls** button above the results, closed to begin with. Closed, the invoices get the
-whole width. A setting changed and then put away is never out of mind: the button says how many are
-not as they started ("2 settings changed"). Leave the controls open and they are open the next time
-too; that one yes or no is the only thing remembered about them, in this browser.
+Under the invoices is **What's missing**: tick what you want, then **Download as a spreadsheet
+(CSV)**. The file, `whats-missing.csv`, opens in Excel with one row for each thing to chase:
+
+| Row                             | What it means                                                                                  |
+| ------------------------------- | ---------------------------------------------------------------------------------------------- |
+| In your list, not in this batch | An invoice your list expects that no invoice in the PDFs carries                               |
+| In this batch, not in your list | An invoice in the PDFs your list does not have — with the closest entry, if one is a near miss |
+| No invoice number found         | Pages where no number was found                                                                |
+| No PO found                     | An invoice with no PO on it, or "Not read" on a scan read the quick way                        |
+| PO is not the one in your list  | The PO on the invoice and the one your list has for it differ                                  |
+
+Each row gives the invoice, its pages, the PO on the invoice and the PO in your list, and the
+client. The first two need your invoice list loaded, and the last needs a PO column in it. POs are
+compared by their letters and digits, so `PO-5512`, `po 5512` and `5512` count as the same. The
+counts beside each choice show how many rows it adds. Like everything else, the file is made in
+this browser.
+
+## Reconcile
+
+**Reconcile** checks a folder of invoice PDFs — one invoice per file — against a spreadsheet, and
+shows what is on one but not the other.
+
+**On the left, the PDFs.** Drop files or a whole folder (sub-folders are included), or use **Choose
+a folder**. Each file is read in turn, without freezing the tab, with a progress bar counting the
+files and a **Cancel** button:
+
+- the invoice number is found the way the Split tab finds it — the everyday labels, and the box
+  saved for any client you have drawn one for;
+- when the text has no number, the file's name is used ("Invoice INV-2026-0042.pdf" gives
+  `INV-2026-0042`), and the results say so;
+- a scanned file with no text can be read with text recognition: **Read scanned files** offers it,
+  since it is slower;
+- a file that is not a PDF, is damaged or is password-protected is listed under **Could not check**
+  with the reason, and never matched.
+
+**On the right, the spreadsheet** — `.xlsx`, `.xls`, `.csv` and the like, read with SheetJS. If it
+has several sheets, choose one. The invoice column is guessed from a heading such as "Invoice",
+"Invoice #" or "Inv No" — even below a title or a blank line — and can be changed. Tick any other
+columns to carry over into the results, such as the customer or the amount. An empty column, or one
+with no digits in it, is pointed out.
+
+**The results** come in three sections, each with a count:
+
+| Section               | What is in it                                          |
+| --------------------- | ------------------------------------------------------ |
+| In PDFs, not in Excel | Invoices you have a file for that are not on the sheet |
+| In Excel, not in PDFs | Invoices on the sheet that you have no file for        |
+| Matched               | On both — folded away to begin with, showing the count |
+
+Each row shows the invoice number as it was written, the file (for a PDF) or the row number (for the
+sheet), the columns you carried over, and notes. Every section can be sorted by any column, searched,
+and copied (**Copy** puts it on the clipboard, ready to paste into a spreadsheet or an email).
+Clicking a PDF row opens the file. **Export results to Excel** writes one workbook with a sheet per
+section.
+
+**How numbers are matched.** Numbers are messy across clients, so before comparing, both sides are
+cleaned up the same way: spaces trimmed, capitals ignored, a prefix such as `INV-` taken off,
+separators (`-` `_` `/` `.` `#` and spaces) removed, and leading zeros dropped. `INV-00123`, `#123`
+and `123` all match. The prefixes are listed under **Settings → Matching**, where they can be
+changed. Numbers are always shown as they were written, and a match that needed the clean-up says so
+("Matched after cleanup: INV-00123 and 123"), so a loose match never goes unnoticed. The same number
+twice — two PDFs, or two rows — is marked as a duplicate on every copy, saying where the other one
+is.
+
+Everything happens in this browser: the PDFs and the spreadsheet are read here and go nowhere.
+
+## Settings
+
+Most batches split correctly as they are, so every setting lives on its own **Settings** tab, and
+the Split tab gives the invoices the whole width. The **Settings** button beside the export buttons
+goes straight there, and says how many settings are not as they started ("Settings · 2 changed").
+Changes apply to the batch that is open at once; switching tabs never loses it.
+
+| Section                  | What it holds                                                                           |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| Split into invoices      | By invoice number, a marker on the first page, or a fixed number of pages each          |
+| Pages with no number     | Keep them with the invoice before, or set them aside to look at                         |
+| Finding the number       | Which labels to trust, an extra value to read, and the PO list                          |
+| File names               | What every file name starts with, and the pattern it follows                            |
+| Clients                  | Each client with a saved box, and what their numbers look like                          |
+| How each client has gone | Accepted, corrected and sent-to-review counts per client                                |
+| Matching (Reconcile)     | The prefixes taken off before numbers are compared                                      |
+| Appearance               | System, Light or Dark                                                                   |
+| Start afresh             | **Reset everything**: forgets every box, shape, choice, count and setting, after asking |
+
+**Clients** lists everyone you have drawn a box for. Under each name it says what their invoice
+numbers look like — "2 letters, a hyphen, then 5 digits" — which is what the _Doesn't look like
+theirs_ check holds a number to. To change it, type an example number and choose **Use this shape**:
+only its shape is kept, never the example. **Forget** removes one client; **Forget all clients**
+removes every one, after asking.
+
+Messages that only report something — a file saved, a list copied, scans read, an export that
+failed — appear for a few seconds in the bottom corner. Anything that needs you to act stays where
+it is until it is dealt with. Loading, reading scans and exporting each show a progress bar with
+how far along they are.
 
 ### How each client has gone
 
-At the bottom of Advanced controls is a short list, one line per client with a saved box, counting
+Under **Settings** is a short list, one line per client with a saved box, counting
 their invoices as they are saved — downloaded on their own, in the ZIP, or into a folder:
 
 | Count          | Invoices that                                                      |
@@ -395,8 +494,8 @@ slightly differently is still found while the column beside it is not swept in. 
 before any label does; when it finds nothing, the label tiers are tried as usual.
 
 One box per client: **Draw the box again** on any of their pages replaces it, **Forget this
-client's box** on the same page removes it, and **Forget them all** under _Advanced
-controls → Finding the number_ clears every one. Boxes are kept in this browser's storage and nowhere else.
+client's box** on the same page removes it, and **Settings → Clients** lists every client, with
+**Forget** for one and **Forget all clients** for every one. Boxes are kept in this browser's storage and nowhere else.
 
 ## PO numbers
 
@@ -405,7 +504,7 @@ files by their own order number, so that is what a remittance or a dispute refer
 invoice's PO is listed in its own section under the table, with the label it was found after, and
 **Copy list** puts it on the clipboard as two tab-separated columns with a heading row, so it pastes
 straight into a spreadsheet as `Invoice` and `PO`. The list follows the search box, and copies
-exactly what it shows. It can be switched off under _Advanced controls → Finding the number_. On a scan read the quick way
+exactly what it shows. It can be switched off under _Settings → Finding the number_. On a scan read the quick way
 (see _Reading scans faster_), the PO column says **not read (scan)**: only the top, the box and the
 foot of those pages were read.
 
@@ -528,11 +627,21 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   knownList.js     reading your invoice list, and checking numbers against it
   image.js         cleaning up the picture of a box before it is read
   quickRead.js     which parts of a scanned page to read, and how many pages at once
+  reconcile/       matching PDFs against a sheet: clean-up, file names, sheet layout
   tally.js         counting how each client's invoices have gone
+  report.js        what is missing - invoices and POs - as rows for a spreadsheet
   errors.js        plain-language messages for everything that can go wrong
 src/lib/           the browser side: pdf.js setup, reading a batch, text recognition,
-                   thumbnails, downloads, saving to a folder, and where boxes are kept
+                   thumbnails, downloads, saving to a folder, and where boxes are kept;
+                   reading and writing spreadsheets (SheetJS), dropped folders, and
+                   reading one invoice number per PDF for Reconcile
 src/ui/            the interface (React) and its one stylesheet
+  App.jsx          the shell: the bar along the top and the three tabs
+  shell/           the top bar, the tab bar and the light/dark switch
+  common/          toasts, progress bar, empty state, icons, dialogs
+  split/           the Split tab and everything on it
+  reconcile/       the Reconcile tab: inputs, result sections, preview
+  settings/        the Settings tab
 scripts/           the fixture generator, the benchmark runner, and their small helpers
 bench/             the benchmark page and the baseline it is compared against
 tests/unit/        unit tests, including every layout in tests/fixtures/expected.js
@@ -565,9 +674,14 @@ screen. Colours are checked against the paper they sit on: nothing is below 4.5:
 
 ## Light and dark
 
-There is a light theme, a dark theme, and "System", which follows whatever this computer is set to
-and changes with it. The choice is remembered in this browser and settled before the first paint,
-so the page never flashes the wrong colours on the way in.
+The sun or moon button at the top right switches between light and dark. **Settings → Appearance**
+also offers "System", which follows whatever this computer is set to and changes with it, and is
+where the app starts. The choice is remembered in this browser and settled before the first paint,
+so the page never flashes the wrong colours on the way in. The tab you had open is remembered too.
+
+The look is deliberately quiet: neutral greys, one accent colour, thin borders instead of shadows,
+three type sizes, and quick transitions. The typeface is Inter, served by the app itself rather than
+fetched from a font service, so opening the app still talks to nobody else.
 
 ## What it cannot do
 

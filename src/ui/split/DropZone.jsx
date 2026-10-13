@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import Icon from '../common/Icon.jsx';
 
 /**
  * Where a batch comes in.
@@ -49,6 +50,9 @@ export default function DropZone({ files, pageCount, onFiles, onClear, busy }) {
         choose(event.dataTransfer.files);
       }}
     >
+      <span className="drop-zone-icon">
+        <Icon name="upload" size={20} />
+      </span>
       <p className="drop-zone-title">Drop your PDFs here</p>
       <p className="drop-zone-note">
         Several files at once is fine. They are read in the order you choose them.
