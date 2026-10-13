@@ -15,3 +15,6 @@ public/tesseract/
 
 # Written by `npm run bench`; bench/baseline.json is kept.
 bench/results/
+
+# Built by graphify (`graphify update .`); rebuilt from the code in seconds.
+graphify-out/
