@@ -51,13 +51,16 @@ export function applyTheme(choice) {
  * Follow the computer's own setting while "System" is chosen.
  *
  * @param {() => 'system'|'light'|'dark'} currentChoice
+ * @param {() => void} [onApplied] - told once the page has switched.
  * @returns {() => void} stop following.
  */
-export function watchSystemTheme(currentChoice) {
+export function watchSystemTheme(currentChoice, onApplied) {
   const media = window.matchMedia?.('(prefers-color-scheme: dark)');
   if (!media) return () => {};
   const update = () => {
-    if (currentChoice() === 'system') applyTheme('system');
+    if (currentChoice() !== 'system') return;
+    applyTheme('system');
+    onApplied?.();
   };
   media.addEventListener('change', update);
   return () => media.removeEventListener('change', update);

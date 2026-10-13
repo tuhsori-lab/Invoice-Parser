@@ -37,7 +37,9 @@ test('a split batch passes an accessibility audit, in both themes', async ({ pag
   await loadFixtures(page, ['05-repeat-later.pdf', '07-bare-invoice.pdf']);
 
   for (const theme of ['light', 'dark']) {
-    await page.getByTestId('theme-choice').selectOption(theme);
+    await page.getByTestId('tab-settings').click();
+    await page.getByTestId(`theme-${theme}`).click();
+    await page.getByTestId('tab-split').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 
     const { violations } = await audit(page).analyze();
@@ -143,10 +145,14 @@ test('says what went wrong, and lets the message be dismissed', async ({ page })
 
 test('remembers the theme across a reload', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('theme-choice').selectOption('dark');
+  await page.getByTestId('tab-settings').click();
+  await page.getByTestId('theme-dark').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.getByTestId('theme-choice')).toHaveValue('dark');
+  // The Settings tab was the one open, and is open again.
+  await expect(page.getByTestId('theme-dark')).toHaveAttribute('aria-pressed', 'true');
+  await page.getByTestId('theme-toggle').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 });

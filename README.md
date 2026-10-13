@@ -1,6 +1,16 @@
-# Invoice Splitter
+# Invoice Hub
 
-Split a bulk PDF full of invoices into one correctly named PDF per invoice — entirely in your browser.
+Split a bulk PDF full of invoices into one correctly named PDF per invoice, and check invoices
+against your own lists — entirely in your browser.
+
+The app has three tabs:
+
+- **Split** — drop in bulk PDFs and get one correctly named PDF per invoice.
+- **Reconcile** — check a folder of invoice PDFs against a spreadsheet (being built).
+- **Settings** — how invoices are split and named, each client's box, light or dark, and a reset.
+
+(Invoice Hub used to be called Invoice Splitter. The repository and the web address keep their
+old name, `Invoice-Parser`, so existing links still work.)
 
 **[Try it](https://tuhsori-lab.github.io/Invoice-Parser/)** — it runs entirely in the page; nothing
 you open is uploaded.
@@ -585,9 +595,14 @@ screen. Colours are checked against the paper they sit on: nothing is below 4.5:
 
 ## Light and dark
 
-There is a light theme, a dark theme, and "System", which follows whatever this computer is set to
-and changes with it. The choice is remembered in this browser and settled before the first paint,
-so the page never flashes the wrong colours on the way in.
+The sun or moon button at the top right switches between light and dark. **Settings → Appearance**
+also offers "System", which follows whatever this computer is set to and changes with it, and is
+where the app starts. The choice is remembered in this browser and settled before the first paint,
+so the page never flashes the wrong colours on the way in. The tab you had open is remembered too.
+
+The look is deliberately quiet: neutral greys, one accent colour, thin borders instead of shadows,
+three type sizes, and quick transitions. The typeface is Inter, served by the app itself rather than
+fetched from a font service, so opening the app still talks to nobody else.
 
 ## What it cannot do
 
