@@ -50,3 +50,24 @@ export function forgetEverything() {
     return 0;
   }
 }
+
+const PREFIXES_KEY = `${PREFIX}reconcile-prefixes.v1`;
+
+/** The prefixes Reconcile takes off before matching, as written in Settings, or null. */
+export function loadPrefixes() {
+  try {
+    return window.localStorage.getItem(PREFIXES_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Remember them; nothing (or the defaults) forgets them. */
+export function savePrefixes(written) {
+  try {
+    if (written === null) window.localStorage.removeItem(PREFIXES_KEY);
+    else window.localStorage.setItem(PREFIXES_KEY, written);
+  } catch {
+    // Used for this visit only.
+  }
+}

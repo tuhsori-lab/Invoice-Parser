@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import ConfirmDialog from '../common/ConfirmDialog.jsx';
 import ThemeChoice from './ThemeChoice.jsx';
+import MatchingSettings from './MatchingSettings.jsx';
 
 /**
  * Everything that is set once and kept: how invoices are split and named, how
@@ -9,7 +10,14 @@ import ThemeChoice from './ThemeChoice.jsx';
  * The settings that belong to splitting are drawn by the Split tab itself into
  * `splitSlot`, so they work on the batch that is open without being copied.
  */
-export default function SettingsTab({ theme, onTheme, splitSlotRef, onForgetEverything }) {
+export default function SettingsTab({
+  theme,
+  onTheme,
+  prefixes,
+  onPrefixes,
+  splitSlotRef,
+  onForgetEverything,
+}) {
   const [confirming, setConfirming] = useState(false);
 
   return (
@@ -20,6 +28,8 @@ export default function SettingsTab({ theme, onTheme, splitSlotRef, onForgetEver
       </div>
 
       <div ref={splitSlotRef} className="settings-page" data-testid="split-settings" />
+
+      <MatchingSettings prefixes={prefixes} onChange={onPrefixes} />
 
       <section className="settings-card" aria-labelledby="appearance-heading">
         <h3 id="appearance-heading">Appearance</h3>

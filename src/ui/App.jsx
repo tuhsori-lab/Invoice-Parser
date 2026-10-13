@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { applyTheme, loadTheme, watchSystemTheme } from '../lib/theme.js';
-import { forgetEverything, loadTab, saveTab } from '../lib/prefs.js';
+import { forgetEverything, loadPrefixes, loadTab, savePrefixes, saveTab } from '../lib/prefs.js';
+import { DEFAULT_PREFIXES } from '../core/reconcile/normalize.js';
 import { ToastProvider } from './common/Toasts.jsx';
 import Header from './shell/Header.jsx';
 import SplitTab from './split/SplitTab.jsx';
@@ -26,6 +27,12 @@ export default function App() {
   const [tab, setTab] = useState(loadTab);
   const [theme, setTheme] = useState(loadTheme);
   const [shown, setShown] = useState(shownTheme);
+  // The prefixes Reconcile takes off before comparing numbers.
+  const [prefixes, setPrefixes] = useState(() => loadPrefixes() ?? DEFAULT_PREFIXES.join(', '));
+  const changePrefixes = useCallback((written) => {
+    setPrefixes(written);
+    savePrefixes(written);
+  }, []);
   // Where the Split tab draws its own settings, inside the Settings tab.
   const [splitSettings, setSplitSettings] = useState(null);
 
@@ -77,7 +84,7 @@ export default function App() {
             aria-labelledby="tab-reconcile"
             hidden={tab !== 'reconcile'}
           >
-            <ReconcileTab />
+            <ReconcileTab prefixes={prefixes} />
           </section>
           <section
             className="tab-panel"
@@ -89,6 +96,8 @@ export default function App() {
             <SettingsTab
               theme={theme}
               onTheme={setTheme}
+              prefixes={prefixes}
+              onPrefixes={changePrefixes}
               splitSlotRef={setSplitSettings}
               onForgetEverything={startAfresh}
             />

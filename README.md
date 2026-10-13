@@ -6,7 +6,7 @@ against your own lists — entirely in your browser.
 The app has three tabs:
 
 - **Split** — drop in bulk PDFs and get one correctly named PDF per invoice.
-- **Reconcile** — check a folder of invoice PDFs against a spreadsheet (being built).
+- **Reconcile** — check a folder of invoice PDFs against a spreadsheet, both ways.
 - **Settings** — how invoices are split and named, each client's box, light or dark, and a reset.
 
 (Invoice Hub used to be called Invoice Splitter. The repository and the web address keep their
@@ -155,8 +155,8 @@ It is read in this browser tab, used for this session, and never saved or sent a
 
 To make one, export your open (or recent) invoices from your accounting system as CSV or Excel — most
 have an "Export" or "Download" button on their invoice or receivables list. One column must hold the
-invoice numbers; a column of client names and a column of PO numbers are optional. Older `.xls`
-files need saving as `.xlsx` or `.csv` first.
+invoice numbers; a column of client names and a column of PO numbers are optional. Excel files
+can be `.xlsx` or the older `.xls`.
 
 When the file is loaded, the app guesses which column is which from the headings and asks you to
 confirm. Your choice is remembered by heading, so the next list exported the same way is used
@@ -191,6 +191,55 @@ compared by their letters and digits, so `PO-5512`, `po 5512` and `5512` count a
 counts beside each choice show how many rows it adds. Like everything else, the file is made in
 this browser.
 
+## Reconcile
+
+**Reconcile** checks a folder of invoice PDFs — one invoice per file — against a spreadsheet, and
+shows what is on one but not the other.
+
+**On the left, the PDFs.** Drop files or a whole folder (sub-folders are included), or use **Choose
+a folder**. Each file is read in turn, without freezing the tab, with a progress bar counting the
+files and a **Cancel** button:
+
+- the invoice number is found the way the Split tab finds it — the everyday labels, and the box
+  saved for any client you have drawn one for;
+- when the text has no number, the file's name is used ("Invoice INV-2026-0042.pdf" gives
+  `INV-2026-0042`), and the results say so;
+- a scanned file with no text can be read with text recognition: **Read scanned files** offers it,
+  since it is slower;
+- a file that is not a PDF, is damaged or is password-protected is listed under **Could not check**
+  with the reason, and never matched.
+
+**On the right, the spreadsheet** — `.xlsx`, `.xls`, `.csv` and the like, read with SheetJS. If it
+has several sheets, choose one. The invoice column is guessed from a heading such as "Invoice",
+"Invoice #" or "Inv No" — even below a title or a blank line — and can be changed. Tick any other
+columns to carry over into the results, such as the customer or the amount. An empty column, or one
+with no digits in it, is pointed out.
+
+**The results** come in three sections, each with a count:
+
+| Section               | What is in it                                          |
+| --------------------- | ------------------------------------------------------ |
+| In PDFs, not in Excel | Invoices you have a file for that are not on the sheet |
+| In Excel, not in PDFs | Invoices on the sheet that you have no file for        |
+| Matched               | On both — folded away to begin with, showing the count |
+
+Each row shows the invoice number as it was written, the file (for a PDF) or the row number (for the
+sheet), the columns you carried over, and notes. Every section can be sorted by any column, searched,
+and copied (**Copy** puts it on the clipboard, ready to paste into a spreadsheet or an email).
+Clicking a PDF row opens the file. **Export results to Excel** writes one workbook with a sheet per
+section.
+
+**How numbers are matched.** Numbers are messy across clients, so before comparing, both sides are
+cleaned up the same way: spaces trimmed, capitals ignored, a prefix such as `INV-` taken off,
+separators (`-` `_` `/` `.` `#` and spaces) removed, and leading zeros dropped. `INV-00123`, `#123`
+and `123` all match. The prefixes are listed under **Settings → Matching**, where they can be
+changed. Numbers are always shown as they were written, and a match that needed the clean-up says so
+("Matched after cleanup: INV-00123 and 123"), so a loose match never goes unnoticed. The same number
+twice — two PDFs, or two rows — is marked as a duplicate on every copy, saying where the other one
+is.
+
+Everything happens in this browser: the PDFs and the spreadsheet are read here and go nowhere.
+
 ## Settings
 
 Most batches split correctly as they are, so every setting lives on its own **Settings** tab, and
@@ -206,6 +255,7 @@ Changes apply to the batch that is open at once; switching tabs never loses it.
 | File names               | What every file name starts with, and the pattern it follows                            |
 | Clients                  | Each client with a saved box, and what their numbers look like                          |
 | How each client has gone | Accepted, corrected and sent-to-review counts per client                                |
+| Matching (Reconcile)     | The prefixes taken off before numbers are compared                                      |
 | Appearance               | System, Light or Dark                                                                   |
 | Start afresh             | **Reset everything**: forgets every box, shape, choice, count and setting, after asking |
 
@@ -577,17 +627,20 @@ src/core/          the engine — plain JavaScript, no framework, no browser API
   knownList.js     reading your invoice list, and checking numbers against it
   image.js         cleaning up the picture of a box before it is read
   quickRead.js     which parts of a scanned page to read, and how many pages at once
+  reconcile/       matching PDFs against a sheet: clean-up, file names, sheet layout
   tally.js         counting how each client's invoices have gone
   report.js        what is missing - invoices and POs - as rows for a spreadsheet
   errors.js        plain-language messages for everything that can go wrong
 src/lib/           the browser side: pdf.js setup, reading a batch, text recognition,
-                   thumbnails, downloads, saving to a folder, and where boxes are kept
+                   thumbnails, downloads, saving to a folder, and where boxes are kept;
+                   reading and writing spreadsheets (SheetJS), dropped folders, and
+                   reading one invoice number per PDF for Reconcile
 src/ui/            the interface (React) and its one stylesheet
   App.jsx          the shell: the bar along the top and the three tabs
   shell/           the top bar, the tab bar and the light/dark switch
   common/          toasts, progress bar, empty state, icons, dialogs
   split/           the Split tab and everything on it
-  reconcile/       the Reconcile tab
+  reconcile/       the Reconcile tab: inputs, result sections, preview
   settings/        the Settings tab
 scripts/           the fixture generator, the benchmark runner, and their small helpers
 bench/             the benchmark page and the baseline it is compared against
