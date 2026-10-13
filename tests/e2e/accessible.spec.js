@@ -17,6 +17,11 @@ const FIXTURES = join(HERE, '..', 'fixtures', 'pdf');
 
 const fixture = (name) => join(FIXTURES, name);
 
+// Things fade in as they arrive, and axe measures contrast on whatever is on
+// screen at that instant: half way through a fade, every colour fails. With
+// motion turned down, as a person can ask for, the page is drawn finished.
+test.use({ contextOptions: { reducedMotion: 'reduce' } });
+
 /** The rules worth holding this app to. */
 const audit = (page) =>
   new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']);
