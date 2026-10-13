@@ -305,8 +305,6 @@ export const CASES = [
         label: 'INVOICE NO.',
         source: 'common',
         flags: [],
-        // Under the P.O. NUMBER heading, not the ORDER # one beside it.
-        po: '7730415',
       },
     ],
   },
@@ -322,7 +320,6 @@ export const CASES = [
         label: 'Invoice #',
         source: 'common',
         flags: [],
-        po: null,
       },
       {
         invoice: 'SR-40997_1',
@@ -330,7 +327,6 @@ export const CASES = [
         label: 'Invoice #',
         source: 'common',
         flags: [],
-        po: null,
       },
     ],
   },

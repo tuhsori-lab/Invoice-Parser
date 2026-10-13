@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { explain } from '../../core/errors.js';
+import { FLAG_LABELS } from '../../core/group.js';
 import { cleanPrefixes } from '../../core/reconcile/normalize.js';
 import { reconcile } from '../../core/reconcile/match.js';
 import { guessSheetLayout, sheetEntries } from '../../core/reconcile/sheet.js';
@@ -16,6 +17,15 @@ import PdfPreview from './PdfPreview.jsx';
 
 /** Where a PDF's number came from, in words. */
 const FOUND_BY = { text: 'PDF text', scan: 'Scan', filename: 'File name' };
+
+/** Each row's status, in the order they sort: problems ahead of matches. */
+const STATUS = {
+  onlySheet: 'Missing PDF',
+  onlyPdf: 'Not in sheet',
+  unreadable: 'No number found',
+  matched: 'Matched',
+};
+const STATUS_ORDER = Object.keys(STATUS);
 
 /** Why a file could not be checked, in words. */
 function whyUnchecked(item) {
@@ -42,6 +52,7 @@ export default function ReconcileTab({ prefixes }) {
   const [carry, setCarry] = useState([]);
   const [sheetError, setSheetError] = useState('');
   const [preview, setPreview] = useState(null);
+  const [show, setShow] = useState('all');
 
   /* ------------------------------------------------------------------ PDFs */
 
@@ -68,7 +79,7 @@ export default function ReconcileTab({ prefixes }) {
         );
       }
       // The same file dropped twice is read once.
-      const seen = new Set(items.map((item) => `${item.path}|${item.file.size}`));
+      const seen = new Set(items.map((item) => `${item.sourcePath}|${item.file.size}`));
       const fresh = pdfs.filter(({ file, path }) => !seen.has(`${path}|${file.size}`));
       if (fresh.length === 0) {
         toast('Those files are already here.', { kind: 'info' });
@@ -104,12 +115,10 @@ export default function ReconcileTab({ prefixes }) {
     try {
       const found = await readScannedPdfs(scans, { signal, onProgress: setScanReading });
       setItems((current) =>
-        current.map((item) =>
-          found.has(item.id) ? { ...item, invoice: found.get(item.id), source: 'scan' } : item
-        )
+        current.flatMap((item) => (found.has(item.fileId) ? found.get(item.fileId) : [item]))
       );
       toast(
-        `Found a number on ${found.size} of ${scans.length} scanned ${scans.length === 1 ? 'file' : 'files'}.`,
+        `Found invoices in ${found.size} of ${scans.length} scanned ${scans.length === 1 ? 'file' : 'files'}.`,
         { kind: found.size < scans.length ? 'info' : 'success' }
       );
     } catch (error) {
@@ -181,109 +190,99 @@ export default function ReconcileTab({ prefixes }) {
       carry.map((column) => [`extra-${column}`, row.extras[layout.headers[column]] ?? ''])
     );
 
-  const sections = useMemo(() => {
+  /** Everything in one table: each invoice once, with whether it checked out. */
+  const table = useMemo(() => {
     if (!result) return null;
+    const pdfNotes = (pdf, notes) =>
+      [...(pdf.flags ?? []).map((flag) => FLAG_LABELS[flag] ?? flag), ...notes].join('; ');
+    const rows = [
+      ...result.onlySheet.map((entry) => ({
+        id: `row-${entry.row.rowNumber}`,
+        status: 'onlySheet',
+        flagged: entry.duplicate,
+        cells: {
+          status: STATUS.onlySheet,
+          sheetInvoice: entry.row.invoice,
+          row: entry.row.rowNumber,
+          ...extrasOf(entry.row),
+          notes: entry.notes.join('; '),
+        },
+      })),
+      ...result.onlyPdf.map((entry) => ({
+        id: entry.pdf.id,
+        status: 'onlyPdf',
+        file: entry.pdf,
+        flagged: entry.duplicate,
+        cells: {
+          status: STATUS.onlyPdf,
+          invoice: entry.pdf.invoice,
+          file: entry.pdf.path,
+          found: FOUND_BY[entry.pdf.source] ?? '',
+          notes: pdfNotes(entry.pdf, entry.notes),
+        },
+      })),
+      ...result.unreadable.map((item) => ({
+        id: `unread-${item.id}`,
+        status: 'unreadable',
+        file: item.problem ? null : item,
+        cells: { status: STATUS.unreadable, file: item.path, notes: whyUnchecked(item) },
+      })),
+      ...result.matched.map((entry) => ({
+        id: `match-${entry.pdf.id}`,
+        status: 'matched',
+        file: entry.pdf,
+        flagged: entry.duplicate || entry.cleanup,
+        cells: {
+          status: STATUS.matched,
+          invoice: entry.pdf.invoice,
+          sheetInvoice: entry.row.invoice,
+          file: entry.pdf.path,
+          found: FOUND_BY[entry.pdf.source] ?? '',
+          row: entry.row.rowNumber,
+          ...extrasOf(entry.row),
+          notes: pdfNotes(entry.pdf, entry.notes),
+        },
+      })),
+    ];
     return {
-      onlyPdf: {
-        columns: [
-          { key: 'invoice', label: 'Invoice' },
-          { key: 'file', label: 'File' },
-          { key: 'found', label: 'Found by' },
-          { key: 'notes', label: 'Notes' },
-        ],
-        rows: result.onlyPdf.map((entry) => ({
-          id: entry.pdf.id,
-          file: entry.pdf,
-          flagged: entry.duplicate,
-          cells: {
-            invoice: entry.pdf.invoice,
-            file: entry.pdf.path,
-            found: FOUND_BY[entry.pdf.source] ?? '',
-            notes: entry.notes.join('; '),
-          },
-        })),
-      },
-      onlySheet: {
-        columns: [
-          { key: 'invoice', label: 'Invoice' },
-          { key: 'row', label: 'Row', numeric: true },
-          ...extraColumns,
-          { key: 'notes', label: 'Notes' },
-        ],
-        rows: result.onlySheet.map((entry) => ({
-          id: `row-${entry.row.rowNumber}`,
-          flagged: entry.duplicate,
-          cells: {
-            invoice: entry.row.invoice,
-            row: entry.row.rowNumber,
-            ...extrasOf(entry.row),
-            notes: entry.notes.join('; '),
-          },
-        })),
-      },
-      matched: {
-        columns: [
-          { key: 'invoice', label: 'Invoice (PDF)' },
-          { key: 'sheetInvoice', label: 'Invoice (sheet)' },
-          { key: 'file', label: 'File' },
-          { key: 'row', label: 'Row', numeric: true },
-          ...extraColumns,
-          { key: 'notes', label: 'Notes' },
-        ],
-        rows: result.matched.map((entry) => ({
-          id: `match-${entry.pdf.id}`,
-          file: entry.pdf,
-          flagged: entry.duplicate || entry.cleanup,
-          cells: {
-            invoice: entry.pdf.invoice,
-            sheetInvoice: entry.row.invoice,
-            file: entry.pdf.path,
-            row: entry.row.rowNumber,
-            ...extrasOf(entry.row),
-            notes: entry.notes.join('; '),
-          },
-        })),
-      },
-      unreadable: {
-        columns: [
-          { key: 'file', label: 'File' },
-          { key: 'notes', label: 'Why' },
-        ],
-        rows: result.unreadable.map((item) => ({
-          id: `unread-${item.id}`,
-          file: item.problem ? null : item,
-          flagged: true,
-          cells: { file: item.path, notes: whyUnchecked(item) },
-        })),
-      },
+      columns: [
+        {
+          key: 'status',
+          label: 'Status',
+          rank: (row) => STATUS_ORDER.indexOf(row.status),
+          render: (row) => (
+            <span className={`status status-${row.status}`}>{row.cells.status}</span>
+          ),
+        },
+        { key: 'invoice', label: 'Invoice (PDF)' },
+        { key: 'sheetInvoice', label: 'Invoice (sheet)' },
+        { key: 'file', label: 'File' },
+        { key: 'found', label: 'Found by' },
+        { key: 'row', label: 'Row', numeric: true },
+        ...extraColumns,
+        { key: 'notes', label: 'Notes' },
+      ],
+      rows,
     };
     // extraColumns and extrasOf follow carry and layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result, carry, layout]);
 
   const exportWorkbook = useCallback(async () => {
-    if (!sections) return;
-    const asRows = ({ columns, rows }) => [
-      columns.map((column) => column.label),
-      ...rows.map((row) => columns.map((column) => row.cells[column.key] ?? '')),
+    if (!table) return;
+    const rows = [
+      table.columns.map((column) => column.label),
+      ...table.rows.map((row) => table.columns.map((column) => row.cells[column.key] ?? '')),
     ];
-    const sheets = [
-      { name: 'In PDFs, not in Excel', rows: asRows(sections.onlyPdf) },
-      { name: 'In Excel, not in PDFs', rows: asRows(sections.onlySheet) },
-      { name: 'Matched', rows: asRows(sections.matched) },
-    ];
-    if (sections.unreadable.rows.length) {
-      sheets.push({ name: 'Could not check', rows: asRows(sections.unreadable) });
-    }
     try {
-      saveFile(await writeWorkbook(sheets), 'reconcile-results.xlsx');
+      saveFile(await writeWorkbook([{ name: 'Reconcile', rows }]), 'reconcile-results.xlsx');
       toast('Downloaded reconcile-results.xlsx.');
     } catch {
-      toast('The results could not be written to Excel. Copy the sections instead.', {
+      toast('The results could not be written to Excel. Copy the table instead.', {
         kind: 'error',
       });
     }
-  }, [sections, toast]);
+  }, [table, toast]);
 
   const busy = Boolean(reading || scanReading);
 
@@ -292,13 +291,13 @@ export default function ReconcileTab({ prefixes }) {
       <div className="page-head reconcile-head">
         <div>
           <h2>Reconcile</h2>
-          <p>Check a folder of invoice PDFs against a spreadsheet, both ways.</p>
+          <p>Split invoice PDFs and check every invoice against a spreadsheet, both ways.</p>
         </div>
         <button
           type="button"
           className="button"
           onClick={exportWorkbook}
-          disabled={!sections}
+          disabled={!table}
           data-testid="export-results"
         >
           Export results to Excel
@@ -345,53 +344,45 @@ export default function ReconcileTab({ prefixes }) {
         />
       </div>
 
-      {sections ? (
+      {table ? (
         <div className="reconcile-results" data-testid="reconcile-results">
-          {(result.duplicates.pdf > 0 || result.duplicates.sheet > 0) && (
-            <p className="duplicate-note" data-testid="duplicate-note">
-              Duplicates:{' '}
-              {[
-                result.duplicates.pdf && `${result.duplicates.pdf} PDFs share a number`,
-                result.duplicates.sheet && `${result.duplicates.sheet} sheet rows share a number`,
-              ]
-                .filter(Boolean)
-                .join(', ')}
-              . They are marked in the sections below.
-            </p>
-          )}
           <ResultSection
-            id="only-pdf"
-            title="In PDFs, not in Excel"
-            hint="Invoices you have a file for that are not on the sheet."
-            {...sections.onlyPdf}
+            id="results"
+            title="Results"
+            toolbar={
+              <div className="segmented" role="group" aria-label="Show" data-testid="status-filter">
+                {['all', ...STATUS_ORDER].map((key) => {
+                  const count =
+                    key === 'all'
+                      ? table.rows.length
+                      : table.rows.filter((row) => row.status === key).length;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-pressed={show === key}
+                      onClick={() => setShow(key)}
+                      data-testid={`show-${key}`}
+                    >
+                      {key !== 'all' && <span className={`status-dot status-${key}`} />}
+                      {key === 'all' ? 'All' : STATUS[key]}
+                      <span className="segment-count">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            }
+            hint={[
+              result.duplicates.pdf && `${result.duplicates.pdf} PDF invoices share a number`,
+              result.duplicates.sheet && `${result.duplicates.sheet} sheet rows share a number`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+            columns={table.columns}
+            rows={show === 'all' ? table.rows : table.rows.filter((row) => row.status === show)}
             onOpen={(row) => setPreview(row.file)}
-            emptyText="Every PDF is on the sheet."
+            emptyText="Nothing here."
           />
-          <ResultSection
-            id="only-sheet"
-            title="In Excel, not in PDFs"
-            hint="Invoices on the sheet that you have no file for."
-            {...sections.onlySheet}
-            emptyText="Every invoice on the sheet has a PDF."
-          />
-          <ResultSection
-            id="matched"
-            title="Matched"
-            {...sections.matched}
-            defaultOpen={false}
-            onOpen={(row) => setPreview(row.file)}
-            emptyText="Nothing matched yet."
-          />
-          {sections.unreadable.rows.length > 0 && (
-            <ResultSection
-              id="unchecked"
-              title="Could not check"
-              hint="Files with no invoice number found, so they are on neither side."
-              {...sections.unreadable}
-              onOpen={(row) => setPreview(row.file)}
-              emptyText=""
-            />
-          )}
         </div>
       ) : (
         !busy && (

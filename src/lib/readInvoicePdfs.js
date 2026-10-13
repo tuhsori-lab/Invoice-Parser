@@ -1,11 +1,11 @@
 /**
- * The invoice number in each of a set of single-invoice PDFs.
+ * The invoices in a set of PDFs, each file split the way the Split tab splits it.
  *
- * Each file is opened in turn, its text read page by page (up to ten pages)
- * and run through the same detection the Split tab uses - the everyday labels,
- * and any box saved for a client. When the text gives no number, the file's
- * name is tried. A file that is not a PDF, is damaged or locked, is kept with
- * the reason, never matched.
+ * Each file is opened in turn, every page read and run through the same
+ * detection and grouping the Split tab uses - the everyday labels, and any box
+ * saved for a client - giving one item per invoice. A file whose text gives no
+ * number at all is tried by its name, as one invoice. A file that is not a PDF,
+ * is damaged or locked, is kept with the reason, never matched.
  *
  * Files are read one at a time and the browser is given a moment between them,
  * so two hundred PDFs never freeze the tab, and the count it reports is exact.
@@ -19,14 +19,10 @@ import { readScannedPages, stopOcr } from './ocr.js';
 import { loadBoxes } from './boxStore.js';
 import { buildPageText } from '../core/extractText.js';
 import { analyzePages, judgeReading } from '../core/analyze.js';
+import { groupPages } from '../core/group.js';
+import { pageRangeForCsv } from '../core/naming.js';
 import { classifyError } from '../core/errors.js';
 import { numberFromFileName } from '../core/reconcile/fileName.js';
-
-/** Pages read from each file, at most. An invoice is rarely longer. */
-const MOST_PAGES = 10;
-
-/** Scanned files opened at once for text recognition. */
-const SCAN_CHUNK = 6;
 
 let counter = 0;
 
@@ -46,7 +42,7 @@ const pause = () => new Promise((resolve) => setTimeout(resolve, 0));
 /** The pages of one open PDF, in the form detection reads. */
 async function pagesOf(doc, id, fileName) {
   const pages = [];
-  for (let n = 1; n <= Math.min(doc.numPages, MOST_PAGES); n += 1) {
+  for (let n = 1; n <= doc.numPages; n += 1) {
     const page = await doc.getPage(n);
     const { text, hasText, layout } = buildPageText((await page.getTextContent()).items);
     const { width, height } = page.getViewport({ scale: 1 });
@@ -69,60 +65,80 @@ async function pagesOf(doc, id, fileName) {
 }
 
 /**
- * Read one file.
+ * One item per invoice the pages split into. A file of more than one invoice
+ * says which pages each came from, so two invoices of one file can be told apart.
+ */
+function splitInto(item, pages, settings, source) {
+  const groups = groupPages(analyzePages(pages, settings));
+  return groups.map((group, position) => {
+    const pageNumbers = group.pages.map((page) => page.pageNumberInFile);
+    return {
+      ...item,
+      id: `${item.id}-${position + 1}`,
+      path: groups.length > 1 ? `${item.path} (p. ${pageRangeForCsv(pageNumbers)})` : item.path,
+      invoice: group.invoice,
+      source: group.invoice ? source : null,
+      pages: pageNumbers,
+      flags: group.flags,
+    };
+  });
+}
+
+/**
+ * Read one file and split it into invoices.
  *
  * @param {{ file: File, path: string }} input
  * @param {object} settings - from detectionSettings.
- * @returns {Promise<import('../core/reconcile/match.js').PdfItem & { file: File, scan: boolean }>}
+ * @returns {Promise<Array<import('../core/reconcile/match.js').PdfItem & { file: File, fileId: string, scan: boolean }>>}
  */
 export async function readInvoicePdf({ file, path }, settings) {
   counter += 1;
   const item = {
     id: `pdf-${counter}`,
+    fileId: `pdf-${counter}`,
     file,
     fileName: file.name,
     path: path || file.name,
+    sourcePath: path || file.name,
     invoice: null,
     source: null,
-    others: [],
+    pages: [],
+    flags: [],
     problem: null,
     scan: false,
   };
-  if (!isPdfFile(file)) return { ...item, problem: 'not-a-pdf' };
+  if (!isPdfFile(file)) return [{ ...item, problem: 'not-a-pdf' }];
 
   let doc;
   try {
     doc = await openPdf(new Uint8Array(await file.arrayBuffer()));
   } catch (error) {
-    return { ...item, problem: classifyError(error) };
+    return [{ ...item, problem: classifyError(error) }];
   }
   try {
     const pages = await pagesOf(doc, item.id, file.name);
-    const found = [
-      ...new Set(
-        analyzePages(pages, settings)
-          .map((page) => page.detection?.value)
-          .filter(Boolean)
-      ),
-    ];
-    if (found.length) return { ...item, invoice: found[0], others: found.slice(1), source: 'text' };
+    const split = splitInto(item, pages, settings, 'text');
+    if (split.some((entry) => entry.invoice)) return split;
     const fromName = numberFromFileName(file.name);
-    return {
-      ...item,
-      invoice: fromName,
-      source: fromName ? 'filename' : null,
-      // Nothing to read on the page itself: text recognition could help.
-      scan: pages.length > 0 && pages.every((page) => !page.hasText),
-    };
+    return [
+      {
+        ...item,
+        invoice: fromName,
+        source: fromName ? 'filename' : null,
+        pages: pages.map((page) => page.pageNumberInFile),
+        // Nothing to read on the page itself: text recognition could help.
+        scan: pages.length > 0 && pages.every((page) => !page.hasText),
+      },
+    ];
   } catch (error) {
-    return { ...item, problem: classifyError(error) };
+    return [{ ...item, problem: classifyError(error) }];
   } finally {
     doc.destroy();
   }
 }
 
 /**
- * Read many files, one at a time.
+ * Read many files, one at a time, into one list of invoices.
  *
  * @param {Array<{ file: File, path: string }>} inputs
  * @param {object} [options]
@@ -136,65 +152,50 @@ export async function readInvoicePdfs(inputs, { onProgress, signal } = {}) {
   for (const [position, input] of inputs.entries()) {
     if (signal?.aborted) break;
     onProgress?.({ done: position, total: inputs.length, fileName: input.file.name });
-    items.push(await readInvoicePdf(input, settings));
+    items.push(...(await readInvoicePdf(input, settings)));
     await pause();
   }
-  onProgress?.({ done: items.length, total: inputs.length, fileName: '' });
+  onProgress?.({ done: inputs.length, total: inputs.length, fileName: '' });
   return items;
 }
 
 /**
- * Read the first page of scanned files with text recognition.
+ * Read scanned files with text recognition, every page, and split them.
  *
  * @param {Array<object>} items - files read before, with `scan` set.
  * @param {object} [options] - as for readInvoicePdfs.
- * @returns {Promise<Map<string, string>>} the number found, by file id.
+ * @returns {Promise<Map<string, Array<object>>>} the invoices found, by file id.
  */
 export async function readScannedPdfs(items, { onProgress, signal } = {}) {
   const settings = detectionSettings();
   const found = new Map();
-  let done = 0;
   try {
-    for (let start = 0; start < items.length; start += SCAN_CHUNK) {
+    for (const [done, item] of items.entries()) {
       if (signal?.aborted) break;
-      const chunk = items.slice(start, start + SCAN_CHUNK);
-      const docs = new Map();
-      const pages = [];
-      for (const item of chunk) {
-        try {
-          const doc = await openPdf(new Uint8Array(await item.file.arrayBuffer()));
-          docs.set(item.id, doc);
-          pages.push({
-            index: pages.length + 1,
-            fileId: item.id,
-            fileName: item.fileName,
-            pageNumberInFile: 1,
-            hasText: false,
-            text: '',
-          });
-        } catch {
-          // Opened once already; if it will not open now, it stays as it was.
-        }
+      onProgress?.({ done, total: items.length, fileName: item.fileName });
+      let doc;
+      try {
+        doc = await openPdf(new Uint8Array(await item.file.arrayBuffer()));
+      } catch {
+        // Opened once already; if it will not open now, it stays as it was.
+        continue;
       }
       try {
-        const readings = await readScannedPages(pages, docs, {
+        const pages = await pagesOf(doc, item.fileId, item.fileName);
+        const readings = await readScannedPages(pages, new Map([[item.fileId, doc]]), {
           signal,
           judge: (page, reading) => judgeReading(page, reading, settings),
-          onProgress: (progress) =>
-            onProgress?.({ done: done + progress.done, total: items.length, fileName: '' }),
         });
-        for (const page of pages) {
-          const reading = readings.get(page.index);
-          if (!reading) continue;
-          const [read] = analyzePages([{ ...page, ...reading, ocr: true }], settings);
-          if (read.detection?.value) found.set(page.fileId, read.detection.value);
-        }
+        const read = pages.map((page) =>
+          readings.has(page.index) ? { ...page, ...readings.get(page.index), ocr: true } : page
+        );
+        const split = splitInto({ ...item, scan: false }, read, settings, 'scan');
+        if (split.some((entry) => entry.invoice)) found.set(item.fileId, split);
       } finally {
-        for (const doc of docs.values()) doc.destroy();
+        doc.destroy();
       }
-      done += chunk.length;
-      onProgress?.({ done, total: items.length, fileName: '' });
     }
+    onProgress?.({ done: items.length, total: items.length, fileName: '' });
   } finally {
     await stopOcr();
   }

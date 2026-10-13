@@ -42,6 +42,10 @@
   --marker: #f0c23c;
   --marker-soft: #fdf3d4;
   --problem: #c9001a;
+  --status-green: #28cd41;
+  --status-orange: #ff9500;
+  --status-grey: #8e8e93;
+  --stripe: rgb(0 0 0 / 0.025);
   --overlay: rgb(0 0 0 / 0.25);
   --material: rgb(245 245 247 / 0.72);
   --thumb: #ffffff;
@@ -104,6 +108,10 @@
   --marker: #e8bd45;
   --marker-soft: #3a3116;
   --problem: #ff6961;
+  --status-green: #30d158;
+  --status-orange: #ff9f0a;
+  --status-grey: #98989d;
+  --stripe: rgb(255 255 255 / 0.035);
   --overlay: rgb(0 0 0 / 0.5);
   --material: rgb(28 28 30 / 0.72);
   --thumb: #636366;
@@ -2531,15 +2539,6 @@ select {
   margin-top: 1.5rem;
 }
 
-.duplicate-note {
-  margin: 0;
-  padding: 0.65rem 0.9rem;
-  border-radius: var(--radius-sm);
-  border-left: 3px solid var(--marker);
-  background: var(--marker-soft);
-  font-size: var(--text-md);
-}
-
 .result-section {
   background: var(--sheet);
   border-radius: var(--radius);
@@ -2646,8 +2645,7 @@ select {
 .data-table td {
   text-align: left;
   padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--rule);
-  vertical-align: baseline;
+  vertical-align: middle;
 }
 
 .data-table thead th {
@@ -2689,6 +2687,11 @@ select {
   transition: background-color var(--ease);
 }
 
+/* Alternating rows, the way a Finder list keeps a long table easy to follow. */
+.data-table tbody tr:nth-child(even) {
+  background: var(--stripe);
+}
+
 .data-table tbody tr:hover {
   background: var(--hover);
 }
@@ -2701,12 +2704,80 @@ select {
   box-shadow: inset 2px 0 0 var(--marker);
 }
 
+.data-table td:first-child {
+  white-space: nowrap;
+}
+
+/* A file name stays on one line; the full name is in its tooltip. */
+.data-table td .link-button {
+  display: inline-block;
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .data-table td.is-number {
   font-variant-numeric: tabular-nums;
 }
 
 .data-table td:last-child {
   color: var(--ink-soft);
+}
+
+/* ------------------------------------------------- status, as a Finder tag */
+
+.status,
+.segmented .status-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.status::before,
+.status-dot::before {
+  content: '';
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--dot);
+}
+
+.status-matched {
+  --dot: var(--status-green);
+}
+
+.status-onlySheet {
+  --dot: var(--status-orange);
+}
+
+.status-onlyPdf {
+  --dot: var(--accent-fill);
+}
+
+.status-unreadable {
+  --dot: var(--status-grey);
+}
+
+.result-toolbar {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--rule);
+  overflow-x: auto;
+}
+
+.result-toolbar .segmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.25rem 0.85rem;
+  white-space: nowrap;
+}
+
+.segment-count {
+  color: var(--ink-faint);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .show-all {

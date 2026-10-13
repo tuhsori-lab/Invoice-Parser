@@ -9,7 +9,8 @@ const FIRST_ROWS = 300;
  * button, and a table that sorts by any column.
  *
  * @param {object} props
- * @param {Array<{ key: string, label: string, numeric?: boolean }>} props.columns
+ * @param {Array<{ key: string, label: string, numeric?: boolean, rank?: (row: object) => number, render?: (row: object) => import('react').ReactNode }>} props.columns
+ *   `rank` sorts by a number other than the cell; `render` draws the cell, which stays the text copied.
  * @param {Array<{ id: string, cells: Record<string, string|number>, flagged?: boolean, file?: object }>} props.rows
  * @param {(row: object) => void} [props.onOpen] - opens a row's file, when it has one.
  */
@@ -17,6 +18,7 @@ export default function ResultSection({
   id,
   title,
   hint,
+  toolbar,
   columns,
   rows,
   defaultOpen = true,
@@ -42,9 +44,9 @@ export default function ResultSection({
       : rows;
     const column = columns.find((entry) => entry.key === sort.key);
     if (!column) return kept;
-    const value = (row) => row.cells[column.key] ?? '';
+    const value = (row) => (column.rank ? column.rank(row) : (row.cells[column.key] ?? ''));
     const sorted = [...kept].sort((a, b) =>
-      column.numeric
+      column.numeric || column.rank
         ? (Number(value(a)) || 0) - (Number(value(b)) || 0)
         : String(value(a)).localeCompare(String(value(b)), undefined, {
             numeric: true,
@@ -122,6 +124,7 @@ export default function ResultSection({
 
       {open && (
         <div id={`${id}-body`} className="result-body">
+          {toolbar && <div className="result-toolbar">{toolbar}</div>}
           {hint && <p className="result-hint">{hint}</p>}
           {rows.length === 0 ? (
             <p className="result-empty">{emptyText}</p>
@@ -172,10 +175,12 @@ export default function ResultSection({
                                 event.stopPropagation();
                                 onOpen(row);
                               }}
-                              title="Preview this file"
+                              title={`Preview ${row.cells[column.key]}`}
                             >
                               {row.cells[column.key]}
                             </button>
+                          ) : column.render ? (
+                            column.render(row)
                           ) : (
                             row.cells[column.key]
                           )}

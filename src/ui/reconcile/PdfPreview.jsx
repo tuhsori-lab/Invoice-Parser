@@ -7,7 +7,8 @@ export default function PdfPreview({ item, onClose }) {
   const dialogRef = useDialog({ onClose });
   const canvas = useRef(null);
   const [doc, setDoc] = useState(null);
-  const [pageNumber, setPageNumber] = useState(1);
+  // A file split into several invoices opens on this invoice's first page.
+  const [pageNumber, setPageNumber] = useState(item.pages?.[0] ?? 1);
   const [problem, setProblem] = useState('');
 
   useEffect(() => {

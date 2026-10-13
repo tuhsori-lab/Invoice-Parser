@@ -12,7 +12,6 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import JSZip from 'jszip';
 import { PDFDocument } from 'pdf-lib';
-import { workbook } from '../helpers/workbook.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, '..', 'fixtures', 'pdf');
@@ -98,18 +97,6 @@ test('exports a ZIP holding every invoice under its own name', async ({ page }) 
   expect(first.getPageCount()).toBe(1);
 });
 
-test('exports a page map Excel can open', async ({ page }) => {
-  await loadFixtures(page, ['01-same-line.pdf']);
-
-  const saved = await download(page, () => page.getByTestId('download-csv').click());
-  const csv = await readFile(saved.path, 'utf8');
-
-  expect(saved.name).toBe('page-map.csv');
-  expect(csv.charCodeAt(0)).toBe(0xfeff); // the byte order mark Excel needs
-  expect(csv).toContain('Invoice,Extra,Found after,Pages,Page count,File name,Source file(s)');
-  expect(csv).toContain('104233,,Invoice #:,1 to 2,2,104233.pdf,01-same-line.pdf');
-});
-
 test('opens a page, shows its text, and steps through the batch', async ({ page }) => {
   await loadFixtures(page, ['01-same-line.pdf']);
 
@@ -176,40 +163,7 @@ test('never sends anything anywhere while a batch is being worked on', async ({ 
   await page.getByTestId('tile-1').click();
   await expect(page.getByTestId('page-text')).toBeVisible();
   await page.keyboard.press('Escape');
-  await download(page, () => page.getByTestId('download-csv').click());
-
-  // Checking against an invoice list, from a CSV and from an Excel file, is
-  // done on this computer too.
-  await page.getByTestId('list-input').setInputFiles({
-    name: 'open-invoices.csv',
-    mimeType: 'text/csv',
-    buffer: Buffer.from('Invoice No,Customer\n104233,Lakeshore\n'),
-  });
-  await page.getByTestId('list-apply').click();
-  await expect(page.getByTestId('list-summary')).toContainText('1 of this batch');
-  await page.getByRole('button', { name: 'Load a different list' }).click();
-  await page.getByTestId('list-input').setInputFiles({
-    name: 'open-invoices.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: await workbook([
-      ['Invoice No', 'Customer'],
-      ['104233', 'Lakeshore'],
-    ]),
-  });
-  await expect(page.getByTestId('list-summary')).toContainText('1 of this batch');
-
-  // What is missing, pulled into a spreadsheet, is built here too.
-  await download(page, () => page.getByTestId('report-download').click());
-
-  // Saving counts towards how each client has gone - kept in this browser, and
-  // cleared from it.
   await download(page, () => page.getByTestId('download-zip').click());
-  await page.getByTestId('tab-settings').click();
-  const tally = page.getByTestId('client-tally');
-  await expect(tally).toContainText('Invoices found without a box');
-  await expect(tally.locator('li')).toHaveCount(1);
-  await page.getByTestId('tally-clear').click();
-  await expect(page.getByTestId('tally-empty')).toBeVisible();
 
   // Everything the app asks for is its own code, from its own address. Parts of
   // it arrive only when they are needed - the code that builds PDFs is fetched
