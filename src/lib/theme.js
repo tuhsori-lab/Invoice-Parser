@@ -38,7 +38,17 @@ export function loadTheme() {
  * @param {'system'|'light'|'dark'} choice
  */
 export function applyTheme(choice) {
-  document.documentElement.dataset.theme = choice === 'system' ? systemTheme() : choice;
+  const root = document.documentElement;
+  const next = choice === 'system' ? systemTheme() : choice;
+  if (root.dataset.theme !== next) {
+    // Every colour changes at once: nothing fades from light to dark half way.
+    root.classList.add('theme-switching');
+    root.dataset.theme = next;
+    void root.offsetWidth;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => root.classList.remove('theme-switching'))
+    );
+  }
   try {
     if (choice === 'system') window.localStorage.removeItem(KEY);
     else window.localStorage.setItem(KEY, choice);

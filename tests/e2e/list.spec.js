@@ -116,13 +116,14 @@ test('reads an Excel list, and remembers which columns were chosen', async ({ pa
 
 test('says plainly when a list file cannot be used', async ({ page }) => {
   await loadFixtures(page, ['01-same-line.pdf']);
+  // An Excel file that is damaged: it starts like one, and is not.
   await page.getByTestId('list-input').setInputFiles({
-    name: 'old.xls',
-    mimeType: 'application/vnd.ms-excel',
-    buffer: Buffer.from('not really'),
+    name: 'broken.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: Buffer.from('PK\u0003\u0004 this is not a workbook'),
   });
   await expect(page.getByTestId('list-error')).toContainText(
-    'This is an older Excel file (.xls). Open it in Excel and save it as .xlsx or .csv'
+    'broken.xlsx could not be opened. It may be damaged, or password-protected.'
   );
 });
 

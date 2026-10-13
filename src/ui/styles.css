@@ -2502,3 +2502,10 @@ select {
   background: #fff;
   border: 1px solid var(--rule);
 }
+
+/* Switching between light and dark happens at once, not as a 150 ms fade. */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
