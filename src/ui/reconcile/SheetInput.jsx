@@ -1,3 +1,4 @@
+import { guessFieldColumns } from '../../core/reconcile/sheet.js';
 import DropArea from '../common/DropArea.jsx';
 import { SHEET_TYPES } from '../../lib/sheets.js';
 
@@ -15,6 +16,10 @@ export default function SheetInput({
   onCarry,
   onClear,
 }) {
+  // The amount and PO columns are compared with every PDF and shown as their own
+  // columns, so carrying them over as well would only show them twice.
+  const fields = layout ? guessFieldColumns(layout.headers, layout.invoiceColumn) : {};
+  const compared = ['amount', 'po'].map((name) => fields[name]).filter((column) => column >= 0);
   const sheet = workbook?.sheets[sheetIndex];
   const sample = (column) => {
     const rows = sheet?.rows ?? [];
@@ -95,8 +100,14 @@ export default function SheetInput({
           {layout.headers.length > 1 && (
             <fieldset className="carry-over">
               <legend>Columns to carry over into the results</legend>
+              {compared.length > 0 && (
+                <p className="input-summary-note carry-compared" data-testid="compared-columns">
+                  {compared.map((column) => layout.headers[column]).join(' and ')}{' '}
+                  {compared.length === 1 ? 'is' : 'are'} already shown, checked against each PDF.
+                </p>
+              )}
               {layout.headers.map((header, column) =>
-                column === layout.invoiceColumn ? null : (
+                column === layout.invoiceColumn || compared.includes(column) ? null : (
                   <label key={column} className="choice">
                     <input
                       type="checkbox"

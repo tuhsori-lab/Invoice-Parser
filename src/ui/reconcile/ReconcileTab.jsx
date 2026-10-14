@@ -4,7 +4,7 @@ import { FLAG_LABELS } from '../../core/group.js';
 import { cleanPrefixes } from '../../core/reconcile/normalize.js';
 import { reconcile } from '../../core/reconcile/match.js';
 import { compareWithSheet, formatMoney } from '../../core/reconcile/compare.js';
-import { guessSheetLayout, sheetEntries } from '../../core/reconcile/sheet.js';
+import { guessFieldColumns, guessSheetLayout, sheetEntries } from '../../core/reconcile/sheet.js';
 import { readInvoicePdfs, readScannedPdfs } from '../../lib/readInvoicePdfs.js';
 import { isSheetFile, readWorkbook, SheetFileError, writeWorkbook } from '../../lib/sheets.js';
 import { saveFile } from '../../lib/download.js';
@@ -16,6 +16,11 @@ import PdfInput from './PdfInput.jsx';
 import SheetInput from './SheetInput.jsx';
 import ResultSection from './ResultSection.jsx';
 import PdfPreview from './PdfPreview.jsx';
+import { useHiddenColumns } from '../../lib/useHiddenColumns.js';
+import { parseMoney, readFields } from '../../core/fields.js';
+import { learnLabel, withLabel } from '../../core/learn.js';
+import { loadLearned, saveLearned } from '../../lib/learnedLabels.js';
+import AddValue from './AddValue.jsx';
 
 /** Where a PDF's number came from, in words. */
 const FOUND_BY = { text: 'PDF text', scan: 'Scan', filename: 'File name' };
@@ -57,6 +62,10 @@ export default function ReconcileTab({ prefixes, onData }) {
   const [sheetError, setSheetError] = useState('');
   const [preview, setPreview] = useState(null);
   const [show, setShow] = useState('all');
+  const [hiddenColumns, setHiddenColumns] = useHiddenColumns('results');
+  // Labels taught by typing in a missing PO or amount, and what was typed.
+  const [learned, setLearned] = useState(loadLearned);
+  const [typed, setTyped] = useState({});
 
   /* ------------------------------------------------------------------ PDFs */
 
@@ -174,29 +183,95 @@ export default function ReconcileTab({ prefixes, onData }) {
     [sheet, layout, carry]
   );
 
+  /**
+   * The invoices as read, with any labels taught since read again, and anything
+   * typed in on top: what a person typed is what they meant.
+   */
+  const itemsRead = useMemo(() => {
+    const taught = learned.po.length > 0 || learned.total.length > 0;
+    return items.map((item) => {
+      let fields = taught && item.readable ? readFields(item.readable, learned) : item.fields;
+      const own = typed[item.id];
+      if (own?.po) fields = { ...fields, po: { value: own.po, raw: own.po, typed: true } };
+      if (own?.total) {
+        const money =
+          parseMoney(own.total) ?? parseMoney(`${own.total} ${fields?.total?.currency ?? ''}`);
+        if (money) fields = { ...fields, total: { ...money, raw: own.total, typed: true } };
+      }
+      return fields === item.fields ? item : { ...item, fields };
+    });
+  }, [items, learned, typed]);
+
+  /** A value typed in for one invoice: kept for it, and its label learned for the rest. */
+  const addValue = useCallback(
+    (item, field, value) => {
+      setTyped((current) => ({ ...current, [item.id]: { ...current[item.id], [field]: value } }));
+      const what = field === 'po' ? 'PO' : 'amount';
+      const label = item.readable ? learnLabel(item.readable, field, value) : null;
+      if (!label) {
+        toast(
+          `Saved for this invoice. The ${what} was not printed beside a label on its PDF, so there was nothing to learn.`,
+          { kind: 'info' }
+        );
+        return;
+      }
+      const next = withLabel(learned, field, label);
+      const filled = items.filter(
+        (other) =>
+          other.id !== item.id &&
+          other.readable &&
+          !readFields(other.readable, learned)[field] &&
+          readFields(other.readable, next)[field]
+      ).length;
+      setLearned(next);
+      saveLearned(next);
+      toast(
+        `Learned: the ${what} follows \u201c${label}\u201d. ${
+          filled === 0
+            ? 'No other invoice here has it there yet; the next batch will be read with it.'
+            : `Filled it in for ${filled === 1 ? '1 more invoice' : `${filled} more invoices`}.`
+        }`,
+        { kind: 'success' }
+      );
+    },
+    [items, learned, toast]
+  );
+
+  const forgetLearned = () => {
+    const none = { po: [], total: [] };
+    setLearned(none);
+    saveLearned(none);
+    toast('Forgot the labels it learned.');
+  };
+
   // The Summary tab works from the same files.
   useEffect(() => {
-    onData?.({ items, entries: parsed?.entries ?? [] });
-  }, [items, parsed, onData]);
+    onData?.({ items: itemsRead, entries: parsed?.entries ?? [] });
+  }, [itemsRead, parsed, onData]);
 
   /* --------------------------------------------------------------- results */
 
   const prefixList = useMemo(() => cleanPrefixes(prefixes), [prefixes]);
   const result = useMemo(
     () =>
-      items.length > 0 && parsed && !reading
-        ? reconcile(items, parsed.entries, { prefixes: prefixList })
+      itemsRead.length > 0 && parsed && !reading
+        ? reconcile(itemsRead, parsed.entries, { prefixes: prefixList })
         : null,
-    [items, parsed, reading, prefixList]
+    [itemsRead, parsed, reading, prefixList]
   );
 
-  const extraColumns = carry.map((column) => ({
+  // Amount and PO already have their own columns; never show them twice.
+  const fieldColumns = guessFieldColumns(layout.headers, layout.invoiceColumn);
+  const shownCarry = carry.filter(
+    (column) => column !== fieldColumns.amount && column !== fieldColumns.po
+  );
+  const extraColumns = shownCarry.map((column) => ({
     key: `extra-${column}`,
     label: layout.headers[column],
   }));
   const extrasOf = (row) =>
     Object.fromEntries(
-      carry.map((column) => [`extra-${column}`, row.extras[layout.headers[column]] ?? ''])
+      shownCarry.map((column) => [`extra-${column}`, row.extras[layout.headers[column]] ?? ''])
     );
 
   /** Everything in one table: each invoice once, with whether it checked out. */
@@ -250,6 +325,8 @@ export default function ReconcileTab({ prefixes, onData }) {
           status,
           file: entry.pdf,
           flagged: entry.duplicate || entry.cleanup,
+          // A price that disagrees with Excel is the one thing that must not be missed.
+          alert: check.priceDiffers,
           cells: {
             status: STATUS[status],
             invoice: entry.pdf.invoice,
@@ -264,6 +341,9 @@ export default function ReconcileTab({ prefixes, onData }) {
                 ? ''
                 : `${check.amount.difference > 0 ? '+' : '−'}${formatMoney(Math.abs(check.amount.difference), currency)}`,
             pdfPo: check.po.pdf ?? '',
+            // How the PDF's own values were got, when not by the usual labels.
+            pdfAmountFrom: fromWhere(entry.pdf.fields?.total),
+            pdfPoFrom: fromWhere(entry.pdf.fields?.po),
             sheetPo: check.po.sheet ?? '',
             ...extrasOf(entry.row),
             notes: pdfNotes(entry.pdf, [...check.notes, ...entry.notes]),
@@ -287,8 +367,20 @@ export default function ReconcileTab({ prefixes, onData }) {
         { key: 'sheetInvoice', label: 'Invoice (sheet)' },
         ...(has('pdfAmount') || has('sheetAmount')
           ? [
-              { key: 'pdfAmount', label: 'Amount (PDF)' },
-              { key: 'sheetAmount', label: 'Amount (Excel)' },
+              {
+                key: 'pdfAmount',
+                label: 'Amount (PDF)',
+                render: (row) => (
+                  <PdfValue row={row} field="total" onAdd={addValue}>
+                    <span className="amount">{row.cells.pdfAmount}</span>
+                  </PdfValue>
+                ),
+              },
+              {
+                key: 'sheetAmount',
+                label: 'Amount (Excel)',
+                render: (row) => <span className="amount">{row.cells.sheetAmount}</span>,
+              },
               {
                 key: 'difference',
                 label: 'Difference',
@@ -303,7 +395,15 @@ export default function ReconcileTab({ prefixes, onData }) {
           : []),
         ...(has('pdfPo') || has('sheetPo')
           ? [
-              { key: 'pdfPo', label: 'PO (PDF)' },
+              {
+                key: 'pdfPo',
+                label: 'PO (PDF)',
+                render: (row) => (
+                  <PdfValue row={row} field="po" onAdd={addValue}>
+                    {row.cells.pdfPo}
+                  </PdfValue>
+                ),
+              },
               { key: 'sheetPo', label: 'PO (Excel)' },
             ]
           : []),
@@ -317,13 +417,15 @@ export default function ReconcileTab({ prefixes, onData }) {
     };
     // extraColumns and extrasOf follow carry and layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result, carry, layout]);
+  }, [result, carry, layout, addValue]);
 
   const exportWorkbook = useCallback(async () => {
     if (!table) return;
+    // The columns on screen, so a hidden column stays out of the file too.
+    const columns = table.columns.filter((column) => !hiddenColumns.includes(column.key));
     const rows = [
-      table.columns.map((column) => column.label),
-      ...table.rows.map((row) => table.columns.map((column) => row.cells[column.key] ?? '')),
+      columns.map((column) => column.label),
+      ...table.rows.map((row) => columns.map((column) => row.cells[column.key] ?? '')),
     ];
     try {
       saveFile(await writeWorkbook([{ name: 'Reconcile', rows }]), 'reconcile-results.xlsx');
@@ -333,7 +435,7 @@ export default function ReconcileTab({ prefixes, onData }) {
         kind: 'error',
       });
     }
-  }, [table, toast]);
+  }, [table, toast, hiddenColumns]);
 
   const busy = Boolean(reading || scanReading);
   const priceCount = table?.rows.filter((row) => row.status === 'priceDiffers').length ?? 0;
@@ -413,6 +515,20 @@ export default function ReconcileTab({ prefixes, onData }) {
 
       {table ? (
         <div className="reconcile-results" data-testid="reconcile-results">
+          {(learned.po.length > 0 || learned.total.length > 0) && (
+            <p className="learned-note" data-testid="learned-note">
+              <span>
+                Learned:{' '}
+                {[
+                  ...learned.po.map((label) => `PO after \u201c${label}\u201d`),
+                  ...learned.total.map((label) => `amount after \u201c${label}\u201d`),
+                ].join(' \u00b7 ')}
+              </span>
+              <button type="button" className="link-button" onClick={forgetLearned}>
+                Forget
+              </button>
+            </p>
+          )}
           <ResultSection
             id="results"
             title="Results"
@@ -457,6 +573,8 @@ export default function ReconcileTab({ prefixes, onData }) {
             rows={show === 'all' ? table.rows : table.rows.filter((row) => row.status === show)}
             onOpen={(row) => setPreview(row.file)}
             emptyText="Nothing here."
+            hiddenColumns={hiddenColumns}
+            onHiddenColumns={setHiddenColumns}
           />
         </div>
       ) : (
@@ -485,5 +603,44 @@ export default function ReconcileTab({ prefixes, onData }) {
 
       {preview && <PdfPreview item={preview} onClose={() => setPreview(null)} />}
     </div>
+  );
+}
+
+/** "typed" or the label taught, for a value not found by the usual labels. */
+function fromWhere(found) {
+  if (found?.typed) return 'typed';
+  return found?.learned ? `learned:${found.learned}` : '';
+}
+
+/**
+ * A value read from the PDF, marked when it was typed or found by a taught
+ * label; or, when none was found on a matched invoice, a way to type it in.
+ */
+function PdfValue({ row, field, onAdd, children }) {
+  const value = field === 'po' ? row.cells.pdfPo : row.cells.pdfAmount;
+  const from = field === 'po' ? row.cells.pdfPoFrom : row.cells.pdfAmountFrom;
+  if (!value) {
+    return row.file && row.status !== 'onlySheet' && row.status !== 'unreadable' ? (
+      <AddValue
+        label={field === 'po' ? 'PO' : 'amount'}
+        onSave={(typed) => onAdd(row.file, field, typed)}
+        testId={`add-${field}-${row.cells.invoice}`}
+      />
+    ) : null;
+  }
+  if (!from) return children;
+  const taught = from.startsWith('learned:') ? from.slice(8) : null;
+  return (
+    <span className="value-from">
+      {children}
+      <span
+        className="value-tag"
+        title={
+          taught ? `Read after \u201c${taught}\u201d, the label you taught it` : 'Typed in by you'
+        }
+      >
+        {taught ? 'learned' : 'typed'}
+      </span>
+    </span>
   );
 }

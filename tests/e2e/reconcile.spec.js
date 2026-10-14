@@ -63,3 +63,30 @@ test('says when an invoice’s amount or PO differs from the spreadsheet', async
   await page.getByTestId('show-priceDiffers').click();
   await expect(results.locator('tbody tr')).toHaveCount(1);
 });
+
+test('columns can be hidden from the results, and stay hidden', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('tab-reconcile').click();
+  await page.getByTestId('try-samples-reconcile').click();
+  const results = page.getByTestId('section-results');
+  await expect(results).toBeVisible({ timeout: 30_000 });
+  const headings = results.locator('thead th');
+  await expect(headings.filter({ hasText: 'Found by' })).toHaveCount(1);
+
+  await page.getByTestId('columns-results').locator('summary').click();
+  await page.getByTestId('column-found').click({ force: true });
+  await page.keyboard.press('Escape');
+  await expect(headings.filter({ hasText: 'Found by' })).toHaveCount(0);
+  await expect(page.getByTestId('columns-results')).toContainText(/\d+\/\d+/);
+
+  // Remembered in this browser.
+  await page.reload();
+  await page.getByTestId('tab-reconcile').click();
+  await page.getByTestId('try-samples-reconcile').click();
+  await expect(results).toBeVisible({ timeout: 30_000 });
+  await expect(headings.filter({ hasText: 'Found by' })).toHaveCount(0);
+
+  await page.getByTestId('columns-results').locator('summary').click();
+  await page.getByRole('button', { name: 'Show all columns' }).click();
+  await expect(headings.filter({ hasText: 'Found by' })).toHaveCount(1);
+});

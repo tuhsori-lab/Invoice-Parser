@@ -209,7 +209,7 @@ export function dueDateFor(dateIso, terms) {
  * A page's text as phrases: runs on one line close enough together to be read
  * as one piece, each with where it sat.
  */
-function phrasesOf(page) {
+export function phrasesOf(page) {
   const text = page.text ?? '';
   if (!page.layout?.length) {
     // No positions: every line is one phrase, in order.
@@ -278,9 +278,37 @@ const CUSTOMER_LABEL =
 const TOTAL_LABELS = [
   // Spaces optional: text read from a scan often runs words together ("Totaldue").
   /^(total\s*(amount\s*)?due|amount\s*due|balance\s*due|total\s*payable|amount\s*payable|balance)\b\s*:?/i,
-  /^(invoice total|grand total|total amount|total (incl\.?|including) (vat|tax)|total \(?(usd|eur|gbp|chf)\)?|gesamtbetrag|montant total|importe total|totale|totaal)\b\s*:?/i,
+  /^(invoice total|grand total|total amount|total invoice( amount)?|invoice\s*(amount|amt|value)|inv\.?\s*(amount|amt|amnt)|net\s*payable|total (incl\.?|including) (vat|tax)|total \(?(usd|eur|gbp|chf)\)?|gesamtbetrag|montant total|importe total|totale|totaal)\b\s*:?/i,
   /^total\b(?!\s*(vat|tax|excl|before|net\b|ht\b|qty|quantity|items|hours|weight))\s*:?/i,
 ];
+
+/**
+ * A label somebody taught it, as a pattern: its words in order, anything
+ * between them, at the start of a phrase. "Order Ref:" matches "ORDER REF".
+ *
+ * @param {string} label
+ * @returns {RegExp}
+ */
+export function labelPattern(label) {
+  const words = String(label)
+    .trim()
+    .replace(/[\s:#.-]+$/, '')
+    .split(/\s+/)
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`^${words.join('[\\s.:#-]*')}(?![a-z0-9])\\s*:?`, 'i');
+}
+
+/** The first value found by any of the labels somebody taught it, marked with which. */
+function fromLearned(phrasesByPage, labels = [], parse) {
+  for (const label of labels) {
+    const pattern = labelPattern(label);
+    for (const phrases of phrasesByPage) {
+      const found = firstParsed(valuesFor(phrases, pattern), parse);
+      if (found) return { ...found, learned: label };
+    }
+  }
+  return null;
+}
 
 /** The first of these values a reader can make sense of. */
 function firstParsed(values, parse) {
@@ -338,6 +366,8 @@ function asName(text) {
  * rest come from the first page that has them.
  *
  * @param {Array<{ text: string, layout?: Array<object> }>} pages - one invoice's, in order.
+ * @param {{ po?: string[], total?: string[] }} [learned] - labels somebody taught it
+ *   (see learn.js), tried only when none of the usual ones finds a value.
  * @returns {{
  *   customer: string|null,
  *   po: { value: string, raw: string }|null,
@@ -348,7 +378,7 @@ function asName(text) {
  *   dueDate: string|null,
  * }}
  */
-export function readFields(pages = []) {
+export function readFields(pages = [], learned = {}) {
   const phrasesByPage = pages.map(phrasesOf);
 
   let total = null;
@@ -363,6 +393,8 @@ export function readFields(pages = []) {
       }
     });
   });
+  // A label somebody taught it, when none of the usual ones gave a total.
+  if (!total) total = fromLearned(phrasesByPage, learned.total, parseMoney);
 
   const order = dateOrderFor(total?.currency ?? null);
   const first = (read) => {
@@ -389,7 +421,9 @@ export function readFields(pages = []) {
         parseTerms
       )
     );
-  const po = first((phrases) => firstParsed(valuesFor(phrases, PO_LABEL), asPo));
+  const po =
+    first((phrases) => firstParsed(valuesFor(phrases, PO_LABEL), asPo)) ??
+    fromLearned(phrasesByPage, learned.po, asPo);
   const customer =
     phrasesByPage.length > 0
       ? (firstParsed(valuesFor(phrasesByPage[0], CUSTOMER_LABEL, { right: false }), asName)?.name ??
@@ -398,7 +432,9 @@ export function readFields(pages = []) {
 
   return {
     customer,
-    po: po ? { value: po.value, raw: po.raw } : null,
+    po: po
+      ? { value: po.value, raw: po.raw, ...(po.learned ? { learned: po.learned } : {}) }
+      : null,
     total,
     date,
     terms,

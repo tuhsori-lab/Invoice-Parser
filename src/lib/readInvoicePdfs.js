@@ -82,8 +82,15 @@ function splitInto(item, pages, settings, source) {
       pages: pageNumbers,
       flags: group.flags,
       fields: readFields(group.pages),
+      // The words and where they sat, for learning labels from (see core/learn.js).
+      readable: readableOf(group.pages),
     };
   });
+}
+
+/** Just what reading fields needs from a page: its text and the layout of it. */
+function readableOf(pages) {
+  return pages.map(({ text, layout }) => ({ text, layout }));
 }
 
 /**
@@ -130,6 +137,7 @@ export async function readInvoicePdf({ file, path }, settings) {
         pages: pages.map((page) => page.pageNumberInFile),
         // No number on the pages, but its date, terms and total may still be there.
         fields: readFields(pages),
+        readable: readableOf(pages),
         // Nothing to read on the page itself: text recognition could help.
         scan: pages.length > 0 && pages.every((page) => !page.hasText),
       },

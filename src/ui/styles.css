@@ -2512,7 +2512,8 @@ select {
 }
 
 .data-scroll {
-  max-height: 32rem;
+  /* Most of the window, so a long list needs little scrolling inside the box. */
+  max-height: max(32rem, calc(100vh - 11rem));
   overflow: auto;
 }
 
@@ -3647,4 +3648,166 @@ select {
   width: 0.95rem;
   height: 1.25rem;
   border-radius: 3px;
+}
+
+/* A price that disagrees with Excel: the whole row in red, and both amounts. */
+.data-table tbody tr.is-alert td {
+  background: color-mix(in srgb, var(--status-red) 10%, transparent);
+}
+
+.data-table tbody tr.is-alert:hover td {
+  background: color-mix(in srgb, var(--status-red) 16%, transparent);
+}
+
+.data-table tbody tr.is-alert td:first-child {
+  box-shadow: inset 3px 0 0 var(--status-red);
+}
+
+.data-table tbody tr.is-alert .amount {
+  color: var(--problem);
+  font-weight: 650;
+}
+
+/* ---------------------------------------------- choosing columns, as a Mac menu */
+
+.column-menu {
+  position: relative;
+}
+
+.column-menu summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.column-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.column-count {
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.column-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 30;
+  min-width: 13rem;
+  padding: 0.35rem;
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  animation: pop-in 220ms var(--spring) backwards;
+}
+
+.column-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.55rem 0.3rem 0.4rem;
+  border-radius: 6px;
+  font-size: var(--text-md);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.column-option:hover,
+.column-option:focus-within {
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+
+/* The checkbox stays for keyboards and screen readers; a tick is what shows. */
+.column-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.column-tick {
+  width: 0.9rem;
+  flex: none;
+  text-align: center;
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.column-option input:checked + .column-tick::before {
+  content: '\2713';
+}
+
+.column-option:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.column-reset {
+  margin-top: 0.25rem;
+  padding: 0.4rem 0.55rem 0.3rem 1.8rem;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: none;
+  text-align: left;
+  font: inherit;
+  font-size: var(--text-md);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+/* --------------------------------------------- typing in what the PDF lacked */
+
+.add-value {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--accent);
+  background: none;
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.add-value:hover {
+  background: var(--accent-soft);
+  border-style: solid;
+}
+
+.add-value-form input {
+  width: 8rem;
+  padding: 0.2rem 0.45rem;
+  font-size: var(--text-md);
+}
+
+.value-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.value-tag {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+}
+
+.learned-note {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: var(--text-md);
+  color: var(--ink-soft);
 }

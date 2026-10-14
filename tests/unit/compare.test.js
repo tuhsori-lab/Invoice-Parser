@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { poKey, readFields } from '../../src/core/fields.js';
 import { compareWithSheet } from '../../src/core/reconcile/compare.js';
-import { guessFieldColumns } from '../../src/core/reconcile/sheet.js';
+import {
+  guessFieldColumns,
+  guessSheetLayout,
+  sheetEntries,
+} from '../../src/core/reconcile/sheet.js';
 
 const page = (...lines) => ({ text: lines.join('\n') });
 const usd = (amount, raw) => ({ amount, currency: 'USD', raw });
@@ -84,5 +88,43 @@ describe('an invoice against its row in Excel', () => {
       'No total found on the PDF to check the amount against',
       'No PO found on the PDF to check against',
     ]);
+  });
+});
+
+describe('spreadsheets with short or joined-up headings', () => {
+  it('reads InvAmnt, InvAmt and Inv_Amount as the amount, and PONum as the PO', () => {
+    for (const heading of ['InvAmnt', 'InvAmt', 'Inv_Amount', 'AMT', 'Invoice Total']) {
+      expect(guessFieldColumns(['InvNo', heading], 0)).toMatchObject({ amount: 1 });
+    }
+    expect(guessFieldColumns(['InvNo', 'PONum', 'InvAmnt'], 0)).toMatchObject({ po: 1, amount: 2 });
+    expect(guessFieldColumns(['InvNo', 'Net Terms', 'InvAmnt'], 0)).toMatchObject({ amount: 2 });
+  });
+
+  it('never takes the amount or date column for the invoice numbers', () => {
+    const rows = [
+      ['InvDate', 'InvAmnt', 'InvNo', 'PONum'],
+      ['2026-09-02', '1297.48', 'HL-24017', '4500118'],
+    ];
+    const layout = guessSheetLayout(rows);
+    expect(layout.invoiceColumn).toBe(2);
+    const { entries } = sheetEntries(rows, layout, layout.headers);
+    expect(entries[0]).toMatchObject({
+      invoice: 'HL-24017',
+      fields: { amount: '1297.48', po: '4500118' },
+    });
+  });
+});
+
+describe('reading the invoice amount off a PDF', () => {
+  it('knows the usual ways of printing it', () => {
+    for (const label of [
+      'Invoice Amount:',
+      'Invoice Value',
+      'Inv Amt',
+      'Total Invoice Amount',
+      'Net Payable',
+    ]) {
+      expect(readFields([page(`${label} $1,297.48`)]).total.amount).toBe(1297.48);
+    }
   });
 });

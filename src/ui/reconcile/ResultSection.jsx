@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useHiddenColumns } from '../../lib/useHiddenColumns.js';
 import { useToast } from '../common/Toasts.jsx';
 
 /** Rows drawn at first; the rest on request, so thousands of rows stay quick. */
@@ -11,7 +12,8 @@ const FIRST_ROWS = 300;
  * @param {object} props
  * @param {Array<{ key: string, label: string, numeric?: boolean, rank?: (row: object) => number, render?: (row: object) => import('react').ReactNode }>} props.columns
  *   `rank` sorts by a number other than the cell; `render` draws the cell, which stays the text copied.
- * @param {Array<{ id: string, cells: Record<string, string|number>, flagged?: boolean, file?: object }>} props.rows
+ * @param {Array<{ id: string, cells: Record<string, string|number>, flagged?: boolean, alert?: boolean, file?: object }>} props.rows
+ *   `alert` tints the whole row red: something on it disagrees and needs a look.
  * @param {(row: object) => void} [props.onOpen] - opens a row's file, when it has one.
  * @param {import('react').ReactNode} [props.toolbar] - drawn above the table, such as a filter.
  * @param {{ key: string, down: boolean }} [props.initialSort] - otherwise the first column, ascending.
@@ -22,13 +24,24 @@ export default function ResultSection({
   hint,
   toolbar,
   initialSort,
-  columns,
+  columns: allColumns,
   rows,
   defaultOpen = true,
   onOpen,
   emptyText,
+  hiddenColumns,
+  onHiddenColumns,
 }) {
   const toast = useToast();
+  // Columns somebody has hidden: kept by the caller when it needs them too (for an
+  // export), otherwise remembered here.
+  const [ownHidden, setOwnHidden] = useHiddenColumns(id);
+  const hidden = hiddenColumns ?? ownHidden;
+  const setHidden = onHiddenColumns ?? setOwnHidden;
+  const columns = useMemo(
+    () => allColumns.filter((column) => !hidden.includes(column.key)),
+    [allColumns, hidden]
+  );
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState(initialSort ?? { key: columns[0]?.key, down: false });
@@ -113,6 +126,7 @@ export default function ResultSection({
                 data-testid={`search-${id}`}
               />
             </label>
+            <ColumnMenu id={id} columns={allColumns} hidden={hidden} onChange={setHidden} />
             <button
               type="button"
               className="button quiet"
@@ -164,7 +178,7 @@ export default function ResultSection({
                   {visible.map((row) => (
                     <tr
                       key={row.id}
-                      className={`${row.flagged ? 'is-flagged' : ''}${row.file && onOpen ? ' is-openable' : ''}`}
+                      className={`${row.flagged ? 'is-flagged' : ''}${row.file && onOpen ? ' is-openable' : ''}${row.alert ? ' is-alert' : ''}`}
                       onClick={row.file && onOpen ? () => onOpen(row) : undefined}
                       data-testid={`row-${row.id}`}
                     >
@@ -203,5 +217,69 @@ export default function ResultSection({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Which columns to show, as a Mac menu: a tick by each one that is showing.
+ * Closes on Escape or a click anywhere else; one column always stays.
+ */
+function ColumnMenu({ id, columns, hidden, onChange }) {
+  const menu = useRef(null);
+
+  useEffect(() => {
+    const close = (event) => {
+      const box = menu.current;
+      if (!box?.open) return;
+      if (event.type === 'keydown' ? event.key === 'Escape' : !box.contains(event.target)) {
+        box.open = false;
+      }
+    };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, []);
+
+  const showing = columns.filter((column) => !hidden.includes(column.key)).length;
+  const toggle = (key) =>
+    onChange(hidden.includes(key) ? hidden.filter((entry) => entry !== key) : [...hidden, key]);
+
+  return (
+    <details className="column-menu" ref={menu} data-testid={`columns-${id}`}>
+      <summary className="button quiet">
+        Columns
+        {showing < columns.length && (
+          <span className="column-count">
+            {showing}/{columns.length}
+          </span>
+        )}
+      </summary>
+      <div className="column-menu-panel glass" role="group" aria-label="Columns to show">
+        {columns.map((column) => {
+          const on = !hidden.includes(column.key);
+          return (
+            <label key={column.key} className="column-option">
+              <input
+                type="checkbox"
+                checked={on}
+                disabled={on && showing === 1}
+                onChange={() => toggle(column.key)}
+                data-testid={`column-${column.key}`}
+              />
+              <span className="column-tick" aria-hidden="true" />
+              {column.label}
+            </label>
+          );
+        })}
+        {hidden.length > 0 && (
+          <button type="button" className="column-reset" onClick={() => onChange([])}>
+            Show all columns
+          </button>
+        )}
+      </div>
+    </details>
   );
 }
