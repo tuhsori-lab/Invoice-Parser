@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { explain } from '../../core/errors.js';
 import { FLAG_LABELS } from '../../core/group.js';
-import { cleanPrefixes } from '../../core/reconcile/normalize.js';
+import { cleanPrefixes, matchKey } from '../../core/reconcile/normalize.js';
 import { reconcile } from '../../core/reconcile/match.js';
 import { compareWithSheet, formatMoney } from '../../core/reconcile/compare.js';
 import { guessFieldColumns, guessSheetLayout, sheetEntries } from '../../core/reconcile/sheet.js';
@@ -24,6 +24,7 @@ import {
   withLabel,
   withPatternPo,
   withPoPattern,
+  withoutPoPattern,
 } from '../../core/learn.js';
 import { loadLearned, NOTHING_LEARNED, saveLearned } from '../../lib/learnedLabels.js';
 import AddValue from './AddValue.jsx';
@@ -194,12 +195,34 @@ export default function ReconcileTab({ prefixes, onData }) {
    * The invoices as read, with any labels taught since read again, and anything
    * typed in on top: what a person typed is what they meant.
    */
+  const prefixList = useMemo(() => cleanPrefixes(prefixes), [prefixes]);
+
+  // Whose invoice each is, from the spreadsheet's customer column, for invoices
+  // whose PDF names no customer.
+  const sheetCustomers = useMemo(() => {
+    const found = new Map();
+    for (const entry of parsed?.entries ?? []) {
+      const key = matchKey(entry.invoice, { prefixes: prefixList });
+      if (key && entry.fields?.customer && !found.has(key)) found.set(key, entry.fields.customer);
+    }
+    return found;
+  }, [parsed, prefixList]);
+  const customerOf = useCallback(
+    (item) =>
+      item.fields?.customer ??
+      (item.invoice
+        ? sheetCustomers.get(matchKey(item.invoice, { prefixes: prefixList }))
+        : null) ??
+      null,
+    [sheetCustomers, prefixList]
+  );
+
   const itemsRead = useMemo(() => {
     const taught = learned.po.length > 0 || learned.total.length > 0;
     return items.map((item) => {
       let fields = taught && item.readable ? readFields(item.readable, learned) : item.fields;
       // No label gave a PO: look for one shaped like this customer's POs.
-      fields = withPatternPo(fields, item.readable, learned, item.invoice);
+      fields = withPatternPo(fields, item.readable, learned, item.invoice, customerOf(item));
       const own = typed[item.id];
       if (own?.po) fields = { ...fields, po: { value: own.po, raw: own.po, typed: true } };
       if (own?.total) {
@@ -209,7 +232,7 @@ export default function ReconcileTab({ prefixes, onData }) {
       }
       return fields === item.fields ? item : { ...item, fields };
     });
-  }, [items, learned, typed]);
+  }, [items, learned, typed, customerOf]);
 
   /**
    * A value typed in for one invoice: kept for it, and what it teaches used for
@@ -218,17 +241,30 @@ export default function ReconcileTab({ prefixes, onData }) {
    */
   const addValue = useCallback(
     (item, field, value) => {
+      const before = typed[item.id]?.[field];
       setTyped((current) => ({ ...current, [item.id]: { ...current[item.id], [field]: value } }));
       const what = field === 'po' ? 'PO' : 'amount';
-      const customer = item.fields?.customer ?? null;
+      // The PDF's "Bill to", or the spreadsheet's customer when the PDF names none.
+      const customer = customerOf(item);
       const label = item.readable ? learnLabel(item.readable, field, value, [customer]) : null;
-      let next = label ? withLabel(learned, field, label) : learned;
+      // A typed PO corrected: what its first spelling taught goes.
+      let base = learned;
+      if (field === 'po' && customer && before) base = withoutPoPattern(base, customer, before);
+      let next = label ? withLabel(base, field, label) : base;
       if (field === 'po' && customer) next = withPoPattern(next, customer, value);
-      if (next === learned) {
+      if (next === base) {
+        // Nothing new to learn; any shape a mistyped PO taught is gone all the same.
+        if (base !== learned) {
+          setLearned(base);
+          saveLearned(base);
+        }
+        const shape = field === 'po' && customer ? poPatternFor(base, customer) : '';
         toast(
-          field === 'po'
-            ? 'Saved for this invoice. Its PO has no label beside it and the invoice names no customer, so there was nothing to learn.'
-            : 'Saved for this invoice. The amount was not printed beside a label on its PDF, so there was nothing to learn.',
+          shape
+            ? `Saved for this invoice. ${customer}\u2019s POs were already known to look like ${shape}.`
+            : field === 'po'
+              ? 'Saved for this invoice. Its PO has no label beside it, and no customer was found on the invoice or in Excel, so there was nothing to learn.'
+              : 'Saved for this invoice. The amount was not printed beside a label on its PDF, so there was nothing to learn.',
           { kind: 'info' }
         );
         return;
@@ -239,7 +275,8 @@ export default function ReconcileTab({ prefixes, onData }) {
           other.readable ? readFields(other.readable, taught) : other.fields,
           other.readable,
           taught,
-          other.invoice
+          other.invoice,
+          customerOf(other)
         )?.[field];
       const filled = items.filter(
         (other) =>
@@ -260,7 +297,7 @@ export default function ReconcileTab({ prefixes, onData }) {
         { kind: 'success' }
       );
     },
-    [items, learned, toast]
+    [items, learned, toast, typed, customerOf]
   );
 
   /** One invoice as its own PDF, named by its number. */
@@ -288,7 +325,6 @@ export default function ReconcileTab({ prefixes, onData }) {
 
   /* --------------------------------------------------------------- results */
 
-  const prefixList = useMemo(() => cleanPrefixes(prefixes), [prefixes]);
   const result = useMemo(
     () =>
       itemsRead.length > 0 && parsed && !reading
@@ -380,6 +416,7 @@ export default function ReconcileTab({ prefixes, onData }) {
             pdfPo: check.po.pdf ?? '',
             // How the PDF's own values were got, when not by the usual labels.
             pdfAmountFrom: fromWhere(entry.pdf.fields?.total),
+            pdfAmountRaw: entry.pdf.fields?.total?.raw ?? '',
             pdfPoFrom: fromWhere(entry.pdf.fields?.po),
             sheetPo: check.po.sheet ?? '',
             ...extrasOf(entry.row),
@@ -448,7 +485,7 @@ export default function ReconcileTab({ prefixes, onData }) {
         { key: 'found', label: 'Found by' },
         { key: 'row', label: 'Row', numeric: true },
         ...extraColumns,
-        { key: 'notes', label: 'Notes', wrap: true },
+        { key: 'notes', label: 'Notes', note: true },
         {
           key: 'actions',
           label: 'Preview and download',
@@ -712,7 +749,22 @@ function PdfValue({ row, field, onAdd, children }) {
       />
     ) : null;
   }
-  if (!from) return children;
+  const edit = row.file ? (
+    <AddValue
+      label={field === 'po' ? 'PO' : 'amount'}
+      initial={field === 'po' ? value : row.cells.pdfAmountRaw || value}
+      onSave={(typed) => onAdd(row.file, field, typed)}
+      testId={`edit-${field}-${row.cells.invoice}`}
+    />
+  ) : null;
+  if (!from) {
+    return (
+      <span className="value-from">
+        {children}
+        {edit}
+      </span>
+    );
+  }
   const kind = from.split(':')[0];
   const detail = from.slice(from.indexOf(':') + 1);
   const tags = {
@@ -727,6 +779,7 @@ function PdfValue({ row, field, onAdd, children }) {
       <span className="value-tag" title={title}>
         {tag}
       </span>
+      {edit}
     </span>
   );
 }

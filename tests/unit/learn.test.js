@@ -94,3 +94,27 @@ describe('what is never a label', () => {
     expect(learnLabel(pages, 'po', 'AF/2026/0711', ['Atlas Fitness Ltd'])).toBeNull();
   });
 });
+
+describe('changing a typed PO', async () => {
+  const { withPoPattern, withoutPoPattern, describePattern } =
+    await import('../../src/core/learn.js');
+  const { guessFieldColumns } = await import('../../src/core/reconcile/sheet.js');
+
+  it('forgets the shape the first, mistyped, spelling taught', () => {
+    const slip = withPoPattern({ po: [], total: [] }, 'Greenfield Farms', 'GF-2011');
+    const fixed = withPoPattern(
+      withoutPoPattern(slip, 'Greenfield Farms', 'GF-2011'),
+      'Greenfield Farms',
+      'GF-20113'
+    );
+    const patterns = Object.values(fixed.poPatterns)[0].patterns.map(describePattern);
+    expect(patterns).toEqual(['GF-#####']);
+  });
+
+  it('reads CustName as the customer column', () => {
+    expect(guessFieldColumns(['InvNo', 'CustName', 'InvAmnt'], 0)).toMatchObject({
+      customer: 1,
+      amount: 2,
+    });
+  });
+});

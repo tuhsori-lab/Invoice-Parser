@@ -1,26 +1,30 @@
 import { useState } from 'react';
 
 /**
- * Type in a value the PDF did not give: a small "Add" that opens into a field.
+ * Type in a value the PDF did not give - or change one - with a small "Add" or
+ * "Edit" that opens into a field.
  * Enter saves, Escape lets it go. Clicks stay here rather than opening the row.
  */
-export default function AddValue({ label, onSave, testId }) {
+export default function AddValue({ label, onSave, testId, initial = '' }) {
   const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(initial);
   const stop = (event) => event.stopPropagation();
 
   if (!editing) {
     return (
       <button
         type="button"
-        className="add-value"
+        className={initial ? 'edit-value' : 'add-value'}
         onClick={(event) => {
           stop(event);
+          setValue(initial);
           setEditing(true);
         }}
+        aria-label={initial ? `Change the ${label}` : undefined}
+        title={initial ? `Change the ${label}` : undefined}
         data-testid={testId}
       >
-        Add {label}
+        {initial ? 'Edit' : `Add ${label}`}
       </button>
     );
   }
@@ -30,9 +34,8 @@ export default function AddValue({ label, onSave, testId }) {
       onClick={stop}
       onSubmit={(event) => {
         event.preventDefault();
-        if (value.trim()) onSave(value.trim());
+        if (value.trim() && value.trim() !== initial) onSave(value.trim());
         setEditing(false);
-        setValue('');
       }}
     >
       <input

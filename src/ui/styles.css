@@ -3844,18 +3844,72 @@ select {
   white-space: nowrap;
 }
 
-.data-table td.is-wrap {
-  white-space: normal;
-  min-width: 20rem;
-  max-width: 32rem;
+/* Notes behind a pill, opened in a card: the table stays one line a row. */
+.note-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.12rem 0.55rem 0.12rem 0.25rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--ease),
+    color var(--ease);
 }
 
-.clamp {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  line-height: 1.35;
+.note-pill:hover,
+.note-pill[aria-expanded='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.note-pill-icon {
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--sheet);
+  font-size: 10px;
+  font-weight: 700;
+  font-style: italic;
+  font-family: Georgia, serif;
+}
+
+.note-card {
+  position: fixed;
+  z-index: 60;
+  width: 320px;
+  max-height: 50vh;
+  overflow: auto;
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--radius);
+  font-size: var(--text-md);
+  animation: pop-in 200ms var(--spring) backwards;
+}
+
+.note-card ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.note-card li {
+  line-height: 1.4;
+}
+
+.note-card li + li {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--rule);
 }
 
 .preview-page-button {
@@ -3869,4 +3923,28 @@ select {
 .preview-page-button:focus-visible {
   outline: 2px solid var(--accent-fill);
   outline-offset: 4px;
+}
+
+/* Changing a value: a quiet "Edit" that shows on the row being pointed at. */
+.edit-value {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 0 0.15rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--ease);
+}
+
+.data-table tr:hover .edit-value,
+.edit-value:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .edit-value {
+    opacity: 1;
+  }
 }
