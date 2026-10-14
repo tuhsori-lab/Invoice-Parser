@@ -28,10 +28,11 @@ import {
 } from '../../core/learn.js';
 import { loadLearned, NOTHING_LEARNED, saveLearned } from '../../lib/learnedLabels.js';
 import AddValue from './AddValue.jsx';
+import InvoiceDetails from './InvoiceDetails.jsx';
 import { downloadInvoicePdf } from '../../lib/invoicePdf.js';
 
 /** Where a PDF's number came from, in words. */
-const FOUND_BY = { text: 'PDF text', scan: 'Scan', filename: 'File name' };
+const FOUND_BY = { text: 'PDF text', scan: 'Scan', filename: 'File name', typed: 'Typed by you' };
 
 /** Each row's status, in the order they sort: problems ahead of matches. */
 const STATUS = {
@@ -228,9 +229,14 @@ export default function ReconcileTab({ prefixes, onData }) {
       if (own?.total) {
         const money =
           parseMoney(own.total) ?? parseMoney(`${own.total} ${fields?.total?.currency ?? ''}`);
-        if (money) fields = { ...fields, total: { ...money, raw: own.total, typed: true } };
+        // Typed as a bare number: still in the currency the PDF is in.
+        const currency = money?.currency ?? fields?.total?.currency ?? null;
+        if (money)
+          fields = { ...fields, total: { ...money, currency, raw: own.total, typed: true } };
       }
-      return fields === item.fields ? item : { ...item, fields };
+      // A number typed in for an invoice is its number, and what it is matched on.
+      const number = own?.invoice ? { invoice: own.invoice, source: 'typed' } : null;
+      return fields === item.fields && !number ? item : { ...item, fields, ...number };
     });
   }, [items, learned, typed, customerOf]);
 
@@ -498,7 +504,7 @@ export default function ReconcileTab({ prefixes, onData }) {
                   className="link-button"
                   onClick={(event) => {
                     event.stopPropagation();
-                    setPreview(row.file);
+                    setPreview(row.file.id);
                   }}
                   data-testid={`preview-${row.id}`}
                 >
@@ -544,6 +550,20 @@ export default function ReconcileTab({ prefixes, onData }) {
       });
     }
   }, [table, toast, hiddenColumns]);
+
+  // The invoice being looked at, as it stands now - edits included.
+  const previewItem = preview ? (itemsRead.find((item) => item.id === preview) ?? null) : null;
+  const previewRow = preview ? (table?.rows.find((row) => row.file?.id === preview) ?? null) : null;
+
+  /** A value corrected beside the invoice: a number is just kept; a PO or amount also teaches. */
+  const saveDetail = (item, field, value) => {
+    if (field === 'invoice') {
+      setTyped((current) => ({ ...current, [item.id]: { ...current[item.id], invoice: value } }));
+      toast(`Invoice number set to ${value}.`);
+      return;
+    }
+    addValue(item, field, value);
+  };
 
   const busy = Boolean(reading || scanReading);
   const priceCount = table?.rows.filter((row) => row.status === 'priceDiffers').length ?? 0;
@@ -685,7 +705,7 @@ export default function ReconcileTab({ prefixes, onData }) {
               .join(' · ')}
             columns={table.columns}
             rows={show === 'all' ? table.rows : table.rows.filter((row) => row.status === show)}
-            onOpen={(row) => setPreview(row.file)}
+            onOpen={(row) => setPreview(row.file.id)}
             emptyText="Nothing here."
             hiddenColumns={hiddenColumns}
             onHiddenColumns={setHiddenColumns}
@@ -715,7 +735,21 @@ export default function ReconcileTab({ prefixes, onData }) {
         )
       )}
 
-      {preview && <PdfPreview item={preview} onClose={() => setPreview(null)} />}
+      {previewItem && (
+        <PdfPreview
+          item={previewItem}
+          onClose={() => setPreview(null)}
+          aside={
+            <InvoiceDetails
+              item={previewItem}
+              row={previewRow}
+              status={previewRow?.status}
+              statusLabel={previewRow ? STATUS[previewRow.status] : ''}
+              onSave={(field, value) => saveDetail(previewItem, field, value)}
+            />
+          }
+        />
+      )}
     </div>
   );
 }

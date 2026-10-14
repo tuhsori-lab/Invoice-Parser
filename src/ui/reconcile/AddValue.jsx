@@ -39,6 +39,7 @@ export default function AddValue({ label, onSave, testId, initial = '' }) {
       }}
     >
       <input
+        type="text"
         // It opens because they asked to type, so the cursor goes straight there.
         autoFocus
         aria-label={`The ${label} on this invoice`}
