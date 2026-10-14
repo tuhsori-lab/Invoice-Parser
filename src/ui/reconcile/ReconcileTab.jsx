@@ -18,9 +18,16 @@ import ResultSection from './ResultSection.jsx';
 import PdfPreview from './PdfPreview.jsx';
 import { useHiddenColumns } from '../../lib/useHiddenColumns.js';
 import { parseMoney, readFields } from '../../core/fields.js';
-import { learnLabel, withLabel } from '../../core/learn.js';
-import { loadLearned, saveLearned } from '../../lib/learnedLabels.js';
+import {
+  describePattern,
+  learnLabel,
+  withLabel,
+  withPatternPo,
+  withPoPattern,
+} from '../../core/learn.js';
+import { loadLearned, NOTHING_LEARNED, saveLearned } from '../../lib/learnedLabels.js';
 import AddValue from './AddValue.jsx';
+import { downloadInvoicePdf } from '../../lib/invoicePdf.js';
 
 /** Where a PDF's number came from, in words. */
 const FOUND_BY = { text: 'PDF text', scan: 'Scan', filename: 'File name' };
@@ -191,6 +198,8 @@ export default function ReconcileTab({ prefixes, onData }) {
     const taught = learned.po.length > 0 || learned.total.length > 0;
     return items.map((item) => {
       let fields = taught && item.readable ? readFields(item.readable, learned) : item.fields;
+      // No label gave a PO: look for one shaped like this customer's POs.
+      fields = withPatternPo(fields, item.readable, learned, item.invoice);
       const own = typed[item.id];
       if (own?.po) fields = { ...fields, po: { value: own.po, raw: own.po, typed: true } };
       if (own?.total) {
@@ -202,33 +211,50 @@ export default function ReconcileTab({ prefixes, onData }) {
     });
   }, [items, learned, typed]);
 
-  /** A value typed in for one invoice: kept for it, and its label learned for the rest. */
+  /**
+   * A value typed in for one invoice: kept for it, and what it teaches used for
+   * the rest - the label it is printed after, and for a PO, the shape of that
+   * customer's POs.
+   */
   const addValue = useCallback(
     (item, field, value) => {
       setTyped((current) => ({ ...current, [item.id]: { ...current[item.id], [field]: value } }));
       const what = field === 'po' ? 'PO' : 'amount';
-      const label = item.readable ? learnLabel(item.readable, field, value) : null;
-      if (!label) {
+      const customer = item.fields?.customer ?? null;
+      const label = item.readable ? learnLabel(item.readable, field, value, [customer]) : null;
+      let next = label ? withLabel(learned, field, label) : learned;
+      if (field === 'po' && customer) next = withPoPattern(next, customer, value);
+      if (next === learned) {
         toast(
-          `Saved for this invoice. The ${what} was not printed beside a label on its PDF, so there was nothing to learn.`,
+          field === 'po'
+            ? 'Saved for this invoice. Its PO has no label beside it and the invoice names no customer, so there was nothing to learn.'
+            : 'Saved for this invoice. The amount was not printed beside a label on its PDF, so there was nothing to learn.',
           { kind: 'info' }
         );
         return;
       }
-      const next = withLabel(learned, field, label);
+      // How many other invoices this fills in, read as they will be from now on.
+      const has = (other, taught) =>
+        withPatternPo(
+          other.readable ? readFields(other.readable, taught) : other.fields,
+          other.readable,
+          taught,
+          other.invoice
+        )?.[field];
       const filled = items.filter(
         (other) =>
-          other.id !== item.id &&
-          other.readable &&
-          !readFields(other.readable, learned)[field] &&
-          readFields(other.readable, next)[field]
+          other.id !== item.id && other.readable && !has(other, learned) && has(other, next)
       ).length;
       setLearned(next);
       saveLearned(next);
+      const shape = poPatternFor(next, customer);
+      const how = label
+        ? `the ${what} follows \u201c${label}\u201d`
+        : `${customer}\u2019s POs look like ${shape}`;
       toast(
-        `Learned: the ${what} follows \u201c${label}\u201d. ${
+        `Learned: ${how}. ${
           filled === 0
-            ? 'No other invoice here has it there yet; the next batch will be read with it.'
+            ? 'No other invoice here can be filled from it yet; the next batch will be read with it.'
             : `Filled it in for ${filled === 1 ? '1 more invoice' : `${filled} more invoices`}.`
         }`,
         { kind: 'success' }
@@ -237,11 +263,22 @@ export default function ReconcileTab({ prefixes, onData }) {
     [items, learned, toast]
   );
 
+  /** One invoice as its own PDF, named by its number. */
+  const downloadOne = useCallback(
+    async (item) => {
+      try {
+        toast(`Downloaded ${await downloadInvoicePdf(item)}.`);
+      } catch {
+        toast('This invoice could not be saved as its own PDF.', { kind: 'error' });
+      }
+    },
+    [toast]
+  );
+
   const forgetLearned = () => {
-    const none = { po: [], total: [] };
-    setLearned(none);
-    saveLearned(none);
-    toast('Forgot the labels it learned.');
+    setLearned(NOTHING_LEARNED);
+    saveLearned(NOTHING_LEARNED);
+    toast('Forgot what it learned.');
   };
 
   // The Summary tab works from the same files.
@@ -411,18 +448,52 @@ export default function ReconcileTab({ prefixes, onData }) {
         { key: 'found', label: 'Found by' },
         { key: 'row', label: 'Row', numeric: true },
         ...extraColumns,
-        { key: 'notes', label: 'Notes' },
+        { key: 'notes', label: 'Notes', wrap: true },
+        {
+          key: 'actions',
+          label: 'Preview and download',
+          action: true,
+          render: (row) =>
+            row.file ? (
+              <span className="row-actions">
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setPreview(row.file);
+                  }}
+                  data-testid={`preview-${row.id}`}
+                >
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    downloadOne(row.file);
+                  }}
+                  data-testid={`download-${row.id}`}
+                >
+                  Download
+                </button>
+              </span>
+            ) : null,
+        },
       ],
       rows,
     };
     // extraColumns and extrasOf follow carry and layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result, carry, layout, addValue]);
+  }, [result, carry, layout, addValue, downloadOne]);
 
   const exportWorkbook = useCallback(async () => {
     if (!table) return;
-    // The columns on screen, so a hidden column stays out of the file too.
-    const columns = table.columns.filter((column) => !hiddenColumns.includes(column.key));
+    // The columns on screen, so a hidden column stays out of the file too; buttons never go in.
+    const columns = table.columns.filter(
+      (column) => !column.action && !hiddenColumns.includes(column.key)
+    );
     const rows = [
       columns.map((column) => column.label),
       ...table.rows.map((row) => columns.map((column) => row.cells[column.key] ?? '')),
@@ -515,13 +586,19 @@ export default function ReconcileTab({ prefixes, onData }) {
 
       {table ? (
         <div className="reconcile-results" data-testid="reconcile-results">
-          {(learned.po.length > 0 || learned.total.length > 0) && (
+          {(learned.po.length > 0 ||
+            learned.total.length > 0 ||
+            Object.keys(learned.poPatterns).length > 0) && (
             <p className="learned-note" data-testid="learned-note">
               <span>
                 Learned:{' '}
                 {[
                   ...learned.po.map((label) => `PO after \u201c${label}\u201d`),
                   ...learned.total.map((label) => `amount after \u201c${label}\u201d`),
+                  ...Object.values(learned.poPatterns).map(
+                    ({ name, patterns }) =>
+                      `${name} POs like ${patterns.map(describePattern).join(' or ')}`
+                  ),
                 ].join(' \u00b7 ')}
               </span>
               <button type="button" className="link-button" onClick={forgetLearned}>
@@ -609,7 +686,14 @@ export default function ReconcileTab({ prefixes, onData }) {
 /** "typed" or the label taught, for a value not found by the usual labels. */
 function fromWhere(found) {
   if (found?.typed) return 'typed';
+  if (found?.pattern) return `pattern:${found.pattern}`;
   return found?.learned ? `learned:${found.learned}` : '';
+}
+
+/** The shape last learned for a customer's POs, as a person reads it. */
+function poPatternFor(learned, customer) {
+  const known = Object.values(learned.poPatterns ?? {}).find((entry) => entry.name === customer);
+  return known ? describePattern(known.patterns.at(-1)) : '';
 }
 
 /**
@@ -629,17 +713,19 @@ function PdfValue({ row, field, onAdd, children }) {
     ) : null;
   }
   if (!from) return children;
-  const taught = from.startsWith('learned:') ? from.slice(8) : null;
+  const kind = from.split(':')[0];
+  const detail = from.slice(from.indexOf(':') + 1);
+  const tags = {
+    typed: ['typed', 'Typed in by you'],
+    learned: ['learned', `Read after \u201c${detail}\u201d, the label you taught it`],
+    pattern: ['pattern', `The one value on it shaped like ${detail}\u2019s POs`],
+  };
+  const [tag, title] = tags[kind];
   return (
     <span className="value-from">
       {children}
-      <span
-        className="value-tag"
-        title={
-          taught ? `Read after \u201c${taught}\u201d, the label you taught it` : 'Typed in by you'
-        }
-      >
-        {taught ? 'learned' : 'typed'}
+      <span className="value-tag" title={title}>
+        {tag}
       </span>
     </span>
   );

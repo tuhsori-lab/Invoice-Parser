@@ -10,7 +10,10 @@ const FIRST_ROWS = 300;
  * button, and a table that sorts by any column.
  *
  * @param {object} props
- * @param {Array<{ key: string, label: string, numeric?: boolean, rank?: (row: object) => number, render?: (row: object) => import('react').ReactNode }>} props.columns
+ * @param {Array<{ key: string, label: string, numeric?: boolean, wrap?: boolean, rank?: (row: object) => number, render?: (row: object) => import('react').ReactNode }>} props.columns
+ *   Cells stay on one line, so rows stay one line tall; `wrap` lets a long text column
+ *   run to two lines, with the whole of it in its tooltip; `action` marks a column of
+ *   buttons, left out of what is copied.
  *   `rank` sorts by a number other than the cell; `render` draws the cell, which stays the text copied.
  * @param {Array<{ id: string, cells: Record<string, string|number>, flagged?: boolean, alert?: boolean, file?: object }>} props.rows
  *   `alert` tints the whole row red: something on it disagrees and needs a look.
@@ -73,10 +76,12 @@ export default function ResultSection({
   }, [rows, columns, query, sort]);
 
   const copy = async () => {
+    // Buttons are not data: they stay out of what is copied.
+    const data = columns.filter((column) => !column.action);
     const lines = [
-      columns.map((column) => column.label).join('\t'),
+      data.map((column) => column.label).join('\t'),
       ...shown.map((row) =>
-        columns
+        data
           .map((column) => String(row.cells[column.key] ?? '').replace(/[\t\r\n]+/g, ' '))
           .join('\t')
       ),
@@ -183,7 +188,15 @@ export default function ResultSection({
                       data-testid={`row-${row.id}`}
                     >
                       {columns.map((column) => (
-                        <td key={column.key} className={column.numeric ? 'is-number' : undefined}>
+                        <td
+                          key={column.key}
+                          className={
+                            [column.numeric && 'is-number', column.wrap && 'is-wrap']
+                              .filter(Boolean)
+                              .join(' ') || undefined
+                          }
+                          title={column.wrap ? String(row.cells[column.key] ?? '') : undefined}
+                        >
                           {column.key === 'file' && row.file && onOpen ? (
                             <button
                               type="button"
@@ -198,6 +211,8 @@ export default function ResultSection({
                             </button>
                           ) : column.render ? (
                             column.render(row)
+                          ) : column.wrap ? (
+                            <span className="clamp">{row.cells[column.key]}</span>
                           ) : (
                             row.cells[column.key]
                           )}

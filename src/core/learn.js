@@ -21,6 +21,8 @@ function usableLabel(text) {
     .replace(/(\s+(usd|eur|gbp|chf))?[\s:#.$€£-]*$/i, '');
   if (label.length < 2 || label.length > 40) return null;
   if ((label.match(/[A-Za-zÀ-ÿ]/g) ?? []).length < 2) return null;
+  // "Date: Oct 1, 2026" is a value of its own, not the label of the one below it.
+  if (/\d{2,}/.test(label)) return null;
   if (label.split(/\s+/).length > 5) return null;
   return label;
 }
@@ -99,15 +101,19 @@ function labelsAround(phrases, phrase, field, typed) {
  * @param {Array<{ text: string, layout?: Array<object> }>} pages - that invoice's pages.
  * @param {'po'|'total'} field
  * @param {string} typed - what the person typed.
+ * @param {string[]} [notLabels] - text that is never a label, such as the
+ *   customer's name printed above the value.
  * @returns {string|null}
  */
-export function learnLabel(pages = [], field, typed) {
+export function learnLabel(pages = [], field, typed, notLabels = []) {
+  const names = new Set(notLabels.filter(Boolean).map(customerKey));
   if (!String(typed ?? '').trim()) return null;
   for (const page of pages) {
     const phrases = phrasesOf(page);
     for (const phrase of phrases) {
       if (!holds(field, phrase.text, typed)) continue;
       for (const label of labelsAround(phrases, phrase, field, typed)) {
+        if (names.has(customerKey(label))) continue;
         // Kept only if it finds what was typed, on this very invoice.
         const read = readFields(pages, { [field]: [label] })[field];
         const value = field === 'po' ? read?.value : read?.raw;
@@ -129,4 +135,110 @@ export function withLabel(learned, field, label) {
   const known = learned[field] ?? [];
   if (known.some((entry) => labelPattern(entry).test(label))) return learned;
   return { ...learned, [field]: [...known, label] };
+}
+
+/* -------------------------------------------- PO shapes, customer by customer */
+
+/** A customer's name as a key: case, spaces and punctuation do not matter. */
+export function customerKey(name) {
+  return String(name ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * The shape of a PO as a pattern: its letters as they are, each run of digits
+ * as that many digits, its marks as they are. "BR-1001" is BR-, then 4 digits;
+ * "PO 55103388" is PO, maybe a space, then 8 digits.
+ *
+ * @param {string} value
+ * @returns {string|null} a RegExp source, or null for a value with no digits.
+ */
+export function poPattern(value) {
+  const runs = String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .match(/[A-Z]+|\d+|\s+|[^A-Z\d\s]/g);
+  if (!runs || !runs.some((run) => /\d/.test(run))) return null;
+  return runs
+    .map((run) => {
+      if (/^\d/.test(run)) return `\\d{${run.length}}`;
+      if (/^\s/.test(run)) return '\\s?';
+      if (/^[A-Z]/.test(run)) return run;
+      return run.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&');
+    })
+    .join('');
+}
+
+/** A pattern as a person reads it: "BR-####", "PO ########". */
+export function describePattern(source) {
+  return source
+    .replace(/\\d\{(\d+)\}/g, (_, count) => '#'.repeat(Number(count)))
+    .replace(/\\s\?/g, ' ')
+    .replace(/\\(.)/g, '$1');
+}
+
+/**
+ * The one value on an invoice's pages that has one of these shapes, or null
+ * when there is none - or more than one, which would be a guess.
+ *
+ * @param {Array<{ text: string }>} pages
+ * @param {string[]} patterns
+ * @param {string[]} [not] - values that are something else, such as the invoice number.
+ * @returns {{ value: string, raw: string }|null}
+ */
+export function findByPattern(pages, patterns = [], not = []) {
+  const excluded = new Set(not.filter(Boolean).map(poKey));
+  const found = new Map();
+  for (const source of patterns) {
+    const pattern = new RegExp(`(?<![A-Za-z0-9])${source}(?![A-Za-z0-9])`, 'gi');
+    for (const page of pages) {
+      for (const match of String(page.text ?? '').matchAll(pattern)) {
+        const key = poKey(match[0]);
+        if (!excluded.has(key) && !found.has(key)) found.set(key, match[0]);
+      }
+    }
+  }
+  if (found.size !== 1) return null;
+  const [raw] = found.values();
+  return { value: raw, raw };
+}
+
+/**
+ * Remember the shape of a customer's POs, from one typed in.
+ *
+ * @param {{ poPatterns?: Record<string, { name: string, patterns: string[] }> }} learned
+ * @param {string} customer - as printed on the invoice.
+ * @param {string} po - as typed.
+ */
+export function withPoPattern(learned, customer, po) {
+  const key = customerKey(customer);
+  const source = poPattern(po);
+  if (!key || !source) return learned;
+  const known = learned.poPatterns?.[key] ?? { name: customer, patterns: [] };
+  if (known.patterns.includes(source)) return learned;
+  return {
+    ...learned,
+    poPatterns: {
+      ...learned.poPatterns,
+      [key]: { name: known.name, patterns: [...known.patterns, source] },
+    },
+  };
+}
+
+/**
+ * A PO no label gave, found by the shape of this customer's POs.
+ *
+ * @param {object} fields - readFields() of the invoice.
+ * @param {Array<{ text: string }>} pages
+ * @param {object} learned
+ * @param {string|null} invoice - its number, which is never its PO.
+ * @returns {object} the fields, with `po` filled when exactly one value has the shape.
+ */
+export function withPatternPo(fields, pages, learned, invoice) {
+  if (fields?.po || !fields?.customer || !pages) return fields;
+  const known = learned.poPatterns?.[customerKey(fields.customer)];
+  if (!known) return fields;
+  const found = findByPattern(pages, known.patterns, [invoice]);
+  return found ? { ...fields, po: { ...found, pattern: known.name } } : fields;
 }
