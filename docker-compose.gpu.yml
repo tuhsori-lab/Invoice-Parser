@@ -1,0 +1,21 @@
+# A GPU worker, on top of docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#
+# Needs an NVIDIA driver and the NVIDIA Container Toolkit on the host. Pick the
+# PaddlePaddle index for your CUDA version from paddlepaddle.org.cn (cu126 shown).
+services:
+  worker:
+    build:
+      context: ./services
+      args:
+        PADDLE_PACKAGE: paddlepaddle-gpu==3.3.1
+        PADDLE_INDEX: https://www.paddlepaddle.org.cn/packages/stable/cu126/
+    image: invoice-ocr:gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

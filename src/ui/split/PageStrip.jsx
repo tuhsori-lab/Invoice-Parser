@@ -9,9 +9,10 @@ const PEEK_WIDTH = 240;
  * The whole batch, at a glance, and the quickest way to fix it.
  *
  * Tiles run in page order, coloured by invoice, with a gap wherever one invoice
- * ends and the next begins, and a bracket over each invoice's pages naming it.
- * An invoice's first page is solid and every page after it is striped, so where
- * each invoice starts reads at a glance. An invoice nothing could be worked out
+ * ends and the next begins, and each invoice's pages sit together in a box
+ * tinted its colour, named by a pill above them. An invoice's first page is
+ * solid and every page after it a lighter tint, so where each invoice starts
+ * reads at a glance. An invoice nothing could be worked out
  * about is marker yellow. Anything a person changed by hand carries a small
  * mark, so a fix is never invisible.
  *
@@ -51,7 +52,7 @@ export default function PageStrip({
     });
     const ordered = [...owners.keys()].sort((a, b) => a - b);
 
-    // Unbroken stretches of one invoice's pages. Each gets a bracket of its own;
+    // Unbroken stretches of one invoice's pages. Each gets a box of its own;
     // an invoice whose pages are apart gets one over each stretch.
     const stretches = [];
     for (const pageIndex of ordered) {
@@ -136,7 +137,7 @@ export default function PageStrip({
           return (
             <li key={opening} className="strip-run">
               {/* Where one invoice ends and the next begins: outside the
-                  brackets, so it is plain which side of it each page is on. */}
+                  boxes, so it is plain which side of it each page is on. */}
               {position > 0 && (
                 <Gap
                   pageIndex={opening}
@@ -150,11 +151,10 @@ export default function PageStrip({
                 data-testid={`run-${opening}`}
               >
                 {/* The tiles already say which invoice they belong to, for
-                    anyone using a screen reader, so this is for the eye only. */}
+                    anyone using a screen reader, so this pill is for the eye only. */}
                 <span className="run-label" title={name} aria-hidden="true">
                   {name}
                 </span>
-                <span className="run-bracket" aria-hidden="true" />
                 <ol className="run-tiles">
                   {run.pages.map((pageIndex, inRun) => (
                     <Tile
@@ -190,26 +190,61 @@ export default function PageStrip({
         />
       )}
 
-      <p className="strip-key">
-        <span className="key-item">
-          <span className="key-swatch tile tile-c1" /> first page of an invoice
-        </span>
-        <span className="key-item">
-          <span className="key-swatch tile tile-c1 tile-continuation" /> more pages of the same
-          invoice
-        </span>
-        <span className="key-item">
-          <span className="key-swatch tile tile-aside" /> no invoice number
-        </span>
-        <span className="key-item">
-          <span className="key-swatch tile tile-c1 tile-moved" /> changed by you
-        </span>
-        <span className="key-item key-hint">
-          The bracket above names each invoice. Click a gap to split or join. Drag a page onto
-          another invoice to move it.
-        </span>
-      </p>
+      <StripHelp />
     </div>
+  );
+}
+
+/**
+ * How to read the strip, behind a "?" button rather than always on show, the
+ * way a Mac app keeps its help one click away. Closes on Escape or a click
+ * anywhere else.
+ */
+function StripHelp() {
+  const help = useRef(null);
+
+  useEffect(() => {
+    const close = (event) => {
+      const box = help.current;
+      if (!box?.open) return;
+      if (event.type === 'keydown' ? event.key === 'Escape' : !box.contains(event.target)) {
+        box.open = false;
+      }
+    };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, []);
+
+  return (
+    <details className="strip-help" ref={help} data-testid="strip-help">
+      <summary aria-label="How to read the page strip" title="How to read the page strip">
+        ?
+      </summary>
+      <div className="strip-help-panel glass">
+        <ul className="strip-key">
+          <li className="key-item">
+            <span className="key-swatch tile tile-c1" /> First page of an invoice
+          </li>
+          <li className="key-item">
+            <span className="key-swatch tile tile-c1 tile-continuation" /> More pages of the same
+            invoice
+          </li>
+          <li className="key-item">
+            <span className="key-swatch tile tile-aside" /> No invoice number
+          </li>
+          <li className="key-item">
+            <span className="key-swatch tile tile-c1 tile-moved" /> Changed by you
+          </li>
+        </ul>
+        <p className="key-hint">
+          Click a gap to split or join. Drag a page onto another invoice to move it.
+        </p>
+      </div>
+    </details>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { explain } from '../../core/errors.js';
 import { FLAG_LABELS } from '../../core/group.js';
 import { cleanPrefixes } from '../../core/reconcile/normalize.js';
@@ -8,6 +8,7 @@ import { readInvoicePdfs, readScannedPdfs } from '../../lib/readInvoicePdfs.js';
 import { isSheetFile, readWorkbook, SheetFileError, writeWorkbook } from '../../lib/sheets.js';
 import { saveFile } from '../../lib/download.js';
 import { isPdfFile } from '../../lib/droppedFiles.js';
+import { loadSamples, SAMPLE_PDFS, SAMPLE_SHEET } from '../../lib/samples.js';
 import EmptyState from '../common/EmptyState.jsx';
 import { useToast } from '../common/Toasts.jsx';
 import PdfInput from './PdfInput.jsx';
@@ -21,7 +22,7 @@ const FOUND_BY = { text: 'PDF text', scan: 'Scan', filename: 'File name' };
 /** Each row's status, in the order they sort: problems ahead of matches. */
 const STATUS = {
   onlySheet: 'Missing PDF',
-  onlyPdf: 'Not in sheet',
+  onlyPdf: 'Not in Excel',
   unreadable: 'No number found',
   matched: 'Matched',
 };
@@ -39,7 +40,7 @@ function whyUnchecked(item) {
  * The Reconcile tab: a folder of invoice PDFs on one side, a spreadsheet on
  * the other, and what is on one but not the other.
  */
-export default function ReconcileTab({ prefixes }) {
+export default function ReconcileTab({ prefixes, onData }) {
   const toast = useToast();
   const [items, setItems] = useState([]);
   const [reading, setReading] = useState(null);
@@ -170,6 +171,11 @@ export default function ReconcileTab({ prefixes }) {
     [sheet, layout, carry]
   );
 
+  // The Summary tab works from the same files.
+  useEffect(() => {
+    onData?.({ items, entries: parsed?.entries ?? [] });
+  }, [items, parsed, onData]);
+
   /* --------------------------------------------------------------- results */
 
   const prefixList = useMemo(() => cleanPrefixes(prefixes), [prefixes]);
@@ -286,6 +292,20 @@ export default function ReconcileTab({ prefixes }) {
 
   const busy = Boolean(reading || scanReading);
 
+  /** The sample PDFs and their spreadsheet, to see every part of Reconcile and Summary. */
+  const trySamples = async () => {
+    try {
+      const [pdfs, sheet] = await Promise.all([
+        loadSamples(SAMPLE_PDFS),
+        loadSamples([SAMPLE_SHEET]),
+      ]);
+      await loadSheet(sheet);
+      await addPdfs(pdfs);
+    } catch (error) {
+      toast(error.message, { kind: 'error' });
+    }
+  };
+
   return (
     <div className="reconcile-tab">
       <div className="page-head reconcile-head">
@@ -394,6 +414,16 @@ export default function ReconcileTab({ prefixes }) {
                   ? 'Now add the invoice PDFs on the left.'
                   : 'Now add the spreadsheet on the right.'}
             </p>
+            {items.length === 0 && !workbook && (
+              <button
+                type="button"
+                className="button quiet"
+                onClick={trySamples}
+                data-testid="try-samples-reconcile"
+              >
+                Try it with sample files
+              </button>
+            )}
           </EmptyState>
         )
       )}

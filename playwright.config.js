@@ -28,10 +28,21 @@ export default defineConfig({
   // where localhost is ::1 the server binds to IPv6 while the line below waits
   // on IPv4, and nothing ever answers. Naming the same address in both places
   // leaves nothing to resolve.
-  webServer: {
-    command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 4173 --strictPort',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 4173 --strictPort',
+      url: 'http://127.0.0.1:4173',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      // The same app built with an OCR server address, for extract.spec.js.
+      // Nothing listens there: the test plays the server with page.route.
+      command:
+        'VITE_INVOICE_API_URL=http://127.0.0.1:4199/api npx vite build --outDir dist-extract && npx vite preview --outDir dist-extract --host 127.0.0.1 --port 4174 --strictPort',
+      url: 'http://127.0.0.1:4174',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 });

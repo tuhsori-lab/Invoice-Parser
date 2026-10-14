@@ -45,6 +45,7 @@
   --status-green: #28cd41;
   --status-orange: #ff9500;
   --status-grey: #8e8e93;
+  --status-red: #ff3b30;
   --stripe: rgb(0 0 0 / 0.025);
   --overlay: rgb(0 0 0 / 0.25);
   --material: rgb(245 245 247 / 0.72);
@@ -55,14 +56,23 @@
     0 0 0 1px var(--edge), 0 6px 16px rgb(0 0 0 / 0.08), 0 18px 40px rgb(0 0 0 / 0.08);
   --shadow-window: 0 0 0 1px rgb(0 0 0 / 0.08), 0 24px 70px rgb(0 0 0 / 0.25);
 
-  --tile-c1: #5b8aa6;
-  --tile-c2: #8a9a72;
-  --tile-c3: #a8795e;
-  --tile-c4: #8689a8;
-  --tile-c5: #6d9a92;
-  --tile-c6: #a3808f;
-  --tile-c7: #91885f;
-  --tile-c8: #6e8fb0;
+  /* Apple's system colours, ordered so neighbours never look alike. Yellow is
+     left out: it means "look at this", and red means an error. */
+  --tile-c1: #007aff;
+  --tile-c2: #ff9500;
+  --tile-c3: #34c759;
+  --tile-c4: #af52de;
+  --tile-c5: #30b0c7;
+  --tile-c6: #ff2d55;
+  --tile-c7: #5856d6;
+  --tile-c8: #a2845e;
+
+  /* Liquid glass: see-through, blurred, with a bright rim where light catches it. */
+  --glass: rgb(255 255 255 / 0.58);
+  --glass-strong: rgb(255 255 255 / 0.82);
+  --glass-blur: blur(24px) saturate(1.8);
+  --glass-rim: inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 0 0 1px rgb(255 255 255 / 0.45);
+  --glass-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.08), 0 8px 28px rgb(0 0 0 / 0.1);
 
   /* San Francisco on Apple devices; Inter, which is drawn much like it, elsewhere. */
   --font:
@@ -111,6 +121,7 @@
   --status-green: #30d158;
   --status-orange: #ff9f0a;
   --status-grey: #98989d;
+  --status-red: #ff453a;
   --stripe: rgb(255 255 255 / 0.035);
   --overlay: rgb(0 0 0 / 0.5);
   --material: rgb(28 28 30 / 0.72);
@@ -120,15 +131,20 @@
   --shadow-raised: 0 0 0 1px var(--edge), 0 8px 24px rgb(0 0 0 / 0.5);
   --shadow-window: 0 0 0 1px var(--edge), 0 24px 70px rgb(0 0 0 / 0.6);
 
-  /* The same eight hues, lifted so they read against a dark ground. */
-  --tile-c1: #6d9dba;
-  --tile-c2: #9aab83;
-  --tile-c3: #ba8b6e;
-  --tile-c4: #8e91b2;
-  --tile-c5: #7fada5;
-  --tile-c6: #b592a1;
-  --tile-c7: #a49a70;
-  --tile-c8: #7fa1c2;
+  /* The same eight, in the brighter versions macOS uses in dark mode. */
+  --tile-c1: #0a84ff;
+  --tile-c2: #ff9f0a;
+  --tile-c3: #30d158;
+  --tile-c4: #bf5af2;
+  --tile-c5: #40c8e0;
+  --tile-c6: #ff375f;
+  --tile-c7: #5e5ce6;
+  --tile-c8: #ac8e68;
+
+  --glass: rgb(44 44 48 / 0.55);
+  --glass-strong: rgb(58 58 62 / 0.78);
+  --glass-rim: inset 0 1px 0 rgb(255 255 255 / 0.16), inset 0 0 0 1px rgb(255 255 255 / 0.08);
+  --glass-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.6), 0 8px 28px rgb(0 0 0 / 0.45);
 }
 
 * {
@@ -378,38 +394,6 @@ input[aria-invalid='true'] {
   color: var(--ink-soft);
   font-size: var(--text-md);
   margin: 0 0 1.25rem;
-}
-
-.drop-zone-privacy {
-  color: var(--ink-faint);
-  font-size: var(--text-sm);
-  margin: 1.25rem 0 0;
-}
-
-.file-bar {
-  display: flex;
-  align-items: baseline;
-  gap: 0.9rem;
-  flex-wrap: wrap;
-  padding: 0.6rem 0.8rem;
-  background: var(--sheet);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-card);
-  font-size: var(--text-md);
-}
-
-.file-bar-count {
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.file-bar-names {
-  color: var(--ink-soft);
-  flex: 1 1 12rem;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* --------------------------------------------------------------- progress */
@@ -738,15 +722,6 @@ select {
   min-width: 0;
 }
 
-.results-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem 1rem;
-  margin-bottom: 1.1rem;
-}
-
 /* Where "Save to a folder" put the batch: a line of its own, after the tools. */
 .saved-to {
   order: 3;
@@ -754,19 +729,6 @@ select {
   margin: 0;
   font-size: var(--text-md);
   color: var(--ink-soft);
-}
-
-.summary {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: 550;
-}
-
-.results-tools {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
 }
 
 .search input {
@@ -844,32 +806,6 @@ select {
   transition: transform 260ms var(--bounce);
 }
 
-.tile:hover,
-.tile:focus-visible {
-  transform: translateY(-3px);
-}
-
-.tile-number {
-  font-size: var(--text-sm);
-  line-height: 1;
-  padding-bottom: 2px;
-  /* Dark rather than white: on tiles this muted, white reads at about 2:1 and
-     dark ink at better than 4.5:1 on every colour in the set. */
-  color: rgb(20 18 16 / 0.85);
-  font-variant-numeric: tabular-nums;
-}
-
-/* A later page of the same invoice: every page after the invoice's first. */
-.tile-continuation {
-  background: repeating-linear-gradient(
-    -45deg,
-    var(--tile),
-    var(--tile) 3px,
-    rgb(255 255 255 / 0.35) 3px,
-    rgb(255 255 255 / 0.35) 6px
-  );
-}
-
 /*
  * Marker yellow means one thing only: a person needs to look at this. It sets
  * the tile's colour rather than its background, so the later pages of an
@@ -912,31 +848,6 @@ select {
 }
 .tile-c8 {
   --tile: var(--tile-c8);
-}
-
-.strip-key {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 1.25rem;
-  margin: 0.6rem 0 0;
-  font-size: var(--text-sm);
-  color: var(--ink-faint);
-}
-
-.key-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.key-swatch {
-  width: 0.85rem;
-  height: 1.1rem;
-  cursor: default;
-}
-
-.key-swatch:hover {
-  transform: none;
 }
 
 .peek {
@@ -1048,10 +959,6 @@ select {
   outline-offset: 1px;
 }
 
-.key-hint {
-  color: var(--ink-faint);
-}
-
 /*
  * One unbroken stretch of one invoice's pages: the invoice's number, a bracket
  * in its colour, and the tiles under it. Placed after the tile colours so that
@@ -1062,34 +969,8 @@ select {
   max-width: 100%;
 }
 
-.run-body {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
 .run-aside {
   --tile: var(--marker);
-}
-
-.run-label {
-  max-width: 14ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0 2px;
-  font-size: var(--text-sm);
-  line-height: 1.25;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-soft);
-}
-
-.run-bracket {
-  height: 5px;
-  margin: 1px 0 4px;
-  border: 2px solid var(--tile);
-  border-bottom: 0;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
 
 .run-tiles {
@@ -2756,8 +2637,306 @@ select {
   --dot: var(--accent-fill);
 }
 
-.status-unreadable {
+.status-unreadable,
+.status-unknown {
   --dot: var(--status-grey);
+}
+
+.status-paid {
+  --dot: var(--status-green);
+}
+
+.status-overdue {
+  --dot: var(--status-red);
+}
+
+.status-soon {
+  --dot: var(--status-orange);
+}
+
+.status-open {
+  --dot: var(--accent-fill);
+}
+
+/* ------------------------------------------------- summary: money owed */
+
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1rem;
+}
+
+.stat-card {
+  padding: 1rem 1.25rem 1.1rem;
+  background: var(--sheet);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+.stat-card h3 {
+  margin: 0 0 0.75rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+}
+
+.stat-card-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.5rem 2.5rem;
+}
+
+/* ------------------------------------------------- donut: owed by status */
+
+.donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.donut {
+  position: relative;
+  width: 148px;
+  height: 148px;
+  flex: none;
+}
+
+.donut svg {
+  display: block;
+  animation: donut-in 700ms var(--spring) both;
+}
+
+@keyframes donut-in {
+  from {
+    opacity: 0;
+    transform: rotate(-60deg) scale(0.92);
+  }
+}
+
+.donut-slice {
+  fill: none;
+  stroke: var(--dot);
+  cursor: pointer;
+  pointer-events: stroke;
+  transition:
+    stroke-dasharray 500ms var(--spring),
+    stroke-dashoffset 500ms var(--spring),
+    opacity var(--ease);
+}
+
+.donut-slice.is-dim,
+.due-col.is-dim .due-bar {
+  opacity: 0.3;
+}
+
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.donut-center strong {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.donut-center span {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
+.donut-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 15rem;
+}
+
+.donut-legend button {
+  font: inherit;
+  color: var(--ink);
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: 0.55rem;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  transition: background-color var(--ease);
+}
+
+.donut-legend button:hover,
+.donut-legend button[aria-pressed='true'] {
+  background: var(--hover);
+}
+
+.donut-legend-label {
+  font-size: var(--text-md);
+}
+
+.donut-legend strong {
+  font-size: var(--text-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.donut-legend small {
+  grid-column: 2 / 4;
+  font-size: var(--text-sm);
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------- columns: when it falls due */
+
+.due-chart {
+  flex: 1 1 26rem;
+  min-width: 0;
+  margin: 0;
+}
+
+.due-chart figcaption {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+  margin-bottom: 0.5rem;
+}
+
+.due-plot {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.due-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  outline-offset: 2px;
+  cursor: default;
+}
+
+.due-area {
+  position: relative;
+  width: 100%;
+  height: 140px;
+  /* Room above the tallest column for its amount, and for the tooltip. */
+  padding-top: 20px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  /* The baseline: a hairline one shade off the surface. */
+  box-shadow: inset 0 -1px 0 var(--rule-strong);
+}
+
+.due-bar {
+  width: min(36px, 70%);
+  border-radius: 4px 4px 0 0;
+  background: var(--dot);
+  transform-origin: bottom;
+  animation: due-grow 600ms var(--spring) both;
+  transition:
+    height 500ms var(--spring),
+    opacity var(--ease);
+}
+
+@keyframes due-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+.due-value,
+.chart-tip {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+
+.due-value {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.chart-tip {
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.3rem 0.55rem;
+  transform: translate(-50%, -30%);
+  background: var(--sheet);
+  color: var(--ink-soft);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-raised);
+}
+
+.chart-tip strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.due-label {
+  margin-top: 0.4rem;
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.due-today {
+  position: relative;
+  flex: none;
+  width: 1px;
+  margin: 20px 4px 1.3rem;
+  background: var(--ink-faint);
+}
+
+.due-today span {
+  position: absolute;
+  top: -1.1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .donut svg,
+  .due-bar {
+    animation: none;
+  }
+
+  .donut-slice,
+  .due-bar {
+    transition: none;
+  }
+}
+
+.summary-tab .empty-state {
+  margin-top: 1.5rem;
 }
 
 .result-toolbar {
@@ -2803,4 +2982,547 @@ select {
 .theme-switching *::before,
 .theme-switching *::after {
   transition: none !important;
+}
+
+/* ================================================== split, laid out like reconcile */
+
+.split-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.split-head-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.split-tab .empty-state {
+  margin-top: 1.5rem;
+}
+
+.split-tab .workspace {
+  margin-top: 1.5rem;
+}
+
+.result-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.3rem 0.5rem;
+}
+
+.result-title h3 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.split-tab .result-tools {
+  flex-wrap: wrap;
+}
+
+/* Inside a result card the table needs no card of its own. */
+.result-body .table-wrap {
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.result-body .invoice-table thead th {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+/* ====================================================== page strip, Mac look */
+
+/* Each invoice's pages sit together in a box tinted its colour. */
+.run-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 4px 5px 5px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tile) 12%, transparent);
+}
+
+/* The invoice's name, as a pill with a dot of its colour, like a Finder tag. */
+.run-label {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 16ch;
+  margin-bottom: 4px;
+  padding: 0.1rem 0.45rem 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: var(--sheet);
+  box-shadow: 0 0 0 0.5px var(--edge);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.run-label::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tile);
+}
+
+.tile {
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.1);
+  padding-bottom: 3px;
+  transition:
+    filter var(--ease),
+    box-shadow var(--ease);
+}
+
+.tile:hover {
+  filter: brightness(1.08);
+}
+
+/* Selected the way macOS selects: a blue ring with a hairline gap. */
+.tile:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--sheet),
+    0 0 0 4px var(--accent-fill);
+}
+
+/* On a small white label, so the number reads on every colour. */
+.tile-number {
+  min-width: 1rem;
+  padding: 1px 2px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 0.92);
+  color: #1d1d1f;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Every page after an invoice's first: the same colour, lighter. */
+.tile-continuation {
+  background: color-mix(in srgb, var(--tile) 38%, var(--sheet));
+}
+
+.strip {
+  padding-right: 2.25rem;
+  border-bottom: 0;
+}
+
+.strip-wrap {
+  padding-bottom: 0;
+}
+
+/* The tinted boxes already show where one invoice ends; the open gap between
+   them only shows itself when pointed at. */
+.gap-open .gap-mark {
+  background: transparent;
+}
+
+.gap-open:hover .gap-mark,
+.gap-open:focus-visible .gap-mark,
+.gap-manual.gap-open .gap-mark {
+  background: var(--accent);
+}
+
+.strip-help {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  z-index: 25;
+}
+
+.strip-help summary {
+  list-style: none;
+  width: 1.4rem;
+  height: 1.4rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--sheet);
+  box-shadow:
+    0 0 0 0.5px var(--rule-strong),
+    0 1px 2px rgb(0 0 0 / 0.08);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+}
+
+.strip-help summary::-webkit-details-marker {
+  display: none;
+}
+
+.strip-help summary:hover,
+.strip-help[open] summary {
+  color: var(--ink);
+}
+
+.strip-help summary:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--sheet),
+    0 0 0 4px var(--accent-fill);
+}
+
+.strip-help-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: 18rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-md);
+  animation: pop-in 260ms var(--spring) backwards;
+}
+
+.strip-key {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+}
+
+.key-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.key-swatch {
+  flex: none;
+  width: 0.85rem;
+  height: 1.1rem;
+  cursor: default;
+}
+
+.key-swatch:hover {
+  filter: none;
+}
+
+.key-hint {
+  margin: 0.75rem 0 0;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+}
+
+/* ============================================================ liquid glass */
+
+/* Glass is for what floats over the content: bars, controls and pop-ups. The
+   content itself stays on solid cards, as it does in macOS. */
+.glass,
+.peek {
+  background: var(--glass-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-rim), var(--glass-shadow);
+}
+
+.topbar {
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom: 0;
+  box-shadow:
+    inset 0 -0.5px 0 var(--edge),
+    0 1px 12px rgb(0 0 0 / 0.04);
+}
+
+.tabs {
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow:
+    var(--glass-rim),
+    0 0 0 0.5px var(--edge);
+}
+
+/* The selected tab's thumb: a brighter lens of glass that slides along. */
+.tabs::before {
+  top: 3px;
+  bottom: 3px;
+  border-radius: 999px;
+  background: var(--glass-strong);
+  box-shadow:
+    var(--glass-rim),
+    0 2px 8px rgb(0 0 0 / 0.12);
+}
+
+.tab {
+  border-radius: 999px;
+}
+
+.peek {
+  border-radius: var(--radius-lg);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .peek,
+  .topbar,
+  .tabs {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--sheet);
+  }
+}
+
+/* ================================================================= extract */
+
+.extract-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.extract-tab .page-head {
+  margin-bottom: 0;
+}
+
+.upload-notice {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  font-size: var(--text-md);
+}
+
+.connect-form {
+  max-width: 28rem;
+  font-size: var(--text-md);
+}
+
+.connect-form input[type='password'] {
+  width: 100%;
+}
+
+.connect-form .check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.connect-form .problem,
+.result-hint.problem {
+  color: var(--problem);
+  margin: 0;
+}
+
+.status-queued,
+.status-processing {
+  --dot: var(--status-grey);
+}
+
+.status-accepted {
+  --dot: var(--status-green);
+}
+
+.status-needs_review {
+  --dot: var(--status-orange);
+}
+
+.status-failed {
+  --dot: var(--status-red);
+}
+
+.review-issues {
+  list-style: none;
+  margin: 0;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: var(--text-md);
+}
+
+.issue::before {
+  content: '';
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: var(--status-orange);
+}
+
+.issue-error::before {
+  background: var(--status-red);
+}
+
+.review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 60rem) {
+  .review-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.evidence-viewer {
+  position: sticky;
+  top: 4.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.evidence-pages {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: var(--text-md);
+}
+
+.evidence-frame {
+  position: relative;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: #fff;
+}
+
+.evidence-frame canvas,
+.evidence-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.evidence-box {
+  position: absolute;
+  display: block;
+  border: 2px solid var(--accent-fill);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent-fill) 14%, transparent);
+  pointer-events: none;
+  transition:
+    left var(--ease),
+    top var(--ease),
+    width var(--ease),
+    height var(--ease);
+}
+
+.field-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-md);
+}
+
+.field-table th,
+.field-table td {
+  text-align: left;
+  padding: 0.35rem 0.5rem 0.35rem 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+.field-table thead th {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.field-table tbody th {
+  font-weight: 500;
+  white-space: nowrap;
+  padding-top: 0.6rem;
+}
+
+.field-table input {
+  width: 100%;
+  min-width: 5rem;
+}
+
+.field-table tr.has-issue th {
+  box-shadow: inset 3px 0 0 var(--status-red);
+  padding-left: 0.5rem;
+}
+
+.field-issue {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: var(--text-sm);
+  color: var(--problem);
+}
+
+.field-status {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  background: var(--hover);
+  color: var(--ink-soft);
+  margin-top: 0.3rem;
+}
+
+.field-valid {
+  background: color-mix(in srgb, var(--status-green) 18%, transparent);
+  color: var(--ink);
+}
+
+.field-invalid {
+  background: color-mix(in srgb, var(--status-red) 18%, transparent);
+  color: var(--ink);
+}
+
+.field-corrected {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.field-confidence {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.review-subhead {
+  margin: 1.25rem 0 0.5rem;
+  font-size: var(--text-md);
+}
+
+.line-table input {
+  min-width: 4rem;
+}
+
+.line-table td:first-child input {
+  min-width: 10rem;
+}
+
+.add-line {
+  margin-top: 0.5rem;
 }

@@ -1,0 +1,16 @@
+# HTTPS in front of the API. Caddy gets and renews the certificate itself.
+{$API_DOMAIN} {
+	request_body {
+		max_size 25MB
+	}
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle {
+		respond 404
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}

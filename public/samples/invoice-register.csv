@@ -1,0 +1,19 @@
+Invoice No,Supplier,Customer,Invoice Date,Amount,Status
+HL-24017,Harbor Lane Supply Co.,Lakeshore Cafe Group,2026-09-02,1297.48,Open
+BW-88231,Brightwater Logistics,Atlas Fitness Ltd,2026-09-03,363.96,Open
+CF-2026-0412,Copperfield Office Goods,Pinecrest Dental Clinic,2026-09-05,716.82,Open
+CF-2026-0412,Copperfield Office Goods,Pinecrest Dental Clinic,2026-09-05,716.82,Open
+INV-0007730415,Northwind Traders,Meridian Architects,2026-09-08,871.07,Open
+HL-24022,Harbor Lane Supply Co.,Meridian Architects,2026-09-10,114.91,Open
+CF-2026-0419,Copperfield Office Goods,Atlas Fitness Ltd,2026-09-15,1398.73,Open
+7730452,Northwind Traders,Pinecrest Dental Clinic,2026-09-18,146.02,Open
+HL-24026,Harbor Lane Supply Co.,Atlas Fitness Ltd,2026-09-21,187.06,Open
+BW-88257,Brightwater Logistics,Meridian Architects,2026-09-24,934.63,Open
+CF-2026-0433,Copperfield Office Goods,Lakeshore Cafe Group,2026-09-26,716.82,Open
+7730488,Northwind Traders,Atlas Fitness Ltd,2026-09-27,215.35,Open
+HL-24031,Harbor Lane Supply Co.,Pinecrest Dental Clinic,2026-09-29,298.08,Open
+INV-5521,Brightwater Logistics,Meridian Architects,2026-09-30,207.36,Open
+7730501,Northwind Traders,Lakeshore Cafe Group,2026-10-01,169.13,Open
+CF-2026-0447,Copperfield Office Goods,Meridian Architects,2026-10-02,822.66,Open
+HL-24038,Harbor Lane Supply Co.,Atlas Fitness Ltd,2026-10-03,248.4,Open
+HL-24044,Harbor Lane Supply Co.,Lakeshore Cafe Group,2026-10-06,412.3,Open

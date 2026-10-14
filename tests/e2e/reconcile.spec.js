@@ -28,7 +28,7 @@ test('splits a bulk PDF and checks each invoice against a CSV in one table', asy
   await expect(page.getByTestId('count-results')).toHaveText('4');
   await expect(results.locator('tbody tr').first()).toContainText('Missing PDF');
   await expect(results.locator('tbody tr').first()).toContainText('INV-9999');
-  await expect(results.locator('tr', { hasText: 'INV-2002' })).toContainText('Not in sheet');
+  await expect(results.locator('tr', { hasText: 'INV-2002' })).toContainText('Not in Excel');
   await expect(results.locator('tr', { hasText: 'Matched' })).toHaveCount(2);
   await expect(results).toContainText('05-repeat-later.pdf (p. 3)');
 

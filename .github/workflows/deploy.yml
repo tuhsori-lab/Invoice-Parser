@@ -32,6 +32,9 @@ jobs:
         run: npm run build
         env:
           GITHUB_PAGES: 'true'
+          # Your OCR server's address, from Settings → Secrets and variables → Actions → Variables.
+          # Unset, the site is built browser-only, exactly as before.
+          VITE_INVOICE_API_URL: ${{ vars.VITE_INVOICE_API_URL }}
 
       - uses: actions/configure-pages@v5
 
