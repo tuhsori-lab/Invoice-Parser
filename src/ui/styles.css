@@ -3526,3 +3526,125 @@ select {
 .add-line {
   margin-top: 0.5rem;
 }
+
+/* Reconcile: an invoice whose amount or PO disagrees with Excel. */
+.status-priceDiffers {
+  --dot: var(--status-red);
+}
+
+.status-poDiffers {
+  --dot: var(--marker);
+}
+
+.difference {
+  color: var(--problem);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==================================================== page strip, as pages */
+
+/*
+ * Each tile is a tiny page. The first page of an invoice carries a band of the
+ * invoice's colour across its head, like a letterhead, over a few faint lines of
+ * "text"; every page after it is a lightly tinted sheet with only a thin strip
+ * of colour. Scoped to the strip and its key, so the table's colour bars stay bars.
+ */
+.strip .tile,
+.key-swatch.tile {
+  --page: var(--sheet);
+  --ink-line: color-mix(in srgb, var(--ink) 14%, transparent);
+  width: 1.85rem;
+  height: 2.45rem;
+  border-radius: 4px;
+  background:
+    linear-gradient(var(--tile), var(--tile)) top / 100% 34% no-repeat,
+    repeating-linear-gradient(to bottom, transparent 0 3px, var(--ink-line) 3px 4px) 50% 66% / 64%
+      28% no-repeat,
+    var(--page);
+  background-color: var(--page);
+  box-shadow:
+    0 0 0 0.5px color-mix(in srgb, var(--tile) 45%, var(--rule-strong)),
+    0 1px 2px rgb(0 0 0 / 0.08),
+    0 2px 6px color-mix(in srgb, var(--tile) 18%, transparent);
+  padding-bottom: 2px;
+  transition:
+    transform 200ms var(--spring),
+    box-shadow var(--ease),
+    filter var(--ease);
+}
+
+.strip .tile.tile-continuation,
+.key-swatch.tile.tile-continuation {
+  --page: color-mix(in srgb, var(--tile) 9%, var(--sheet));
+  background:
+    linear-gradient(var(--tile), var(--tile)) top / 100% 3px no-repeat,
+    repeating-linear-gradient(to bottom, transparent 0 3px, var(--ink-line) 3px 4px) 50% 45% / 64%
+      46% no-repeat,
+    var(--page);
+  background-color: var(--page);
+}
+
+.strip .tile:hover {
+  filter: none;
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 0 1px var(--tile),
+    0 4px 10px color-mix(in srgb, var(--tile) 30%, transparent);
+}
+
+/* The number sits on the page itself now, in ink, so no label is needed. */
+.strip .tile .tile-number {
+  background: none;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 650;
+  padding: 0;
+  min-width: 0;
+}
+
+.strip .tile-aside .tile-number {
+  color: var(--ink);
+}
+
+/* Each invoice's pages: a soft card of its colour that lifts when pointed at. */
+.strip .run-body {
+  padding: 5px 7px 7px;
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--tile) 16%, transparent),
+    color-mix(in srgb, var(--tile) 7%, transparent)
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tile) 22%, transparent);
+  transition:
+    box-shadow var(--ease),
+    transform 200ms var(--spring);
+}
+
+.strip .run-body:hover {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--tile) 45%, transparent),
+    0 4px 14px color-mix(in srgb, var(--tile) 16%, transparent);
+}
+
+.strip .run-tiles {
+  gap: 4px;
+}
+
+.strip .run-label {
+  margin-bottom: 6px;
+  box-shadow:
+    0 0 0 0.5px color-mix(in srgb, var(--tile) 35%, var(--edge)),
+    0 1px 2px rgb(0 0 0 / 0.06);
+}
+
+.strip {
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.key-swatch.tile {
+  width: 0.95rem;
+  height: 1.25rem;
+  border-radius: 3px;
+}

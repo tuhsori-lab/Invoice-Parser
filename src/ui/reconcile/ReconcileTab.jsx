@@ -3,6 +3,7 @@ import { explain } from '../../core/errors.js';
 import { FLAG_LABELS } from '../../core/group.js';
 import { cleanPrefixes } from '../../core/reconcile/normalize.js';
 import { reconcile } from '../../core/reconcile/match.js';
+import { compareWithSheet, formatMoney } from '../../core/reconcile/compare.js';
 import { guessSheetLayout, sheetEntries } from '../../core/reconcile/sheet.js';
 import { readInvoicePdfs, readScannedPdfs } from '../../lib/readInvoicePdfs.js';
 import { isSheetFile, readWorkbook, SheetFileError, writeWorkbook } from '../../lib/sheets.js';
@@ -21,6 +22,8 @@ const FOUND_BY = { text: 'PDF text', scan: 'Scan', filename: 'File name' };
 
 /** Each row's status, in the order they sort: problems ahead of matches. */
 const STATUS = {
+  priceDiffers: 'Price differs',
+  poDiffers: 'PO differs',
   onlySheet: 'Missing PDF',
   onlyPdf: 'Not in Excel',
   unreadable: 'No number found',
@@ -233,23 +236,43 @@ export default function ReconcileTab({ prefixes, onData }) {
         file: item.problem ? null : item,
         cells: { status: STATUS.unreadable, file: item.path, notes: whyUnchecked(item) },
       })),
-      ...result.matched.map((entry) => ({
-        id: `match-${entry.pdf.id}`,
-        status: 'matched',
-        file: entry.pdf,
-        flagged: entry.duplicate || entry.cleanup,
-        cells: {
-          status: STATUS.matched,
-          invoice: entry.pdf.invoice,
-          sheetInvoice: entry.row.invoice,
-          file: entry.pdf.path,
-          found: FOUND_BY[entry.pdf.source] ?? '',
-          row: entry.row.rowNumber,
-          ...extrasOf(entry.row),
-          notes: pdfNotes(entry.pdf, entry.notes),
-        },
-      })),
+      ...result.matched.map((entry) => {
+        // Matched by number: now do the amount and the PO agree with Excel?
+        const check = compareWithSheet(entry.pdf.fields, entry.row.fields);
+        const status = check.priceDiffers
+          ? 'priceDiffers'
+          : check.poDiffers
+            ? 'poDiffers'
+            : 'matched';
+        const { currency } = check.amount;
+        return {
+          id: `match-${entry.pdf.id}`,
+          status,
+          file: entry.pdf,
+          flagged: entry.duplicate || entry.cleanup,
+          cells: {
+            status: STATUS[status],
+            invoice: entry.pdf.invoice,
+            sheetInvoice: entry.row.invoice,
+            file: entry.pdf.path,
+            found: FOUND_BY[entry.pdf.source] ?? '',
+            row: entry.row.rowNumber,
+            pdfAmount: formatMoney(check.amount.pdf, currency),
+            sheetAmount: formatMoney(check.amount.sheet, currency),
+            difference:
+              check.amount.difference === null
+                ? ''
+                : `${check.amount.difference > 0 ? '+' : '−'}${formatMoney(Math.abs(check.amount.difference), currency)}`,
+            pdfPo: check.po.pdf ?? '',
+            sheetPo: check.po.sheet ?? '',
+            ...extrasOf(entry.row),
+            notes: pdfNotes(entry.pdf, [...check.notes, ...entry.notes]),
+          },
+        };
+      }),
     ];
+    // Amount and PO columns only when the files or the sheet have them.
+    const has = (key) => rows.some((row) => row.cells[key]);
     return {
       columns: [
         {
@@ -262,6 +285,28 @@ export default function ReconcileTab({ prefixes, onData }) {
         },
         { key: 'invoice', label: 'Invoice (PDF)' },
         { key: 'sheetInvoice', label: 'Invoice (sheet)' },
+        ...(has('pdfAmount') || has('sheetAmount')
+          ? [
+              { key: 'pdfAmount', label: 'Amount (PDF)' },
+              { key: 'sheetAmount', label: 'Amount (Excel)' },
+              {
+                key: 'difference',
+                label: 'Difference',
+                render: (row) =>
+                  row.cells.difference ? (
+                    <strong className="difference">{row.cells.difference}</strong>
+                  ) : (
+                    ''
+                  ),
+              },
+            ]
+          : []),
+        ...(has('pdfPo') || has('sheetPo')
+          ? [
+              { key: 'pdfPo', label: 'PO (PDF)' },
+              { key: 'sheetPo', label: 'PO (Excel)' },
+            ]
+          : []),
         { key: 'file', label: 'File' },
         { key: 'found', label: 'Found by' },
         { key: 'row', label: 'Row', numeric: true },
@@ -291,6 +336,8 @@ export default function ReconcileTab({ prefixes, onData }) {
   }, [table, toast]);
 
   const busy = Boolean(reading || scanReading);
+  const priceCount = table?.rows.filter((row) => row.status === 'priceDiffers').length ?? 0;
+  const poCount = table?.rows.filter((row) => row.status === 'poDiffers').length ?? 0;
 
   /** The sample PDFs and their spreadsheet, to see every part of Reconcile and Summary. */
   const trySamples = async () => {
@@ -376,6 +423,10 @@ export default function ReconcileTab({ prefixes, onData }) {
                     key === 'all'
                       ? table.rows.length
                       : table.rows.filter((row) => row.status === key).length;
+                  // The two checks against Excel's values show only when something differs.
+                  if (!count && (key === 'priceDiffers' || key === 'poDiffers') && show !== key) {
+                    return null;
+                  }
                   return (
                     <button
                       key={key}
@@ -393,6 +444,10 @@ export default function ReconcileTab({ prefixes, onData }) {
               </div>
             }
             hint={[
+              priceCount > 0 &&
+                `${priceCount === 1 ? '1 invoice has' : `${priceCount} invoices have`} a different amount in Excel`,
+              poCount > 0 &&
+                `${poCount === 1 ? '1 invoice has' : `${poCount} invoices have`} a different PO in Excel`,
               result.duplicates.pdf && `${result.duplicates.pdf} PDF invoices share a number`,
               result.duplicates.sheet && `${result.duplicates.sheet} sheet rows share a number`,
             ]

@@ -40,7 +40,7 @@ function currencyOf(text) {
 }
 
 /** An amount from a sheet cell, which may be a plain number. */
-function sheetAmount(text) {
+export function sheetAmount(text) {
   const raw = String(text ?? '').trim();
   if (!raw) return null;
   const money = parseMoney(raw);

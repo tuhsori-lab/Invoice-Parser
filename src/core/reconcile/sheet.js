@@ -25,6 +25,8 @@ const FIELD_HEADINGS = [
   ['customer', /customer|client|bill to|account|company|kunde|debtor|buyer|\bname\b/i],
   ['status', /status|paid|\bstate\b|settled/i],
   ['currency', /currency|\bccy\b|\bcurr\b|währung|devise|moneda/i],
+  // Last, so "PO Amount" is an amount; "PO Number", "Purchase order", "Order #" are POs.
+  ['po', /\bp\.?\s?o\.?\b(?!\s*box)|purchase\s*order|order\s*(no|number|#|ref)|bestell/i],
 ];
 
 /**
