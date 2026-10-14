@@ -13,12 +13,25 @@ import { guessColumns } from '../knownList.js';
 const INVOICE_HEADING =
   /\b(invoice|inv|bill|document|doc)\b|^(invoice|inv)\s*(#|no\.?|nr\.?|number)/i;
 
+/** "InvAmnt", "PONum", "Inv_Amount", "INV.DATE" as words: "Inv Amnt", "PO Num", "Inv Amount", "INV DATE". */
+export function headingWords(heading) {
+  return String(heading ?? '')
+    .replace(/([a-z\d])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2') // "PONum" is "PO Num"
+    .replace(/[_.]+/g, ' ')
+    .trim();
+}
+
+/** Headings that name an amount, in full or cut short: "Amount", "InvAmnt", "Amt", "Total". */
+const AMOUNT_WORDS =
+  /\b(amount|amnt|amt|total|balance|value|sum|gross|betrag|montant|importe|bedrag)\b/i;
+
 /**
  * Headings of the columns the summary reads, tried in this order so "Amount
  * due" is an amount and "Due date" a due date.
  */
 const FIELD_HEADINGS = [
-  ['amount', /amount|total|balance|value|\bsum\b|betrag|montant|importe|bedrag/i],
+  ['amount', AMOUNT_WORDS],
   ['due', /due|fällig|échéance|vencimiento|vervaldatum/i],
   ['date', /date|datum|fecha|\bdata\b|issued/i],
   ['terms', /terms|condition|zahlungsziel/i],
@@ -40,8 +53,9 @@ export function guessFieldColumns(headers = [], invoiceColumn = -1) {
   const columns = {};
   headers.forEach((heading, column) => {
     if (column === invoiceColumn) return;
+    const words = headingWords(heading);
     const field = FIELD_HEADINGS.find(
-      ([name, pattern]) => !(name in columns) && pattern.test(heading)
+      ([name, pattern]) => !(name in columns) && pattern.test(words)
     );
     if (field) columns[field[0]] = column;
   });
@@ -61,7 +75,13 @@ const HEADER_SEARCH = 10;
 export function guessSheetLayout(rows = []) {
   for (let at = 0; at < Math.min(HEADER_SEARCH, rows.length); at += 1) {
     const row = rows[at] ?? [];
-    const column = row.findIndex((cell) => INVOICE_HEADING.test(String(cell ?? '').trim()));
+    // "InvAmnt" and "Inv Date" name the invoice, but hold its amount and date, not its number.
+    const column = row.findIndex((cell) => {
+      const words = headingWords(cell);
+      return (
+        INVOICE_HEADING.test(words) && !AMOUNT_WORDS.test(words) && !/\b(date|dt)\b/i.test(words)
+      );
+    });
     if (column >= 0) {
       return { headerRow: at, invoiceColumn: column, headers: headersOf(rows, at) };
     }
