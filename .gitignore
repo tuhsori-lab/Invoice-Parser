@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-extract/
 coverage/
 .DS_Store
 *.local
@@ -18,3 +19,13 @@ bench/results/
 
 # Written by graphify; rebuild with /graphify .
 graphify-out/
+
+# The OCR service's local Python environment, data and caches.
+services/.venv/
+services/data/
+services/**/__pycache__/
+services/.pytest_cache/
+.env
+
+# The OCR service settings.
+services/.env

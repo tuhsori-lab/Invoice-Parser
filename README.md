@@ -49,6 +49,25 @@ There is a test that holds this to account: it watches every request the browser
 batch is loaded, searched, previewed and exported, and fails if any of them leaves this origin or is
 anything other than a `GET`.
 
+### Optional: your own OCR server
+
+Scanned invoices are read in the browser with Tesseract. For better reading of scans, there is an
+optional backend in [`services/`](services/README.md) that you run on your own machine: PaddleOCR,
+FastAPI and Redis, with Docker Compose included. No cloud OCR or AI service is involved.
+
+It is off unless the site is built with `VITE_INVOICE_API_URL` set to your server. With it, and
+once you sign in on the **Extract** tab:
+
+- **Split** reads scanned pages with PaddleOCR on your server when you click **Read scanned pages
+  on your server**. Only pictures of those pages are sent, and the server does not keep them. Your
+  invoices are still split, named by invoice number and downloaded in the browser as before. If the
+  server cannot be reached, the pages are read in the browser instead.
+- **Extract** uploads whole invoices for full field extraction, checks and a review queue.
+- **Reconcile** never sends anything.
+
+The header note changes from "Your files never leave this browser" to "Files go only to your own
+server". See [services/README.md](services/README.md) to run it.
+
 ## How the invoice number is found
 
 Detection tries these in order and stops at the first hit. The app always shows **which tier
@@ -289,11 +308,11 @@ invoice number or a file — and **Clear these counts** starts them again.
 ## The page strip
 
 The strip along the top of the results is the one place this app uses colour to say something. One
-tile per page, coloured by invoice, with a visible gap wherever a new invoice starts and a bracket
-over each invoice's pages with its number above it. An invoice's first page is solid and every page
-after it is striped, whether or not the number is printed on it again, so where each invoice starts
-reads at a glance. An invoice nothing could be worked out about is marker yellow, bracket and all —
-the only thing that colour ever means here. Hover a tile to see the page itself; click to open it
+tile per page, coloured by invoice in Apple's system colours, with each invoice's pages together in
+a box tinted its colour and its number in a pill above them. An invoice's first page is solid and
+every page after it a lighter tint, whether or not the number is printed on it again, so where each
+invoice starts reads at a glance. An invoice nothing could be worked out about is marker yellow, box
+and all — the only thing that colour ever means here. The "?" button explains the colours. Hover a tile to see the page itself; click to open it
 full size with its text beside it.
 
 ## Fixing what detection got wrong

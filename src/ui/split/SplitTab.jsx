@@ -18,6 +18,8 @@ import {
   writeIntoFolder,
 } from '../../lib/saveToFolder.js';
 import { useDebounced } from '../../lib/useDebounced.js';
+import { loadSamples } from '../../lib/samples.js';
+import { apiEnabled, apiHost, loadToken } from '../../lib/apiConfig.js';
 import { useUndoable } from '../../lib/useUndoable.js';
 import { loadBoxes, saveBoxes } from '../../lib/boxStore.js';
 import { preloadOcr, readScannedPages, stopOcr } from '../../lib/ocr.js';
@@ -31,6 +33,7 @@ import InvoiceTable from './InvoiceTable.jsx';
 import PreviewModal from './PreviewModal.jsx';
 import PointPrompt from './PointPrompt.jsx';
 import ConfirmDialog from '../common/ConfirmDialog.jsx';
+import EmptyState from '../common/EmptyState.jsx';
 import ProgressBar from '../common/ProgressBar.jsx';
 import { useToast } from '../common/Toasts.jsx';
 
@@ -431,7 +434,7 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
   // own address, so it is ready by the time somebody asks for them to be read.
   const offerScans = scannedPages.length > 0 && !scanDismissed;
   useEffect(() => {
-    if (offerScans) preloadOcr();
+    if (offerScans && !(apiEnabled && loadToken())) preloadOcr();
   }, [offerScans]);
 
   /**
@@ -452,6 +455,8 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
    * from a scan, which is what flags their invoices for a second look.
    */
   const readScanned = useCallback(async () => {
+    // Signed in to your OCR server: PaddleOCR reads them there. Otherwise, this browser.
+    const remoteToken = apiEnabled ? loadToken() : '';
     const signal = { aborted: false };
     readCancelRef.current = signal;
     setReading({ done: 0, total: scannedPages.length, pageIndex: scannedPages[0]?.index ?? 0 });
@@ -471,7 +476,7 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
         setReading({ done: 0, total: toRead.length, pageIndex: toRead[0]?.index ?? 0 });
       }
 
-      const found = await readScannedPages(toRead, docsById, {
+      const options = {
         signal,
         onProgress: setReading,
         judge,
@@ -479,7 +484,21 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
         // With a box saved, read only the top, the box and the foot of a page
         // whose top names that client.
         quick: boxes.length > 0,
-      });
+      };
+      let found;
+      try {
+        found = await readScannedPages(toRead, docsById, { ...options, remoteToken });
+      } catch (error) {
+        if (!remoteToken) throw error;
+        // The server is down or refused: read them here instead, rather than not at all.
+        toast(
+          `${apiHost} could not read them (${error.message}). Reading them in this browser instead.`,
+          {
+            kind: 'info',
+          }
+        );
+        found = await readScannedPages(toRead, docsById, options);
+      }
       if (found.size > 0) {
         setPages((current) =>
           current.map((page) =>
@@ -849,14 +868,50 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
     setPreviewIndex(pageIndex);
   }, []);
 
+  const trySamples = async () => {
+    try {
+      const samples = await loadSamples(['bulk-invoices.pdf', 'scanned-invoices.pdf']);
+      startBatch(samples.map(({ file }) => file));
+    } catch (error) {
+      toast(error.message, { kind: 'error' });
+    }
+  };
+
   return (
     <div className="split-tab">
-      {pageCount === 0 && (
-        <div className="page-head">
+      <div className="page-head split-head">
+        <div>
           <h2>Split</h2>
           <p>Drop in bulk PDFs and get one correctly named PDF per invoice.</p>
         </div>
-      )}
+        <div className="split-head-actions">
+          {canSaveToFolder() && (
+            <button
+              type="button"
+              className="button quiet"
+              onClick={askThenSaveIntoFolder}
+              disabled={pageCount === 0 || Boolean(exporting)}
+              data-testid="save-folder"
+              title="Choose a folder, and every invoice is saved into it as its own PDF"
+            >
+              {exporting?.what === 'folder'
+                ? `${exporting.phase} ${exporting.done}/${exporting.total}…`
+                : 'Save to a folder…'}
+            </button>
+          )}
+          <button
+            type="button"
+            className="button"
+            onClick={askThenExport}
+            disabled={pageCount === 0 || Boolean(exporting)}
+            data-testid="download-zip"
+          >
+            {exporting?.what === 'all invoices'
+              ? `Building ${exporting.done}/${exporting.total}…`
+              : 'Download all as ZIP'}
+          </button>
+        </div>
+      </div>
 
       <DropZone
         files={files}
@@ -868,7 +923,7 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
 
       {loading && (
         <ProgressBar
-          label={`Reading ${loading.fileName} \u2014 page ${loading.done} of ${loading.total || '?'}`}
+          label={`Reading ${loading.fileName} — page ${loading.done} of ${loading.total || '?'}`}
           done={loading.done}
           total={loading.total}
           onCancel={() => {
@@ -905,99 +960,23 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
         </div>
       )}
 
+      {pageCount === 0 && !loading && (
+        <EmptyState title="Invoices appear here" testId="split-empty">
+          <p>Add PDFs above, and each invoice in them becomes its own named PDF.</p>
+          <button
+            type="button"
+            className="button quiet"
+            onClick={trySamples}
+            data-testid="try-samples"
+          >
+            Try it with sample files
+          </button>
+        </EmptyState>
+      )}
+
       {pageCount > 0 && (
         <div className="workspace">
           <section className="results" id="results" tabIndex={-1}>
-            <div className="results-head">
-              <p className="summary" data-testid="summary" role="status" aria-live="polite">
-                {pageCount} {pageCount === 1 ? 'page' : 'pages'} split into {groups.length}{' '}
-                {groups.length === 1 ? 'invoice' : 'invoices'}
-                {needingReview > 0 && `, ${needingReview} worth a look`}.
-              </p>
-              <div className="results-tools">
-                <span className="undo-pair">
-                  <button
-                    type="button"
-                    className="button quiet"
-                    onClick={fixes.undo}
-                    disabled={!fixes.canUndo}
-                    title="Undo your last fix (Ctrl+Z)"
-                    data-testid="undo"
-                  >
-                    Undo
-                  </button>
-                  <button
-                    type="button"
-                    className="button quiet"
-                    onClick={fixes.redo}
-                    disabled={!fixes.canRedo}
-                    title="Redo (Ctrl+Shift+Z)"
-                    data-testid="redo"
-                  >
-                    Redo
-                  </button>
-                </span>
-                <label className="search">
-                  <span className="visually-hidden">Search invoices</span>
-                  <input
-                    ref={searchRef}
-                    type="search"
-                    placeholder="Search invoice, extra or page number"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    data-testid="search"
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="button"
-                  onClick={askThenExport}
-                  disabled={Boolean(exporting)}
-                  data-testid="download-zip"
-                >
-                  {exporting?.what === 'all invoices'
-                    ? `Building ${exporting.done}/${exporting.total}…`
-                    : 'Download all as ZIP'}
-                </button>
-                {canSaveToFolder() && (
-                  <button
-                    type="button"
-                    className="button quiet"
-                    onClick={askThenSaveIntoFolder}
-                    disabled={Boolean(exporting)}
-                    data-testid="save-folder"
-                    title="Choose a folder, and every invoice is saved into it as its own PDF"
-                  >
-                    {exporting?.what === 'folder'
-                      ? `${exporting.phase} ${exporting.done}/${exporting.total}…`
-                      : 'Save to a folder…'}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="button quiet"
-                  onClick={onOpenSettings}
-                  data-testid="open-settings"
-                  title="How invoices are split and named, and each client's box"
-                >
-                  {changedSettings > 0 ? `Settings \u00b7 ${changedSettings} changed` : 'Settings'}
-                </button>
-              </div>
-            </div>
-
-            {exporting?.total > 0 && (
-              <ProgressBar
-                label={
-                  exporting.what === 'folder'
-                    ? `${exporting.phase} invoices for the folder \u2014 ${exporting.done} of ${exporting.total}`
-                    : `Building ${exporting.what} \u2014 ${exporting.done} of ${exporting.total}`
-                }
-                done={exporting.done}
-                total={exporting.total}
-                testId="exporting"
-              />
-            )}
-
             {((scannedPages.length > 0 && !scanDismissed) || reading) && (
               <div className="scanned" data-testid="scanned-notice">
                 {reading ? (
@@ -1013,14 +992,25 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
                   />
                 ) : (
                   <>
-                    <p>{scannedNotice(scannedPages, pageCount)}</p>
+                    <p>
+                      {scannedNotice(scannedPages, pageCount)}
+                      {apiEnabled && (
+                        <span className="scanned-where" data-testid="scanned-where">
+                          {loadToken()
+                            ? ` They will be read by PaddleOCR on ${apiHost}: pictures of those pages are sent there, read, and not kept.`
+                            : ` Sign in on the Extract tab to read them with PaddleOCR on ${apiHost}; otherwise they are read in this browser.`}
+                        </span>
+                      )}
+                    </p>
                     <button
                       type="button"
                       className="button"
                       data-testid="read-scanned"
                       onClick={readScanned}
                     >
-                      Read scanned pages (slower)
+                      {apiEnabled && loadToken()
+                        ? 'Read scanned pages on your server'
+                        : 'Read scanned pages (slower)'}
                     </button>
                     {/* A scan whose own text was good enough to draw a box on
                         needs no reading, so the offer can be waved off. */}
@@ -1058,22 +1048,95 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
               onMovePage={movePage}
             />
 
-            {shownGroups.length === 0 ? (
-              <p className="empty">
-                Nothing matches &ldquo;{query}&rdquo;. Try an invoice number, an extra value, or a
-                page number.
-              </p>
-            ) : (
-              <InvoiceTable
-                groups={shownGroups}
-                colourOf={colourOf}
-                onPreview={setPreviewIndex}
-                onDownload={downloadInvoice}
-                onRename={renameInvoice}
-                onAccept={renameInvoice}
-                busy={Boolean(exporting)}
-              />
-            )}
+            <section className="result-section" aria-labelledby="invoices-heading">
+              <header className="result-head">
+                <div className="result-title">
+                  <h3 id="invoices-heading">Invoices</h3>
+                  <span className="count-badge" data-testid="count-invoices">
+                    {groups.length}
+                  </span>
+                </div>
+                <div className="result-tools">
+                  <label className="search">
+                    <span className="visually-hidden">Search invoices</span>
+                    <input
+                      ref={searchRef}
+                      type="search"
+                      placeholder="Search invoice, extra or page number"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      data-testid="search"
+                    />
+                  </label>
+                  <span className="undo-pair">
+                    <button
+                      type="button"
+                      className="button quiet"
+                      onClick={fixes.undo}
+                      disabled={!fixes.canUndo}
+                      title="Undo your last fix (Ctrl+Z)"
+                      data-testid="undo"
+                    >
+                      Undo
+                    </button>
+                    <button
+                      type="button"
+                      className="button quiet"
+                      onClick={fixes.redo}
+                      disabled={!fixes.canRedo}
+                      title="Redo (Ctrl+Shift+Z)"
+                      data-testid="redo"
+                    >
+                      Redo
+                    </button>
+                  </span>
+                  <button
+                    type="button"
+                    className="button quiet"
+                    onClick={onOpenSettings}
+                    data-testid="open-settings"
+                    title="How invoices are split and named, and each client's box"
+                  >
+                    {changedSettings > 0 ? `Settings · ${changedSettings} changed` : 'Settings'}
+                  </button>
+                </div>
+              </header>
+              <div className="result-body">
+                <p className="result-hint" data-testid="summary" role="status" aria-live="polite">
+                  {pageCount} {pageCount === 1 ? 'page' : 'pages'} split into {groups.length}{' '}
+                  {groups.length === 1 ? 'invoice' : 'invoices'}
+                  {needingReview > 0 && `, ${needingReview} worth a look`}.
+                </p>
+                {exporting?.total > 0 && (
+                  <ProgressBar
+                    label={
+                      exporting.what === 'folder'
+                        ? `${exporting.phase} invoices for the folder — ${exporting.done} of ${exporting.total}`
+                        : `Building ${exporting.what} — ${exporting.done} of ${exporting.total}`
+                    }
+                    done={exporting.done}
+                    total={exporting.total}
+                    testId="exporting"
+                  />
+                )}
+                {shownGroups.length === 0 ? (
+                  <p className="result-empty">
+                    Nothing matches &ldquo;{query}&rdquo;. Try an invoice number, an extra value, or
+                    a page number.
+                  </p>
+                ) : (
+                  <InvoiceTable
+                    groups={shownGroups}
+                    colourOf={colourOf}
+                    onPreview={setPreviewIndex}
+                    onDownload={downloadInvoice}
+                    onRename={renameInvoice}
+                    onAccept={renameInvoice}
+                    busy={Boolean(exporting)}
+                  />
+                )}
+              </div>
+            </section>
           </section>
         </div>
       )}

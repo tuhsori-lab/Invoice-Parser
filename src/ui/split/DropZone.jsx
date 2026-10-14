@@ -1,84 +1,55 @@
-import { useRef, useState } from 'react';
-import Icon from '../common/Icon.jsx';
+import DropArea from '../common/DropArea.jsx';
+import { isPdfFile } from '../../lib/droppedFiles.js';
 
 /**
- * Where a batch comes in.
+ * Where a batch comes in, as a panel like Reconcile's inputs.
  *
  * Takes several PDFs at once and keeps the order they were chosen in, because
- * that order is the order of the pages. Once files are loaded it shrinks to a
- * single line, so the work takes the space rather than the upload box.
+ * that order is the order of the pages. Once files are loaded the drop area
+ * gives way to what was loaded, so the work takes the space.
  */
 export default function DropZone({ files, pageCount, onFiles, onClear, busy }) {
-  const input = useRef(null);
-  const [dragging, setDragging] = useState(false);
-
-  const choose = (list) => {
-    const pdfs = [...list].filter(
-      (file) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-    );
-    if (pdfs.length > 0) onFiles(pdfs);
-  };
-
-  if (files.length > 0) {
-    return (
-      <div className="file-bar" data-testid="file-bar">
-        <span className="file-bar-count">
-          {files.length === 1 ? '1 file' : `${files.length} files`}, {pageCount}{' '}
-          {pageCount === 1 ? 'page' : 'pages'}
-        </span>
-        <span className="file-bar-names" title={files.map((file) => file.name).join('\n')}>
-          {files.map((file) => file.name).join(', ')}
-        </span>
-        <button type="button" className="link-button" onClick={onClear}>
-          Start again
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div
-      className={`drop-zone${dragging ? ' is-dragging' : ''}`}
-      onDragOver={(event) => {
-        event.preventDefault();
-        setDragging(true);
-      }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={(event) => {
-        event.preventDefault();
-        setDragging(false);
-        choose(event.dataTransfer.files);
-      }}
+    <section
+      className="input-panel"
+      aria-labelledby="split-input-heading"
+      data-testid="split-input"
     >
-      <span className="drop-zone-icon">
-        <Icon name="upload" size={20} />
-      </span>
-      <p className="drop-zone-title">Drop your PDFs here</p>
-      <p className="drop-zone-note">
-        Several files at once is fine. They are read in the order you choose them.
-      </p>
-      <button
-        type="button"
-        className="button"
-        disabled={busy}
-        onClick={() => input.current?.click()}
-      >
-        Choose files
-      </button>
-      <input
-        ref={input}
-        type="file"
-        accept="application/pdf,.pdf"
-        multiple
-        aria-label="Choose PDF files to split"
-        className="visually-hidden"
-        data-testid="file-input"
-        onChange={(event) => {
-          choose(event.target.files);
-          event.target.value = '';
-        }}
-      />
-      <p className="drop-zone-privacy">Your files stay on this computer. Nothing is uploaded.</p>
-    </div>
+      <header className="input-panel-head">
+        <h3 id="split-input-heading">PDFs to split</h3>
+        {files.length > 0 && (
+          <button type="button" className="link-button" onClick={onClear}>
+            Start again
+          </button>
+        )}
+      </header>
+
+      {files.length > 0 ? (
+        <div className="input-summary" data-testid="file-bar">
+          <p className="input-summary-main">
+            {files.length === 1 ? '1 file' : `${files.length} files`}, {pageCount}{' '}
+            {pageCount === 1 ? 'page' : 'pages'}
+          </p>
+          <ul>
+            {files.map((file, position) => (
+              <li key={`${file.name}-${position}`}>{file.name}</li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <DropArea
+          title="Drop your PDFs here"
+          note="Several files at once is fine. They are read in the order you choose them."
+          accept="application/pdf,.pdf"
+          onFiles={(found) => {
+            const pdfs = found.map(({ file }) => file).filter(isPdfFile);
+            if (pdfs.length > 0) onFiles(pdfs);
+          }}
+          busy={busy}
+          inputLabel="Choose PDF files to split"
+          testId="file"
+        />
+      )}
+    </section>
   );
 }

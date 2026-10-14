@@ -1,4 +1,5 @@
 dist/
+dist-extract/
 coverage/
 tests/fixtures/pdf/
 package-lock.json
@@ -12,3 +13,6 @@ bench/results/
 
 # Claude Code skills copied from upstream; keep them byte-for-byte.
 .claude/
+
+# Written by the backend tests (services/tests/test_schema_contract.py), byte for byte.
+packages/invoice-schema/fixtures/

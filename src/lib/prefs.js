@@ -6,11 +6,19 @@
  * shapes and settings they had before it was called Invoice Hub.
  */
 
+import { apiEnabled } from './apiConfig.js';
+
 const PREFIX = 'invoice-splitter.';
 const TAB_KEY = `${PREFIX}tab.v1`;
 
 /** The tabs there are, in order. */
-export const TABS = ['split', 'reconcile', 'settings'];
+export const TABS = [
+  'split',
+  'reconcile',
+  'summary',
+  ...(apiEnabled ? ['extract'] : []),
+  'settings',
+];
 
 /** The tab open last time, or the first one. */
 export function loadTab() {

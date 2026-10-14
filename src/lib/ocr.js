@@ -15,7 +15,8 @@
  * The recognition engine, its WebAssembly and the English language data are all
  * served by this app (copied into public/ by scripts/copy-assets.js). Turning
  * text recognition on fetches them from this app's own origin; no page, and no
- * picture of a page, goes anywhere.
+ * picture of a page, goes anywhere - unless the build has your own OCR server
+ * and you are signed in to it, when pages are read there instead (serverOcr.js).
  */
 
 import { buildRecognisedText } from '../core/extractText.js';
@@ -23,6 +24,7 @@ import { valueInBoxText } from '../core/detect.js';
 import { cleanUp, cropForBox } from '../core/image.js';
 import { placeStripLines, stripsFor, workerCount } from '../core/quickRead.js';
 import { needsSecondLook, readingWidths, secondIsBetter } from '../core/scans.js';
+import { serverEngine } from './serverOcr.js';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -362,6 +364,8 @@ async function readOne(engine, page, doc, options, settings) {
  *   a page whose top names a client with a saved box.
  * @param {number} [options.pageMode] - how a whole page is laid out for recognition.
  * @param {boolean} [options.rotateAuto] - straighten a crooked page before reading it.
+ * @param {string} [options.remoteToken] - read on your own OCR server with PaddleOCR
+ *   (see serverOcr.js) instead of in this browser. Each page is sent there as a picture.
  * @returns {Promise<Map<number, { text: string, hasText: boolean, layout: Array<object>|null,
  *   boxReadings?: object, partial?: boolean }>>} what was read, by page number.
  */
@@ -374,7 +378,8 @@ export async function readScannedPages(pages, docsById, options = {}) {
   const found = new Map();
   if (pages.length === 0) return found;
 
-  const engine = await getEngine();
+  // Your own OCR server, when asked for; otherwise Tesseract in this browser.
+  const engine = options.remoteToken ? serverEngine(options.remoteToken) : await getEngine();
   await Promise.all(
     engine.workers.map((worker) =>
       worker.setParameters({ tessedit_pageseg_mode: String(settings.pageMode) })

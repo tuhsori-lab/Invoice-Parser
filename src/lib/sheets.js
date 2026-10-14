@@ -21,9 +21,10 @@ export class SheetFileError extends Error {}
 /**
  * Every sheet of a workbook, as rows of text cells.
  *
- * Cells come back as they are shown in Excel - "00123" stays "00123", a date
- * stays the date as written - and blank rows are kept, so a row's place in the
- * list is its row in the sheet.
+ * Cells come back as they are shown in Excel - "00123" stays "00123" - except
+ * dates, which come back as YYYY-MM-DD: Excel keeps a real date, and shown as
+ * "03/04/26" it would read one way in the US and the other in Europe. Blank rows
+ * are kept, so a row's place in the list is its row in the sheet.
  *
  * @param {File} file
  * @returns {Promise<Array<{ name: string, rows: string[][], firstRow: number }>>}
@@ -44,6 +45,8 @@ export async function readWorkbook(file) {
       cellHTML: false,
       // Formulas are read as the values they show; they are never run.
       cellFormula: false,
+      // Each cell's number format, to tell a date from a plain number.
+      cellNF: true,
       // A CSV's cells stay text as written: "00123" is not turned into 123.
       raw: /\.(csv|tsv)$/i.test(file.name),
     });
@@ -56,6 +59,12 @@ export async function readWorkbook(file) {
     const sheet = workbook.Sheets[name];
     if (!sheet?.['!ref']) return { name, rows: [], firstRow: 1 };
     const range = XLSX.utils.decode_range(sheet['!ref']);
+    for (const [address, cell] of Object.entries(sheet)) {
+      if (address.startsWith('!') || cell?.t !== 'n' || !cell.z || !XLSX.SSF.is_date(cell.z))
+        continue;
+      const { y, m, d } = XLSX.SSF.parse_date_code(cell.v);
+      cell.w = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
     const rows = XLSX.utils.sheet_to_json(sheet, {
       header: 1,
       raw: false,

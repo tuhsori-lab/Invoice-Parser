@@ -13,6 +13,39 @@ import { guessColumns } from '../knownList.js';
 const INVOICE_HEADING =
   /\b(invoice|inv|bill|document|doc)\b|^(invoice|inv)\s*(#|no\.?|nr\.?|number)/i;
 
+/**
+ * Headings of the columns the summary reads, tried in this order so "Amount
+ * due" is an amount and "Due date" a due date.
+ */
+const FIELD_HEADINGS = [
+  ['amount', /amount|total|balance|value|\bsum\b|betrag|montant|importe|bedrag/i],
+  ['due', /due|fällig|échéance|vencimiento|vervaldatum/i],
+  ['date', /date|datum|fecha|\bdata\b|issued/i],
+  ['terms', /terms|condition|zahlungsziel/i],
+  ['customer', /customer|client|bill to|account|company|kunde|debtor|buyer|\bname\b/i],
+  ['status', /status|paid|\bstate\b|settled/i],
+  ['currency', /currency|\bccy\b|\bcurr\b|währung|devise|moneda/i],
+];
+
+/**
+ * Which column holds each field the summary reads, by its heading.
+ *
+ * @param {string[]} headers
+ * @param {number} invoiceColumn - never one of them.
+ * @returns {Record<string, number>} only the fields a column was found for.
+ */
+export function guessFieldColumns(headers = [], invoiceColumn = -1) {
+  const columns = {};
+  headers.forEach((heading, column) => {
+    if (column === invoiceColumn) return;
+    const field = FIELD_HEADINGS.find(
+      ([name, pattern]) => !(name in columns) && pattern.test(heading)
+    );
+    if (field) columns[field[0]] = column;
+  });
+  return columns;
+}
+
 /** How far down a heading row is looked for. */
 const HEADER_SEARCH = 10;
 
@@ -62,12 +95,14 @@ export function headersOf(rows, headerRow) {
  * @param {{ headerRow: number, invoiceColumn: number, carry?: number[], firstRow?: number }} choice
  *   firstRow is the sheet row the first of `rows` is on, counting from 1.
  * @param {string[]} headers
- * @returns {{ entries: Array<{ rowNumber: number, invoice: string, extras: Record<string, string> }>,
+ * @returns {{ entries: Array<{ rowNumber: number, invoice: string, extras: Record<string, string>,
+ *   fields: Record<string, string> }>,
  *   blank: number, problem: string|null }}
  */
 export function sheetEntries(rows, choice, headers) {
   const { headerRow, invoiceColumn, carry = [], firstRow = 1 } = choice;
   const entries = [];
+  const fieldColumns = guessFieldColumns(headers, invoiceColumn);
   let blank = 0;
   for (let at = headerRow + 1; at < rows.length; at += 1) {
     const row = rows[at] ?? [];
@@ -79,7 +114,11 @@ export function sheetEntries(rows, choice, headers) {
     }
     const extras = {};
     for (const column of carry) extras[headers[column]] = String(row[column] ?? '').trim();
-    entries.push({ rowNumber: firstRow + at, invoice, extras });
+    const fields = {};
+    for (const [field, column] of Object.entries(fieldColumns)) {
+      fields[field] = String(row[column] ?? '').trim();
+    }
+    entries.push({ rowNumber: firstRow + at, invoice, extras, fields });
   }
 
   let problem = null;

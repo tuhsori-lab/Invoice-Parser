@@ -1,0 +1,107 @@
+# The self-hosted invoice OCR backend. The frontend stays on GitHub Pages.
+#
+#   cp services/.env.example services/.env      # then fill it in
+#   docker compose up -d --build
+#   docker compose exec api python -m invoice_service.admin add-user you
+#
+# Only Caddy publishes ports. Redis, the API and the worker are on a private
+# network with no ports of their own.
+
+x-service: &service
+  build:
+    context: ./services
+  image: invoice-ocr:latest
+  env_file: services/.env
+  environment:
+    DATA_DIR: /data
+    REDIS_URL: redis://redis:6379/0
+    PADDLE_PDX_CACHE_HOME: /models
+  volumes:
+    - documents:/data
+    - models:/models
+  networks: [backend]
+  restart: unless-stopped
+  security_opt: ['no-new-privileges:true']
+  depends_on:
+    redis:
+      condition: service_healthy
+
+services:
+  api:
+    <<: *service
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/ready')",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits: { cpus: '1', memory: 1g }
+
+  worker:
+    <<: *service
+    command: ['python', '-m', 'invoice_service.worker']
+    healthcheck:
+      # The worker touches this file between jobs; one job may take up to JOB_SECONDS.
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import os, time; assert time.time() - os.path.getmtime('/tmp/worker-alive') < 700",
+        ]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    deploy:
+      # Run more workers with `docker compose up -d --scale worker=2`; each loads its own models.
+      resources:
+        limits: { cpus: '4', memory: 8g }
+
+  redis:
+    image: redis:7.4-alpine
+    command: ['redis-server', '--appendonly', 'yes', '--protected-mode', 'yes']
+    volumes:
+      - redis-data:/data
+    networks: [backend]
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits: { cpus: '0.5', memory: 256m }
+
+  caddy:
+    image: caddy:2.10-alpine
+    ports:
+      - '80:80'
+      - '443:443'
+    env_file: services/.env
+    volumes:
+      - ./services/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    networks: [backend]
+    restart: unless-stopped
+    depends_on: [api]
+    deploy:
+      resources:
+        limits: { cpus: '0.5', memory: 256m }
+
+networks:
+  backend:
+
+volumes:
+  documents:
+  models:
+  redis-data:
+  caddy-data:

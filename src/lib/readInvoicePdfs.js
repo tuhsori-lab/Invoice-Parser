@@ -20,6 +20,7 @@ import { loadBoxes } from './boxStore.js';
 import { buildPageText } from '../core/extractText.js';
 import { analyzePages, judgeReading } from '../core/analyze.js';
 import { groupPages } from '../core/group.js';
+import { readFields } from '../core/fields.js';
 import { pageRangeForCsv } from '../core/naming.js';
 import { classifyError } from '../core/errors.js';
 import { numberFromFileName } from '../core/reconcile/fileName.js';
@@ -80,6 +81,7 @@ function splitInto(item, pages, settings, source) {
       source: group.invoice ? source : null,
       pages: pageNumbers,
       flags: group.flags,
+      fields: readFields(group.pages),
     };
   });
 }
@@ -126,6 +128,8 @@ export async function readInvoicePdf({ file, path }, settings) {
         invoice: fromName,
         source: fromName ? 'filename' : null,
         pages: pages.map((page) => page.pageNumberInFile),
+        // No number on the pages, but its date, terms and total may still be there.
+        fields: readFields(pages),
         // Nothing to read on the page itself: text recognition could help.
         scan: pages.length > 0 && pages.every((page) => !page.hasText),
       },

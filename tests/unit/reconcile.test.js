@@ -6,7 +6,11 @@ import { describe, expect, it } from 'vitest';
 import { cleanPrefixes, matchKey } from '../../src/core/reconcile/normalize.js';
 import { numberFromFileName } from '../../src/core/reconcile/fileName.js';
 import { reconcile } from '../../src/core/reconcile/match.js';
-import { guessSheetLayout, sheetEntries } from '../../src/core/reconcile/sheet.js';
+import {
+  guessFieldColumns,
+  guessSheetLayout,
+  sheetEntries,
+} from '../../src/core/reconcile/sheet.js';
 
 describe('cleaning a number up for matching', () => {
   it('takes off prefixes, separators and leading zeros, and ignores capitals', () => {
@@ -73,8 +77,18 @@ describe('a spreadsheet', () => {
       layout.headers
     );
     expect(entries).toEqual([
-      { rowNumber: 4, invoice: 'INV-00123', extras: { Customer: 'Lakeshore' } },
-      { rowNumber: 7, invoice: '456', extras: { Customer: 'Harbor & Pine' } },
+      {
+        rowNumber: 4,
+        invoice: 'INV-00123',
+        extras: { Customer: 'Lakeshore' },
+        fields: { customer: 'Lakeshore', amount: '10.00' },
+      },
+      {
+        rowNumber: 7,
+        invoice: '456',
+        extras: { Customer: 'Harbor & Pine' },
+        fields: { customer: 'Harbor & Pine', amount: '7.50' },
+      },
     ]);
     expect(blank).toBe(1);
     expect(problem).toBeNull();
@@ -137,5 +151,29 @@ describe('cross-checking', () => {
     ]);
     expect(result.onlySheet[0].notes).toEqual(['Duplicate: also on row 5']);
     expect(result.duplicates).toEqual({ pdf: 2, sheet: 2 });
+  });
+});
+
+describe('the columns the summary reads', () => {
+  it('tells an amount due from a due date, and skips the invoice column', () => {
+    const headers = [
+      'Invoice No',
+      'Customer Name',
+      'Invoice Date',
+      'Due Date',
+      'Amount Due',
+      'Terms',
+      'Status',
+      'Currency',
+    ];
+    expect(guessFieldColumns(headers, 0)).toEqual({
+      customer: 1,
+      date: 2,
+      due: 3,
+      amount: 4,
+      terms: 5,
+      status: 6,
+      currency: 7,
+    });
   });
 });

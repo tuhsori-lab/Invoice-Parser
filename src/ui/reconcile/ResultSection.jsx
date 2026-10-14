@@ -13,12 +13,15 @@ const FIRST_ROWS = 300;
  *   `rank` sorts by a number other than the cell; `render` draws the cell, which stays the text copied.
  * @param {Array<{ id: string, cells: Record<string, string|number>, flagged?: boolean, file?: object }>} props.rows
  * @param {(row: object) => void} [props.onOpen] - opens a row's file, when it has one.
+ * @param {import('react').ReactNode} [props.toolbar] - drawn above the table, such as a filter.
+ * @param {{ key: string, down: boolean }} [props.initialSort] - otherwise the first column, ascending.
  */
 export default function ResultSection({
   id,
   title,
   hint,
   toolbar,
+  initialSort,
   columns,
   rows,
   defaultOpen = true,
@@ -28,7 +31,7 @@ export default function ResultSection({
   const toast = useToast();
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState('');
-  const [sort, setSort] = useState({ key: columns[0]?.key, down: false });
+  const [sort, setSort] = useState(initialSort ?? { key: columns[0]?.key, down: false });
   const [showAll, setShowAll] = useState(false);
 
   const shown = useMemo(() => {

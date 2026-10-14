@@ -8,11 +8,13 @@ export default [
   {
     ignores: [
       'dist/**',
+      'dist-extract/**',
       'coverage/**',
       'public/**',
       'tests/fixtures/pdf/**',
       'playwright-report/**',
       'test-results/**',
+      'services/**',
     ],
   },
   js.configs.recommended,

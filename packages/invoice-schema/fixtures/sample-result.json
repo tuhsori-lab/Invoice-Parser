@@ -1,0 +1,469 @@
+{
+  "attempts": 1,
+  "corrections": {
+    "line_items.0.quantity": "3",
+    "purchase_order": "PO-1"
+  },
+  "created": "2026-10-14T00:00:00+00:00",
+  "error": null,
+  "filename": "invoice.pdf",
+  "id": "00000000-0000-4000-8000-000000000000",
+  "result": {
+    "engine": {
+      "engine": "fake"
+    },
+    "invoice": {
+      "currency": {
+        "confidence": null,
+        "evidence": {
+          "bbox": [
+            380.0,
+            370.2,
+            463.7,
+            385.4
+          ],
+          "page": 1,
+          "source": "pdf_text",
+          "text": "Total Due (EUR)"
+        },
+        "note": null,
+        "raw": "Total Due (EUR)",
+        "status": "valid",
+        "value": "EUR"
+      },
+      "discount": {
+        "confidence": null,
+        "evidence": null,
+        "note": null,
+        "raw": null,
+        "status": "missing",
+        "value": null
+      },
+      "due_date": {
+        "confidence": null,
+        "evidence": {
+          "bbox": [
+            310.0,
+            179.2,
+            361.1,
+            193.0
+          ],
+          "page": 1,
+          "source": "pdf_text",
+          "text": "2026-08-21"
+        },
+        "note": null,
+        "raw": "2026-08-21",
+        "status": "valid",
+        "value": "2026-08-21"
+      },
+      "fees": {
+        "confidence": null,
+        "evidence": null,
+        "note": null,
+        "raw": null,
+        "status": "missing",
+        "value": null
+      },
+      "invoice_date": {
+        "confidence": null,
+        "evidence": {
+          "bbox": [
+            180.0,
+            179.2,
+            231.1,
+            193.0
+          ],
+          "page": 1,
+          "source": "pdf_text",
+          "text": "2026-07-22"
+        },
+        "note": null,
+        "raw": "2026-07-22",
+        "status": "valid",
+        "value": "2026-07-22"
+      },
+      "invoice_number": {
+        "confidence": null,
+        "evidence": {
+          "bbox": [
+            50.0,
+            179.2,
+            87.2,
+            193.0
+          ],
+          "page": 1,
+          "source": "pdf_text",
+          "text": "SI37265"
+        },
+        "note": null,
+        "raw": "SI37265",
+        "status": "valid",
+        "value": "SI37265"
+      },
+      "line_items": [
+        {
+          "description": {
+            "confidence": null,
+            "evidence": {
+              "bbox": [
+                50.0,
+                287.2,
+                164.5,
+                301.0
+              ],
+              "page": 1,
+              "source": "pdf_text",
+              "text": "Printer paper A4, 5 reams"
+            },
+            "note": null,
+            "raw": "Printer paper A4, 5 reams",
+            "status": "valid",
+            "value": "Printer paper A4, 5 reams"
+          },
+          "line_total": {
+            "confidence": null,
+            "evidence": {
+              "bbox": [
+                537.0,
+                287.2,
+                562.0,
+                301.0
+              ],
+              "page": 1,
+              "source": "pdf_text",
+              "text": "88,68"
+            },
+            "note": null,
+            "raw": "88,68",
+            "status": "unverified",
+            "value": "88.68"
+          },
+          "quantity": {
+            "confidence": null,
+            "evidence": {
+              "bbox": [
+                374.4,
+                287.2,
+                380.0,
+                301.0
+              ],
+              "page": 1,
+              "source": "pdf_text",
+              "text": "1"
+            },
+            "note": "corrected by a reviewer",
+            "raw": "1",
+            "status": "unverified",
+            "value": "3"
+          },
+          "tax_rate": {
+            "confidence": null,
+            "evidence": null,
+            "note": null,
+            "raw": null,
+            "status": "unverified",
+            "value": null
+          },
+          "unit_price": {
+            "confidence": null,
+            "evidence": {
+              "bbox": [
+                445.0,
+                287.2,
+                470.0,
+                301.0
+              ],
+              "page": 1,
+              "source": "pdf_text",
+              "text": "88,68"
+            },
+            "note": null,
+            "raw": "88,68",
+            "status": "unverified",
+            "value": "88.68"
+          }
+        },
+        {
+          "description": {
+            "confidence": null,
+            "evidence": {
+              "bbox": [
+                50.0,
+                305.2,
+                171.7,
+                319.0
+              ],
+              "page": 1,
+              "source": "pdf_text",
+              "text": "Design consultation (hours)"
+            },
+            "note": null,
+            "raw": "Design consultation (hours)",
+            "status": "valid",
+            "value": "Design consultation (hours)"
+          },
+          "line_total": {
+            "confidence": null,
+            "evidence": {
+              "bbox": [
+                523.1,
+                305.2,
+                562.0,
+                319.0
+              ],
+              "page": 1,
+              "source": "pdf_text",
+              "text": "3.608,05"
+            },
+            "note": null,
+            "raw": "3.608,05",
+            "status": "valid",
+            "value": "3608.05"
+          },
+          "quantity": {
+            "confidence": null,
+            "evidence": {
+              "bbox": [
+                374.4,
+                305.2,
+                380.0,
+                319.0
+              ],
+              "page": 1,
+              "source": "pdf_text",
+              "text": "5"
+            },
+            "note": null,
+            "raw": "5",
+            "status": "valid",
+            "value": "5"
+          },
+          "tax_rate": {
+            "confidence": null,
+            "evidence": null,
+            "note": null,
+            "raw": null,
+            "status": "unverified",
+            "value": null
+          },
+          "unit_price": {
+            "confidence": null,
+            "evidence": {
+              "bbox": [
+                439.4,
+                305.2,
+                470.0,
+                319.0
+              ],
+              "page": 1,
+              "source": "pdf_text",
+              "text": "721,61"
+            },
+            "note": null,
+            "raw": "721,61",
+            "status": "valid",
+            "value": "721.61"
+          }
+        }
+      ],
+      "purchase_order": {
+        "confidence": null,
+        "evidence": null,
+        "note": "corrected by a reviewer",
+        "raw": null,
+        "status": "corrected",
+        "value": "PO-1"
+      },
+      "shipping": {
+        "confidence": null,
+        "evidence": null,
+        "note": null,
+        "raw": null,
+        "status": "missing",
+        "value": null
+      },
+      "subtotal": {
+        "confidence": null,
+        "evidence": {
+          "bbox": [
+            523.1,
+            335.2,
+            562.0,
+            349.0
+          ],
+          "page": 1,
+          "source": "pdf_text",
+          "text": "3.696,73"
+        },
+        "note": null,
+        "raw": "3.696,73",
+        "status": "valid",
+        "value": "3696.73"
+      },
+      "tax_total": {
+        "confidence": null,
+        "evidence": {
+          "bbox": [
+            531.4,
+            351.2,
+            562.0,
+            365.0
+          ],
+          "page": 1,
+          "source": "pdf_text",
+          "text": "304,98"
+        },
+        "note": null,
+        "raw": "304,98",
+        "status": "valid",
+        "value": "304.98"
+      },
+      "taxes": [
+        {
+          "amount": {
+            "confidence": null,
+            "evidence": {
+              "bbox": [
+                531.4,
+                351.2,
+                562.0,
+                365.0
+              ],
+              "page": 1,
+              "source": "pdf_text",
+              "text": "304,98"
+            },
+            "note": null,
+            "raw": "304,98",
+            "status": "unverified",
+            "value": "304.98"
+          },
+          "label": "Tax (8.25%)",
+          "rate": {
+            "confidence": null,
+            "evidence": {
+              "bbox": [
+                380.0,
+                351.2,
+                434.5,
+                365.0
+              ],
+              "page": 1,
+              "source": "pdf_text",
+              "text": "Tax (8.25%)"
+            },
+            "note": null,
+            "raw": "8.25%",
+            "status": "unverified",
+            "value": "8.25"
+          }
+        }
+      ],
+      "total_due": {
+        "confidence": null,
+        "evidence": {
+          "bbox": [
+            525.3,
+            370.2,
+            571.2,
+            385.4
+          ],
+          "page": 1,
+          "source": "pdf_text",
+          "text": "\u00b74.001,71"
+        },
+        "note": null,
+        "raw": "4.001,71",
+        "status": "valid",
+        "value": "4001.71"
+      },
+      "vendor_address": {
+        "confidence": null,
+        "evidence": {
+          "bbox": [
+            50.0,
+            79.2,
+            138.4,
+            107.0
+          ],
+          "page": 1,
+          "source": "pdf_text",
+          "text": "88 Orchard Street, Portland, OR 97205"
+        },
+        "note": null,
+        "raw": "88 Orchard Street, Portland, OR 97205",
+        "status": "unverified",
+        "value": "88 Orchard Street, Portland, OR 97205"
+      },
+      "vendor_name": {
+        "confidence": null,
+        "evidence": {
+          "bbox": [
+            50.0,
+            50.7,
+            247.0,
+            75.5
+          ],
+          "page": 1,
+          "source": "pdf_text",
+          "text": "Kestrel & Finch Design"
+        },
+        "note": "found by position, not by a label",
+        "raw": "Kestrel & Finch Design",
+        "status": "unverified",
+        "value": "Kestrel & Finch Design"
+      },
+      "vendor_tax_id": {
+        "confidence": null,
+        "evidence": null,
+        "note": null,
+        "raw": null,
+        "status": "missing",
+        "value": null
+      },
+      "withholding": {
+        "confidence": null,
+        "evidence": null,
+        "note": null,
+        "raw": null,
+        "status": "missing",
+        "value": null
+      }
+    },
+    "issues": [
+      {
+        "code": "line_mismatch",
+        "field": "line_items.0.line_total",
+        "message": "3 \u00d7 88.68 is 266.04, not 88.68.",
+        "severity": "error"
+      },
+      {
+        "code": "unverified_field",
+        "field": "vendor_name",
+        "message": "Found, but nothing on the invoice confirms it.",
+        "severity": "error"
+      }
+    ],
+    "pages": [
+      {
+        "dpi": null,
+        "height": 792.0,
+        "mean_confidence": null,
+        "number": 1,
+        "rotation": 0,
+        "source": "pdf_text",
+        "text_check": null,
+        "width": 612.0
+      }
+    ],
+    "retries": [],
+    "schema_version": 1,
+    "seconds": 0.01,
+    "status": "needs_review"
+  },
+  "reviewed_at": null,
+  "reviewed_by": null,
+  "status": "needs_review",
+  "updated": "2026-10-14T00:00:00+00:00"
+}
