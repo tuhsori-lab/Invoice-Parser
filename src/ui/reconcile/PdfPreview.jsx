@@ -10,9 +10,10 @@ const DRAW_AHEAD = '600px';
 /**
  * A look at one invoice: all of its pages, one under the other, from its
  * first, to scroll through. Drawn in this browser, each page only as it comes
- * into view, so a long file opens at once.
+ * into view, so a long file opens at once. `aside` is drawn beside the pages:
+ * on Reconcile, the invoice's values, to check and correct against them.
  */
-export default function PdfPreview({ item, onClose }) {
+export default function PdfPreview({ item, onClose, aside = null }) {
   const dialogRef = useDialog({ onClose });
   const toast = useToast();
   const body = useRef(null);
@@ -37,7 +38,8 @@ export default function PdfPreview({ item, onClose }) {
       cancelled = true;
       open?.destroy();
     };
-  }, [item]);
+    // The file, not the item: editing a value must not reload the pages.
+  }, [item.file]);
 
   // Pages are drawn as wide as the window allows, and redrawn if it changes.
   useEffect(() => {
@@ -69,7 +71,7 @@ export default function PdfPreview({ item, onClose }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
-        className="modal pdf-preview"
+        className={`modal pdf-preview${aside ? ' has-aside' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={`Preview of ${item.fileName}`}
@@ -101,22 +103,25 @@ export default function PdfPreview({ item, onClose }) {
             </button>
           </div>
         </header>
-        <div className="modal-body pdf-preview-body" ref={body}>
-          {problem ? (
-            <p className="problem">{problem}</p>
-          ) : (
-            doc &&
-            width > 0 &&
-            numbers.map((number, at) => (
-              <PreviewPage
-                key={number}
-                doc={doc}
-                number={number}
-                width={width}
-                label={`Page ${at + 1} of ${numbers.length}`}
-              />
-            ))
-          )}
+        <div className="pdf-preview-layout">
+          <div className="modal-body pdf-preview-body" ref={body}>
+            {problem ? (
+              <p className="problem">{problem}</p>
+            ) : (
+              doc &&
+              width > 0 &&
+              numbers.map((number, at) => (
+                <PreviewPage
+                  key={number}
+                  doc={doc}
+                  number={number}
+                  width={width}
+                  label={`Page ${at + 1} of ${numbers.length}`}
+                />
+              ))
+            )}
+          </div>
+          {aside}
         </div>
       </div>
     </div>

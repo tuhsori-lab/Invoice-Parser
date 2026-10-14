@@ -84,3 +84,57 @@ test('learns where the PO and the amount are from one invoice and fills in the r
   await page.getByTestId('learned-note').getByRole('button', { name: 'Forget' }).click();
   await expect(page.getByTestId('add-po-SM-9001')).toBeVisible();
 });
+
+test('values can be corrected beside the invoice, while looking at it', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('tab-reconcile').click();
+  await load(page);
+  const results = page.getByTestId('section-results');
+  const row = (number) => results.locator('tr', { hasText: number });
+
+  // Clicking a row opens the invoice, with its values beside it.
+  await row('SM-9003').locator('td').first().click();
+  const details = page.getByTestId('invoice-details');
+  await expect(details.getByTestId('detail-invoice')).toHaveValue('SM-9003');
+  await expect(details).toContainText('Excel: BR-9999');
+
+  await details.getByTestId('detail-total').fill('44.00');
+  await details.getByTestId('detail-total').press('Enter');
+  // The amount it learned from disagrees with Excel's 40.00: said beside it, in red.
+  await expect(page.getByTestId('details-status')).toHaveText('Price differs');
+  await expect(details.locator('.detail-field.is-different')).toContainText('Amount');
+  await expect(details).toContainText('Difference −$4.00');
+
+  await details.getByTestId('detail-po').fill('BR-9999');
+  await details.getByTestId('detail-po').press('Enter');
+  await expect(details.getByTestId('detail-po')).toHaveValue('BR-9999');
+  // The pages stay open while values change.
+  await expect(page.getByTestId('pdf-preview').locator('canvas')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(row('SM-9003')).toContainText('BR-9999');
+  // Learned from what was typed beside the invoice, as from the table.
+  await expect(row('SM-9001')).toContainText('$120.00');
+});
+
+test('an invoice with no number can be given one beside it, and is then matched', async ({
+  page,
+}) => {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  doc.addPage([612, 792]).drawText('Total due: $75.50', { x: 360, y: 300, size: 11, font });
+  await page.goto('/');
+  await page.getByTestId('tab-reconcile').click();
+  await page.getByTestId('pdf-drop-input').setInputFiles({
+    name: 'unnumbered.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from(await doc.save()),
+  });
+  await page.getByTestId('sheet-drop-input').setInputFiles(sheet);
+  const results = page.getByTestId('section-results');
+  await results.locator('tr', { hasText: 'No number found' }).locator('td').first().click();
+  await page.getByTestId('detail-invoice').fill('SM-9002');
+  await page.getByTestId('detail-invoice').press('Enter');
+  await expect(page.getByTestId('details-status')).toHaveText('Matched');
+  await page.keyboard.press('Escape');
+  await expect(results.locator('tr', { hasText: 'SM-9002' }).first()).toContainText('Typed by you');
+});
