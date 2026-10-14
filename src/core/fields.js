@@ -291,6 +291,36 @@ function firstParsed(values, parse) {
   return null;
 }
 
+/** A purchase order reference, as printed: "PO-4500118", "PO 55103388", "PC-7790". */
+const PO_LABEL =
+  /^(purchase\s*order(\s*(no\.?|number|#|ref(erence)?))?|customer\s*po|p\.?\s?o\.?(?!\s*box\b)\s*(no\.?|number|#|ref(erence)?)?|order\s*(no\.?|number|#|ref(erence)?)|bestellnummer|bon de commande)\b\s*:?/i;
+
+/** A PO number: a short reference with a digit in it, not a date or a sum of money. */
+function asPo(text) {
+  const value = String(text ?? '')
+    .trim()
+    .replace(/[.,;]$/, '');
+  if (value.length < 2 || value.length > 30 || !/\d/.test(value)) return null;
+  if (!/^[A-Za-z0-9][A-Za-z0-9 ./_#-]*$/.test(value) || value.split(/\s+/).length > 3) return null;
+  if (parseDate(value) || /\d[.,]\d{2}$/.test(value)) return null;
+  return { value };
+}
+
+/**
+ * A PO number reduced to what identifies it, for comparing: no spaces or
+ * punctuation, and no "PO" in front, so "PO 55103388", "PO-55103388" and
+ * "55103388" are the same order.
+ *
+ * @param {string|null|undefined} po
+ * @returns {string}
+ */
+export function poKey(po) {
+  return String(po ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .replace(/^PO(?=\d)/, '');
+}
+
 /** A customer's name: words, not a label, not a number. */
 function asName(text) {
   const name = String(text ?? '').trim();
@@ -300,7 +330,8 @@ function asName(text) {
 }
 
 /**
- * Everything but the number, read from an invoice's pages.
+ * Everything but the number, read from an invoice's pages: customer, PO,
+ * total, date, terms and due date.
  *
  * The total is the most telling one on any page, the last when there are
  * several (a running total on page one, the real one on the last page). The
@@ -309,6 +340,7 @@ function asName(text) {
  * @param {Array<{ text: string, layout?: Array<object> }>} pages - one invoice's, in order.
  * @returns {{
  *   customer: string|null,
+ *   po: { value: string, raw: string }|null,
  *   total: { amount: number, currency: string|null, raw: string }|null,
  *   date: { iso: string, ambiguous: boolean, raw: string }|null,
  *   terms: { days: number, eom: boolean, raw: string }|null,
@@ -357,6 +389,7 @@ export function readFields(pages = []) {
         parseTerms
       )
     );
+  const po = first((phrases) => firstParsed(valuesFor(phrases, PO_LABEL), asPo));
   const customer =
     phrasesByPage.length > 0
       ? (firstParsed(valuesFor(phrasesByPage[0], CUSTOMER_LABEL, { right: false }), asName)?.name ??
@@ -365,6 +398,7 @@ export function readFields(pages = []) {
 
   return {
     customer,
+    po: po ? { value: po.value, raw: po.raw } : null,
     total,
     date,
     terms,
