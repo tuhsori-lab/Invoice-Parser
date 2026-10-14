@@ -86,7 +86,7 @@ export default function SummaryTab({ data, prefixes }) {
         { key: 'terms', label: 'Terms' },
         { key: 'due', label: 'Due date', rank: (row) => dateRank(row.dueIso) },
         { key: 'total', label: 'Total', numeric: true, rank: (row) => row.total ?? 0 },
-        { key: 'notes', label: 'Notes' },
+        { key: 'notes', label: 'Notes', wrap: true },
       ],
       rows: rows.map((row) => ({
         ...row,

@@ -31,6 +31,7 @@ import ClientSettings from './ClientSettings.jsx';
 import PageStrip from './PageStrip.jsx';
 import InvoiceTable from './InvoiceTable.jsx';
 import PreviewModal from './PreviewModal.jsx';
+import InvoicePreview from './InvoicePreview.jsx';
 import PointPrompt from './PointPrompt.jsx';
 import ConfirmDialog from '../common/ConfirmDialog.jsx';
 import EmptyState from '../common/EmptyState.jsx';
@@ -825,6 +826,8 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
   /* ------------------------------------------------------------------- view */
 
   const previewPage = previewIndex === null ? null : analyzed[previewIndex - 1];
+  // The whole of one invoice, every page to scroll through, from the table's Preview.
+  const [previewGroup, setPreviewGroup] = useState(null);
   // What a box drawn on the page in the preview would be saved under, worked
   // out the same way rememberBox does it, so the two never disagree.
   const previewClientName = useMemo(
@@ -1128,7 +1131,7 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
                   <InvoiceTable
                     groups={shownGroups}
                     colourOf={colourOf}
-                    onPreview={setPreviewIndex}
+                    onPreview={(pageIndex) => setPreviewGroup(groupOfPage.get(pageIndex) ?? null)}
                     onDownload={downloadInvoice}
                     onRename={renameInvoice}
                     onAccept={renameInvoice}
@@ -1139,6 +1142,17 @@ export default function SplitTab({ active = true, settingsSlot = null, onOpenSet
             </section>
           </section>
         </div>
+      )}
+
+      {previewGroup && !previewPage && (
+        <InvoicePreview
+          group={groups.find((group) => group.id === previewGroup.id) ?? previewGroup}
+          docsById={docsById}
+          onClose={() => setPreviewGroup(null)}
+          onDownload={downloadInvoice}
+          onOpenPage={setPreviewIndex}
+          busy={Boolean(exporting)}
+        />
       )}
 
       {previewPage && (
