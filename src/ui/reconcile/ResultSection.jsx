@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHiddenColumns } from '../../lib/useHiddenColumns.js';
 import { useToast } from '../common/Toasts.jsx';
+import NotePopover from '../common/NotePopover.jsx';
 
 /** Rows drawn at first; the rest on request, so thousands of rows stay quick. */
 const FIRST_ROWS = 300;
@@ -10,10 +11,10 @@ const FIRST_ROWS = 300;
  * button, and a table that sorts by any column.
  *
  * @param {object} props
- * @param {Array<{ key: string, label: string, numeric?: boolean, wrap?: boolean, rank?: (row: object) => number, render?: (row: object) => import('react').ReactNode }>} props.columns
- *   Cells stay on one line, so rows stay one line tall; `wrap` lets a long text column
- *   run to two lines, with the whole of it in its tooltip; `action` marks a column of
- *   buttons, left out of what is copied.
+ * @param {Array<{ key: string, label: string, numeric?: boolean, note?: boolean, action?: boolean, rank?: (row: object) => number, render?: (row: object) => import('react').ReactNode }>} props.columns
+ *   Cells stay on one line, so rows stay one line tall; `note` shows a long text column
+ *   as a pill that opens it in a card (its text is still what is copied); `action` marks
+ *   a column of buttons, left out of what is copied.
  *   `rank` sorts by a number other than the cell; `render` draws the cell, which stays the text copied.
  * @param {Array<{ id: string, cells: Record<string, string|number>, flagged?: boolean, alert?: boolean, file?: object }>} props.rows
  *   `alert` tints the whole row red: something on it disagrees and needs a look.
@@ -188,15 +189,7 @@ export default function ResultSection({
                       data-testid={`row-${row.id}`}
                     >
                       {columns.map((column) => (
-                        <td
-                          key={column.key}
-                          className={
-                            [column.numeric && 'is-number', column.wrap && 'is-wrap']
-                              .filter(Boolean)
-                              .join(' ') || undefined
-                          }
-                          title={column.wrap ? String(row.cells[column.key] ?? '') : undefined}
-                        >
+                        <td key={column.key} className={column.numeric ? 'is-number' : undefined}>
                           {column.key === 'file' && row.file && onOpen ? (
                             <button
                               type="button"
@@ -211,8 +204,8 @@ export default function ResultSection({
                             </button>
                           ) : column.render ? (
                             column.render(row)
-                          ) : column.wrap ? (
-                            <span className="clamp">{row.cells[column.key]}</span>
+                          ) : column.note ? (
+                            <NotePopover text={row.cells[column.key]} />
                           ) : (
                             row.cells[column.key]
                           )}

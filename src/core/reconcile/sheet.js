@@ -35,7 +35,7 @@ const FIELD_HEADINGS = [
   ['due', /due|fällig|échéance|vencimiento|vervaldatum/i],
   ['date', /date|datum|fecha|\bdata\b|issued/i],
   ['terms', /terms|condition|zahlungsziel/i],
-  ['customer', /customer|client|bill to|account|company|kunde|debtor|buyer|\bname\b/i],
+  ['customer', /customer|\bcust\b|client|bill to|account|company|kunde|debtor|buyer|\bname\b/i],
   ['status', /status|paid|\bstate\b|settled/i],
   ['currency', /currency|\bccy\b|\bcurr\b|währung|devise|moneda/i],
   // Last, so "PO Amount" is an amount; "PO Number", "Purchase order", "Order #" are POs.

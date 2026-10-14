@@ -233,12 +233,30 @@ export function withPoPattern(learned, customer, po) {
  * @param {Array<{ text: string }>} pages
  * @param {object} learned
  * @param {string|null} invoice - its number, which is never its PO.
+ * @param {string|null} [customer] - whose invoice it is: the PDF's "Bill to", or the
+ *   spreadsheet's customer column when the PDF does not name one.
  * @returns {object} the fields, with `po` filled when exactly one value has the shape.
  */
-export function withPatternPo(fields, pages, learned, invoice) {
-  if (fields?.po || !fields?.customer || !pages) return fields;
-  const known = learned.poPatterns?.[customerKey(fields.customer)];
+export function withPatternPo(fields, pages, learned, invoice, customer = fields?.customer) {
+  if (fields?.po || !customer || !pages) return fields;
+  const known = learned.poPatterns?.[customerKey(customer)];
   if (!known) return fields;
   const found = findByPattern(pages, known.patterns, [invoice]);
   return found ? { ...fields, po: { ...found, pattern: known.name } } : fields;
+}
+
+/**
+ * Let go of the shape learned from a PO that was typed wrong and then corrected,
+ * so a slip of the keyboard does not stay a pattern.
+ */
+export function withoutPoPattern(learned, customer, po) {
+  const key = customerKey(customer);
+  const source = poPattern(po);
+  const known = learned.poPatterns?.[key];
+  if (!known || !source || !known.patterns.includes(source)) return learned;
+  const patterns = known.patterns.filter((entry) => entry !== source);
+  const poPatterns = { ...learned.poPatterns };
+  if (patterns.length) poPatterns[key] = { ...known, patterns };
+  else delete poPatterns[key];
+  return { ...learned, poPatterns };
 }

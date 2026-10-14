@@ -68,3 +68,63 @@ test('learns each customer’s PO shape and fills in only that customer’s invo
     'Pinecrest Dental Clinic POs like PDC-#####'
   );
 });
+
+test('uses the spreadsheet’s CustName when the PDF names no customer, and a typed PO can be changed', async ({
+  page,
+}) => {
+  /** An invoice with no "Bill to" at all: only Excel says whose it is. */
+  async function bare(number, po) {
+    const doc = await PDFDocument.create();
+    const pdfPage = doc.addPage([612, 792]);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    pdfPage.drawText(`Invoice No: ${number}`, { x: 360, y: 740, size: 11, font });
+    pdfPage.drawText(po, { x: 50, y: 560, size: 11, font });
+    pdfPage.drawText('Total due: $10.00', { x: 360, y: 300, size: 11, font });
+    return {
+      name: `${number}.pdf`,
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await doc.save()),
+    };
+  }
+
+  await page.goto('/');
+  await page.getByTestId('tab-reconcile').click();
+  await page
+    .getByTestId('pdf-drop-input')
+    .setInputFiles([
+      await bare('KX-1', 'GF-20113'),
+      await bare('KX-2', 'GF-20114'),
+      await bare('KX-3', '7781-AB'),
+    ]);
+  await page.getByTestId('sheet-drop-input').setInputFiles({
+    name: 'register.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      'InvNo,CustName,InvAmnt,PONum\nKX-1,Greenfield Farms,10.00,GF-20113\nKX-2,Greenfield Farms,10.00,GF-20114\nKX-3,Harbor Bakery,10.00,7781-AB\n'
+    ),
+  });
+  const results = page.getByTestId('section-results');
+  const row = (number) => results.locator('tr', { hasText: number });
+  await expect(row('KX-3')).toBeVisible();
+
+  // Typed with a slip first: a shape is learned from it, for Greenfield Farms (from Excel).
+  await page.getByTestId('add-po-KX-1').click();
+  await page.getByTestId('add-po-KX-1-input').fill('GF-2011');
+  await page.getByTestId('add-po-KX-1-input').press('Enter');
+  await expect(page.getByTestId('learned-note')).toContainText('Greenfield Farms POs like GF-####');
+
+  // Changed: the slip's shape goes, the right one is learned, and KX-2 fills in.
+  await row('KX-1').hover();
+  await page.getByTestId('edit-po-KX-1').click();
+  await page.getByTestId('edit-po-KX-1-input').fill('GF-20113');
+  await page.getByTestId('edit-po-KX-1-input').press('Enter');
+  await expect(row('KX-1')).toContainText('GF-20113');
+  await expect(page.getByTestId('learned-note')).toContainText(
+    'Greenfield Farms POs like GF-#####'
+  );
+  await expect(page.getByTestId('learned-note')).not.toContainText('GF-####,');
+  await expect(row('KX-2')).toContainText('GF-20114');
+  await expect(row('KX-2').locator('.value-tag')).toHaveText('pattern');
+  // Another customer's invoice is left alone.
+  await expect(page.getByTestId('add-po-KX-3')).toBeVisible();
+});

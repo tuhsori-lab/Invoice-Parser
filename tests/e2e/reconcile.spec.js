@@ -90,3 +90,27 @@ test('columns can be hidden from the results, and stay hidden', async ({ page })
   await page.getByRole('button', { name: 'Show all columns' }).click();
   await expect(headings.filter({ hasText: 'Found by' })).toHaveCount(1);
 });
+
+test('notes open in a card from a small pill, and are still copied in full', async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+  await page.getByTestId('tab-reconcile').click();
+  await page.getByTestId('try-samples-reconcile').click();
+  const results = page.getByTestId('section-results');
+  await expect(results).toBeVisible({ timeout: 30_000 });
+
+  const row = results.locator('tr', { hasText: 'BW-88231' });
+  await expect(row).not.toContainText('Excel is $27.00 less');
+  await row.getByTestId('note-pill').click();
+  await expect(page.getByTestId('note-card')).toContainText('Excel is $27.00 less');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('note-card')).toHaveCount(0);
+
+  await page.getByTestId('copy-results').click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
+    'Excel is $27.00 less'
+  );
+});
